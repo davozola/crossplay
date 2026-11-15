@@ -25,6 +25,7 @@
 #include "hackernews/HackerNewsActivity.h"
 #include "hearts/HeartsActivity.h"
 #include "hex/HexActivity.h"
+#include "innerclock/InnerClockActivity.h"
 #include "insider/InsiderActivity.h"
 #include "instapaper/InstapaperActivity.h"
 #include "jaipur/JaipurActivity.h"
@@ -84,6 +85,7 @@ constexpr shelf::Item kGames[] = {
     {"UNDERHAND", &icon_underhand_32, &UnderhandActivity::create},
     {"WORDLE", &icon_wordle_32, &WordleActivity::create},
     {"TAK", &icon_tak_32, &TakActivity::create},
+    {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create},
 };
 constexpr shelf::Item kApps[] = {
     {"STUDY", &icon_study_32, &StudyActivity::create},
