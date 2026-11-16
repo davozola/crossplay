@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade siete cosas:
+Sticky**. Conserva todo lo del original y añade ocho cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -30,6 +30,7 @@ Sticky**. Conserva todo lo del original y añade siete cosas:
 | **Kakuro**      | Sumas cruzadas, cada tablero con una única solución demostrada.         |
 | **Mastermind**  | Descifra el código de formas, solo contra el dispositivo.               |
 | **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
+| **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
 
 Lo que sigue es, en su mayoría, el README del proyecto original. Hay tres cosas
 que no aplican a este fork:
