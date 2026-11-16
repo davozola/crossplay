@@ -505,8 +505,10 @@ void FmGuideActivity::loop() {
 
   if (view_ == View::Read) {
     const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
-    if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right) {
-      turn(swipe == MappedInputManager::SwipeDir::Left ? 1 : -1);
+    // Left or up is the next page, the way the page moves under a finger;
+    // right or down is the one before.
+    if (swipe != MappedInputManager::SwipeDir::None) {
+      turn(swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up ? 1 : -1);
       requestUpdate();
       return;
     }

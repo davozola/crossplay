@@ -1805,6 +1805,19 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   paintclock::notePainted();
 }
 
+void GfxRenderer::displayRegion(const int x, const int y, const int width, const int height) const {
+  const AlignedMemRect mem = screenRectToAlignedMemRect(orientation, x, y, width, height, panelWidth, panelHeight);
+  if (!mem.valid || promotedRefreshPending_ || fadingFix) {
+    displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
+  {
+    PanelSpan span;
+    display.displayWindow(mem.x, mem.y, mem.w, mem.h);
+  }
+  paintclock::notePainted();
+}
+
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
   refreshMode = applyPromotedRefresh(refreshMode);
   // The async path has no turn-off-screen hook, which the sunlight fading fix

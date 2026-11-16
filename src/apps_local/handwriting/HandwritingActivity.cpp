@@ -373,7 +373,53 @@ void HandwritingActivity::routeNotes(const fui::ActionEvent& event) {
   }
 }
 
+// New ink of the stroke in progress, set straight into the framebuffer that
+// already shows the page, and only its bounding box sent to the panel. The
+// eraser takes ink away, which only a full repaint can show.
+bool HandwritingActivity::renderStroke() {
+  if (!drawing || !pageOnPanel || view != View::Page || nibOpen || full || tool == ink::Tool::Eraser) return false;
+  if (!page || !raster || rastered < 0) return false;
+  const int count = page->count();
+  if (rastered > count) return false;
+  if (rastered == count) return true;
+  const ink::Point* p = page->points();
+  int x0 = page->width;
+  int y0 = page->height;
+  int x1 = -1;
+  int y1 = -1;
+  for (int i = rastered > 0 ? rastered - 1 : 0; i < count; ++i) {
+    if (p[i].x == ink::kStrokeMark) continue;
+    if (p[i].x < x0) x0 = p[i].x;
+    if (p[i].x > x1) x1 = p[i].x;
+    if (p[i].y < y0) y0 = p[i].y;
+    if (p[i].y > y1) y1 = p[i].y;
+  }
+  const int rowBytes = (page->width + 7) / 8;
+  ink::rasteriseMore(*page, raster.get(), rowBytes, rastered, count);
+  rastered = count;
+  paintedCount = count;
+  if (x1 < 0) return true;
+  const int reach = ink::widthOf(tool) + 2;
+  x0 = x0 - reach < 0 ? 0 : x0 - reach;
+  y0 = y0 - reach < 0 ? 0 : y0 - reach;
+  x1 = x1 + reach >= page->width ? page->width - 1 : x1 + reach;
+  y1 = y1 + reach >= page->height ? page->height - 1 : y1 + reach;
+  const int top = areaTop();
+  for (int y = y0; y <= y1; ++y) {
+    const uint8_t* row = raster.get() + y * rowBytes;
+    for (int x = x0; x <= x1; ++x) {
+      if (row[x / 8] & (0x80 >> (x % 8))) renderer.drawPixel(x, top + y, true);
+    }
+  }
+  renderer.displayRegion(x0, top + y0, x1 - x0 + 1, y1 - y0 + 1);
+  return true;
+}
+
 void HandwritingActivity::render(RenderLock&&) {
+  if (renderStroke()) {
+    painting = false;
+    return;
+  }
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();
@@ -392,6 +438,7 @@ void HandwritingActivity::render(RenderLock&&) {
   interactionsReady = true;
   toybox::reportOverflow(interactions, "Handwriting");
   renderer.displayBuffer();
+  pageOnPanel = view == View::Page && page && raster && !nibOpen;
   painting = false;
 }
 

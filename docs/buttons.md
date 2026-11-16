@@ -195,6 +195,19 @@ page two landed on Home, concluded that back meant exit, and went forward until
 the pages came round -- onto a page they had not noticed, whose second row was
 a different game.
 
+> **This fork's shelf pages sideways as well.** Its owner asked for it, and the
+> collision above is settled where Back is handled rather than avoided: in a
+> folder, a rightward swipe that arrives as Back turns to the page before while
+> there is one, and leaves only from the first page. Swiping right walks back
+> through the pages and then out; a swipe begun at the very edge always leaves.
+> Up and down still page too.
+>
+> **And a folder remembers what you use.** The three items opened last lead the
+> list, newest first. A long press on a row makes it a favourite (a star in the
+> row; a second long press takes it away), and once a folder has one, a star
+> sits at the right of the page marks: tap it to list only the favourites, tap
+> it again for everything.
+
 So a horizontal paging axis cannot be symmetrical while Back owns left-to-right,
 and a one-way axis is the asymmetry that was reported. The vertical axis
 collides with nothing: it is orthogonal to Back, which is why the story list and

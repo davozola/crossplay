@@ -26,6 +26,8 @@ enum : fui::ActionId {
   // pixels and a mode read from a second place is how a tap opens a game the
   // user was trying to hide.
   ActionToggleShown = 5,
+  // The star beside the page marks: list only the favourites, or everything.
+  ActionToggleFavourites = 6,
 };
 
 // The one word this screen spends on the mode, and it is spent on the way OUT.
@@ -131,11 +133,17 @@ struct MenuModel {
   // to answer before any tap is safe.
   int page = 0;
   int pageCount = 1;
+  // Which rows are favourites (a star in the row), whether the folder has a
+  // star to filter by, and whether that filter is on.
+  const bool* stars = nullptr;
+  bool starShown = false;
+  bool starOn = false;
 };
 
 // How the folder's items divide into pages. See Paging above for why both
 // numbers come back at once.
-Paging pagingFor(const fui::DeviceContext& device, const fui::ThemeTokens& tokens, bool hasDeviceName, int count);
+Paging pagingFor(const fui::DeviceContext& device, const fui::ThemeTokens& tokens, bool hasDeviceName, int count,
+                 bool hasFavourites = false);
 
 // Which page a selection is on. The list pages rather than scrolling, so the
 // top row of a page is always a multiple of rowsPerPage and never lands
@@ -219,7 +227,7 @@ int pageStepClamped(int page, int pageCount, int delta);
 // rows browsing and nine choosing, so the row under your finger is a different
 // app before you have touched anything. The caption goes in the band the folder
 // already has, or it does not go anywhere.
-fui::Rect listBand(const fui::DeviceContext& device, bool hasDeviceName, bool hasPages);
+fui::Rect listBand(const fui::DeviceContext& device, bool hasDeviceName, bool hasPages, bool hasFavourites = false);
 
 void buildMenu(toybox::Screen& screen, const MenuModel& model);
 

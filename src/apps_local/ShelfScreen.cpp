@@ -3,8 +3,10 @@
 #include <FreeInkUIIcon.h>
 
 #include <cstdio>
+#include <cstring>
 
 #include "player/PlayerAvatar.h"
+#include "ui/ExtraIcons.h"
 #include "ui/ToyboxFormat.h"
 #include "ui/ToyboxIcons.h"
 
@@ -60,25 +62,29 @@ constexpr int kPageBarHeight = 44;
 
 int pageBarHeight(const bool hasPages) { return hasPages ? kPageBarHeight + toybox::kGutter : 0; }
 
-fui::Rect listBand(const fui::DeviceContext& device, const bool hasDeviceName, const bool hasPages) {
+fui::Rect listBand(const fui::DeviceContext& device, const bool hasDeviceName, const bool hasPages,
+                   const bool hasFavourites) {
   // From the whole chrome -- band, gap and rule -- not from the band alone,
   // and taken from toybox::kBodyTop rather than re-summed here so it cannot
   // drift from what headerBand() actually reserves.
   const int top = toybox::kBodyTop;
-  return fui::makeRect(toybox::kMargin, top, device.width - 2 * toybox::kMargin,
-                       device.height - toybox::kMargin - top - footerHeight(hasDeviceName) - pageBarHeight(hasPages));
+  return fui::makeRect(
+      toybox::kMargin, top, device.width - 2 * toybox::kMargin,
+      device.height - toybox::kMargin - top - footerHeight(hasDeviceName) - pageBarHeight(hasPages || hasFavourites));
 }
 
 Paging pagingFor(const fui::DeviceContext& device, const fui::ThemeTokens& tokens, const bool hasDeviceName,
-                 const int count) {
+                 const int count, const bool hasFavourites) {
   // Asked without the bar first. A folder that fits keeps every row it has, and
   // never draws a control that would say "1/1".
-  const int whole = fui::listVisibleRows(listBand(device, hasDeviceName, false), tokens.rowHeight, tokens.listRowGap);
+  const int whole =
+      fui::listVisibleRows(listBand(device, hasDeviceName, false, hasFavourites), tokens.rowHeight, tokens.listRowGap);
   if (count <= whole) return Paging{whole > 0 ? whole : 1, 1};
 
   // It does not fit, so the bar exists, so the rows it costs come off. Asking in
   // this order is what stops the two answers depending on each other.
-  const int paged = fui::listVisibleRows(listBand(device, hasDeviceName, true), tokens.rowHeight, tokens.listRowGap);
+  const int paged =
+      fui::listVisibleRows(listBand(device, hasDeviceName, true, hasFavourites), tokens.rowHeight, tokens.listRowGap);
   if (paged <= 0) return Paging{1, count};
   return Paging{paged, (count + paged - 1) / paged};
 }
@@ -323,17 +329,22 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   // the cluster a counter rather than a carousel, which matters now that the
   // pages step vertically: dots borrowed the iOS home screen's promise that the
   // content slides sideways, and nothing here slides at all.
-  if (model.pageCount > 1) {
+  const bool starInBar = !choosing && model.starShown;
+  if (model.pageCount > 1 || starInBar) {
     const fui::Rect bar = screen.takeBottom(kPageBarHeight, toybox::kGutter);
+    const int pages = model.pageCount > 1 ? model.pageCount : 0;
+    // The star keeps the right end; the marks stay centred, so they give up
+    // the same width on the left.
+    constexpr int16_t kStarCell = 48;
+    const int16_t room = static_cast<int16_t>(bar.width - (starInBar ? 2 * kStarCell : 0));
 
     // A thumb, and contiguous, so no gap between adjacent pages can swallow a
     // tap. Falls back to sharing the bar when there are so many pages that a
     // thumb-wide pitch would not fit; small honest targets beat overlapping
     // ones, which is why the component is not allowed to grow them either.
     constexpr int16_t kPitch = 44;
-    const int16_t pitch =
-        kPitch * model.pageCount <= bar.width ? kPitch : static_cast<int16_t>(bar.width / model.pageCount);
-    const int16_t clusterX = static_cast<int16_t>(bar.x + (bar.width - pitch * model.pageCount) / 2);
+    const int16_t pitch = pages == 0 || kPitch * pages <= room ? kPitch : static_cast<int16_t>(room / pages);
+    const int16_t clusterX = static_cast<int16_t>(bar.x + (bar.width - pitch * pages) / 2);
 
     // A hit region and nothing else. A StyleSet with no paints would be taken
     // for an unset one and quietly replaced by the default button look, which is
@@ -353,7 +364,7 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
     // pokes out through the curve at the two ends.
     const int16_t inset = 2;
     const int16_t cellH = static_cast<int16_t>(bar.height - 2 * inset);
-    for (int p = 0; p < model.pageCount; ++p) {
+    for (int p = 0; p < pages; ++p) {
       const fui::Rect target =
           fui::makeRect(static_cast<int16_t>(clusterX + p * pitch), bar.y, pitch, static_cast<int16_t>(bar.height));
       fui::ButtonProps jump;
@@ -386,9 +397,42 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
       style.color = here ? fui::Color::White : fui::Color::Black;
       screen.target().text(toybox::inkCentred(cell, toybox::kUiCut), number, style);
     }
+
+    if (starInBar) {
+      const fui::Rect target = fui::makeRect(static_cast<int16_t>(bar.right() - kStarCell), bar.y, kStarCell,
+                                             static_cast<int16_t>(bar.height));
+      fui::ButtonProps filter;
+      filter.action = ActionToggleFavourites;
+      filter.styles = invisible;
+      filter.minTouchSize = 0;
+      screen.button(filter, target);
+      const fui::Rect cell =
+          fui::makeRect(static_cast<int16_t>(target.x + inset), static_cast<int16_t>(target.y + inset),
+                        static_cast<int16_t>(kStarCell - 2 * inset), cellH);
+      if (model.starOn) {
+        screen.target().fill(cell, fui::Paint::solid(fui::Color::Black), 10);
+      } else {
+        screen.target().stroke(cell, fui::Paint::solid(fui::Color::Black), 1, 10);
+      }
+      screen.target().bitmap(fui::makeRect(static_cast<int16_t>(cell.x + (cell.width - 24) / 2),
+                                           static_cast<int16_t>(cell.y + (cell.height - 24) / 2), 24, 24),
+                             fui::bitmapFromIcon(icon_star_24), fui::BitmapMode::Contain,
+                             fui::Paint::solid(model.starOn ? fui::Color::White : fui::Color::Black));
+      if (model.starOn && pages == 0) {
+        fui::TextStyle caption;
+        caption.font = toybox::kUiFont;
+        caption.align = fui::TextAlign::Left;
+        caption.color = fui::Color::Black;
+        screen.target().text(toybox::inkCentred(fui::makeRect(bar.x, bar.y, static_cast<int16_t>(bar.width - kStarCell),
+                                                              static_cast<int16_t>(bar.height)),
+                                                toybox::kUiCut),
+                             "FAVOURITES", caption);
+      }
+    }
   }
 
-  const fui::Rect rows = listBand(screen.device(), model.playerName != nullptr, model.pageCount > 1);
+  const bool hasFavourites = !choosing && model.starShown;
+  const fui::Rect rows = listBand(screen.device(), model.playerName != nullptr, model.pageCount > 1, hasFavourites);
 
   // A folder with nothing on its list. Reachable, deliberately: a person who
   // does not want any of the games is allowed to have none of them, and a rule
@@ -483,6 +527,17 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
 
   // Icons sit at the right edge; see toybox::iconAtRowRight for why not the
   // list's own left-hand slot.
+  if (!choosing && model.stars != nullptr) {
+    for (int i = 0; i < model.count; ++i) {
+      fui::Rect row;
+      if (!model.stars[i] || !toybox::listRowRect(screen, rows, i, 0, row)) continue;
+      screen.target().bitmap(
+          fui::makeRect(static_cast<int16_t>(row.x + row.width - toybox::kIconSize - toybox::kGutter * 3 - 24),
+                        static_cast<int16_t>(row.y + (row.height - 24) / 2), 24, 24),
+          fui::bitmapFromIcon(icon_star_24), fui::BitmapMode::Contain, fui::Paint::solid(fui::Color::Black));
+    }
+  }
+
   if (model.icons != nullptr) {
     for (int i = 0; i < model.count; ++i) {
       if (model.icons[i] == nullptr) continue;

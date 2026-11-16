@@ -53,6 +53,7 @@ class ShelfFolderActivity final : public Activity {
   // afterwards, or about whether the folder comes back here. Returns false when
   // there is nowhere to go, which is a folder of one page.
   bool showPage(int page);
+  void setFavouritesOnly(bool on);
 
   // One screen's worth of rows, not one folder's worth of items.
   //
@@ -63,6 +64,10 @@ class ShelfFolderActivity final : public Activity {
   // with the player bar and ten without; the slack is there so a token change
   // cannot silently overflow it, and static_assert catches it if one does.
   static constexpr int kMaxRowsPerPage = 16;
+
+  // Where the finger went down, for telling a page swipe from an edge swipe.
+  static constexpr int kBackSwipeEdge = 28;
+  int swipeStartX = -1;
 
   const int folder;
   freeink::ui::ListItem items[kMaxRowsPerPage] = {};
@@ -98,6 +103,11 @@ class ShelfFolderActivity final : public Activity {
   // setting, and a device that woke up in it would be a device that had changed
   // what its rows do while nobody was looking.
   bool choosing = false;
+
+  // Listing only the favourites, which the star beside the page marks turns
+  // on and off.
+  bool favouritesOnly = false;
+  bool stars[kMaxRowsPerPage] = {};
 
   toybox::Interactions interactions;
   bool interactionsReady = false;
