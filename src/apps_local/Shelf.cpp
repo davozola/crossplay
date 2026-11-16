@@ -38,6 +38,7 @@
 #include "solitaire/SolitaireActivity.h"
 #include "study/StudyActivity.h"
 #include "sudoku/SudokuActivity.h"
+#include "tak/TakActivity.h"
 #include "toybattle/ToyBattleActivity.h"
 #include "trivia/TriviaActivity.h"
 #include "ui/ExtraIcons.h"
@@ -81,6 +82,7 @@ constexpr shelf::Item kGames[] = {
     {"HEX", &icon_hex_32, &HexActivity::create},
     {"UNDERHAND", &icon_underhand_32, &UnderhandActivity::create},
     {"WORDLE", &icon_wordle_32, &WordleActivity::create},
+    {"TAK", &icon_tak_32, &TakActivity::create},
 };
 constexpr shelf::Item kApps[] = {
     {"STUDY", &icon_study_32, &StudyActivity::create},
