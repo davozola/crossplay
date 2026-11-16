@@ -102,17 +102,19 @@ static void millisWrap() {
   CHECK(t.tick(nearWrap + 25 * kMin));
 }
 
-static void settingsCycleAndWrap() {
+static void pickersAcceptOnlyTheirChoices() {
   Timer t;
-  t.cycleFocus();
-  CHECK(t.focusMinutes == 30);
-  for (int i = 0; i < kFocusChoiceCount; ++i) t.cycleFocus();
-  CHECK(t.focusMinutes == 30);
-  t.focusMinutes = 7;  // not a choice, e.g. an old save
-  t.cycleFocus();
-  CHECK(t.focusMinutes == kFocusChoices[0]);
-  t.cycleBreak();
-  CHECK(t.breakMinutes == 10);
+  CHECK(t.setFocus(5));
+  CHECK(t.focusMinutes == 5);
+  CHECK(t.phaseLengthMs() == 5 * kMin);
+  CHECK(t.setFocus(60));
+  CHECK(!t.setFocus(7));  // not offered: unchanged
+  CHECK(t.focusMinutes == 60);
+  CHECK(t.setBreak(15));
+  CHECK(!t.setBreak(0));
+  CHECK(t.breakMinutes == 15);
+  for (int i = 0; i < kFocusChoiceCount; ++i) CHECK(t.setFocus(kFocusChoices[i]));
+  for (int i = 0; i < kBreakChoiceCount; ++i) CHECK(t.setBreak(kBreakChoices[i]));
 }
 
 int main() {
@@ -123,7 +125,7 @@ int main() {
   skipDoesNotCount();
   resetKeepsTotal();
   millisWrap();
-  settingsCycleAndWrap();
+  pickersAcceptOnlyTheirChoices();
   if (failures) {
     std::printf("%d pomodoro check(s) failed\n", failures);
     return EXIT_FAILURE;

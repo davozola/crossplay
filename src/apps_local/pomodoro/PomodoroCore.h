@@ -19,10 +19,10 @@ enum class State : uint8_t { Ready, Running, Paused };
 
 constexpr int kSessionsPerCycle = 4;
 
-// The lengths a tap on the settings rows cycles through, in minutes.
-constexpr int kFocusChoices[] = {15, 20, 25, 30, 45, 50};
+// The lengths the two pickers offer, in minutes.
+constexpr int kFocusChoices[] = {5, 10, 15, 20, 25, 30, 45, 50, 60};
 constexpr int kFocusChoiceCount = sizeof(kFocusChoices) / sizeof(kFocusChoices[0]);
-constexpr int kBreakChoices[] = {3, 5, 10};
+constexpr int kBreakChoices[] = {3, 5, 10, 15};
 constexpr int kBreakChoiceCount = sizeof(kBreakChoices) / sizeof(kBreakChoices[0]);
 constexpr int kDefaultFocus = 25;
 constexpr int kDefaultBreak = 5;
@@ -68,8 +68,9 @@ class Timer {
   // Back to the first focus session of a fresh cycle, Ready. Keeps totalDone.
   void reset();
 
-  void cycleFocus();
-  void cycleBreak();
+  // False, and nothing changes, for a length the pickers do not offer.
+  bool setFocus(int minutes);
+  bool setBreak(int minutes);
 
  private:
   void advance(bool countFocus);

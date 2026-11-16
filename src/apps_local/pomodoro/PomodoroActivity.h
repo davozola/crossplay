@@ -4,7 +4,7 @@
 //
 // The panel is redrawn once a minute, never once a second. A ticking seconds
 // field on e-ink is a quarter-second flicker sixty times a minute for
-// information nobody at a desk needs; the minute count and the bar say how far
+// information nobody at a desk needs; the minute count and the ring say how far
 // along you are, and the alarm says when you are done.
 //
 // The alarm is the Sticky's buzzer where there is one (the X4 Pro has none and
@@ -17,8 +17,9 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
-#include "../../components/themes/BaseTheme.h"
+#include "../ui/ToyboxScreen.h"
 #include "PomodoroCore.h"
+#include "PomodoroScreens.h"
 
 class PomodoroActivity final : public Activity {
  public:
@@ -37,33 +38,22 @@ class PomodoroActivity final : public Activity {
   // sleep like any other screen; nothing is lost but the seconds.
   bool preventAutoSleep() override { return timer.state() == pomodoro::State::Running; }
 
-  // Shared by render() and the tap handler so the two cannot disagree about
-  // where a button is.
-  struct Layout {
-    Rect phase;
-    Rect digits;
-    Rect caption;
-    Rect bar;
-    Rect dots;
-    Rect focusSetting;
-    Rect breakSetting;
-    Rect primary;
-    Rect skip;
-    Rect reset;
-  };
-
  private:
-  Layout layout() const;
-  void handleTap(int x, int y);
+  enum class View : uint8_t { Timer, PickFocus, PickBreak };
+
+  void route(const freeink::ui::ActionEvent& event);
   void togglePrimary();
+  void skip();
   void ring();
   void loadState();
   void saveState();
-  void drawButton(const Rect& r, const char* label, bool filled) const;
-  void drawDigits(const Rect& r, int value) const;
 
   pomodoro::Timer timer;
+  View view = View::Timer;
   int shownMinutes = -1;
   bool justFinished = false;
   bool flashOnNextPaint = false;
+
+  toybox::Interactions interactions;
+  bool interactionsReady = false;
 };
