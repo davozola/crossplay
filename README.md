@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade veinte cosas:
+Sticky**. Conserva todo lo del original y añade veintiuna cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -38,6 +38,7 @@ Sticky**. Conserva todo lo del original y añade veinte cosas:
 | **RPN 12C** | Calculadora financiera RPN al estilo de la HP-12C: pila de cuatro niveles, n, i, PV, PMT, FV, NPV e IRR. |
 | **Hive**        | Estrategia con insectos y sin tablero, contra el dispositivo (tres niveles) o a dos. |
 | **Triples**     | Deslizar fichas en un 4x4: 1 y 2 hacen 3 y las parejas se doblan. |
+| **Misterios** | Tres casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
 | **Ilya**        | Cinco minijuegos en catalán para un niño de tres años: dibujos, parejas, letras y números. |
 | **Slitherlink, Shikaku, Akari, Hashi** | Cuatro puzles de lógica japoneses, 90 tableros cada uno, todos con solución única. |
 
@@ -80,7 +81,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **36 games and 15 apps**,
+that holds still is good at: **37 games and 15 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -135,6 +136,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Mastermind**   | Crack the hidden code of shapes, alone against the device. Three levels.     |
 | **Hive**         | Surround the other queen with insects on no board at all. Device or a friend. |
 | **Triples**      | Slide the board a step: 1 and 2 make 3, pairs double. One new tile a move.   |
+| **Misterios**   | Three short detective cases, in Spanish: question, look, accuse.          |
 | **Ilya**         | Five games for a three-year-old, in Catalan: pictures, letters, numbers.     |
 | **Slitherlink**  | Draw one closed loop along the dots from the numbers. 90 boards, one answer. |
 | **Shikaku**      | Cut the grid into rectangles, each holding its own area. 90 boards.          |
