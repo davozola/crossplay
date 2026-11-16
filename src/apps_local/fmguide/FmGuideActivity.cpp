@@ -529,6 +529,14 @@ void FmGuideActivity::loop() {
   int tapY = 0;
   if (!mappedInput.wasScreenTapped(tapX, tapY)) return;
   if (view_ == View::Read) {
+    // The band with the firmware's name, and the chapter line under it, lead
+    // back to that firmware's chapters.
+    if (tapY < bodyTop()) {
+      view_ = View::Chapters;
+      cleanNext_ = true;
+      requestUpdate();
+      return;
+    }
     // The left third goes back a page, the rest goes on.
     turn(tapX < renderer.getScreenWidth() / 3 ? -1 : 1);
     requestUpdate();
