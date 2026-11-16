@@ -164,13 +164,13 @@ class WallpapersActivity final : public Activity {
   // identical paths (fix-the-twin-too).
   void drawThumbInto(const Thumb& t, const freeink::ui::Rect& box) const;
   void drawGrid(const wallpapersui::GridGeom& geom);
-  void drawGetSetTile(const wallpapersui::GridGeom& geom, const freeink::ui::Rect& th, int slot) const;
+  void drawGetSetTile(const wallpapersui::GridGeom& geom, const freeink::ui::Rect& th, int slot, bool sticky) const;
   void drawLiveTile(const wallpapersui::GridGeom& geom, const freeink::ui::Rect& th, int slot) const;
   // Which chrome tile a combined index is, or None once the wallpapers start.
   // specialAt() and specialTiles() are one ordering read twice: the drawing and
   // the hit-test both go through them, so no cell can draw one thing and open
   // another -- the bug this fork has caught more often than any other.
-  enum class SpecialTile : uint8_t { None, Live, GetSet };
+  enum class SpecialTile : uint8_t { None, Live, GetSet, GetSticky };
   SpecialTile specialAt(int combined) const;
   int specialTiles() const;     // chrome tiles in front of the wallpapers
   bool liveConfigured() const;  // a Live slot exists on this device
@@ -292,6 +292,21 @@ class WallpapersActivity final : public Activity {
   bool warningPending_ = false;  // the free-space walk, deferred until after the first paint
   bool painted_ = false;         // the panel has shown something at least once
   int page_ = 0;
+  // One wallpaper to a slide, or four. A fact about how this reader likes to
+  // browse, so it is kept on the card (kLayoutPath) and visible on the strip.
+  bool single_ = false;
+  wallpapersui::GridGeom geomNow() const;
+  void setLayout(bool single);
+  void turnPage(int by);
+  // Where the finger came down, to tell a page-back swipe from the system's
+  // Back gesture, which is the same swipe begun at the very edge.
+  int pressX_ = -1;
+  // Which pack the fetch in hand is for: 0 the built-in set, 1 the Sticky pack.
+  uint8_t fetchPack_ = 0;
+  int stickyMissing_ = 0;  // how many of the Sticky pack are not on the card
+  const char* packUrl() const;
+  size_t packCount() const;
+  const char* packStem(size_t index) const;
   int fetchDone_ = 0;
   int fetchTotal_ = 0;
   bool fetchCancel_ = false;

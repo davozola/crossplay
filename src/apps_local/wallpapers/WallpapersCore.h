@@ -101,6 +101,14 @@ inline constexpr size_t kBuiltInCount = 21;
 size_t builtInCount();
 const char* builtInStem(size_t index);
 
+// A second set, drawn for this fork and fetched on request: sixteen scenes made
+// for the Sticky's 480x800 one-bit panel by tools_local/sticky_wallpapers. It
+// is a pack like the built-in one -- the files end to end, in this table's
+// order -- and its stems all begin "sticky-", so no built-in can share one.
+inline constexpr size_t kStickyCount = 16;
+const char* stickyStem(size_t index);
+bool isStickyFile(std::string_view fileName);
+
 // Is this file one of the built-in set? The picker sorts a user's OWN
 // wallpapers in front of the built-ins, so this decides the order and it has to
 // be a real predicate rather than a binary_search over a list that is no longer

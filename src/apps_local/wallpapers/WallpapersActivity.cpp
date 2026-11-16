@@ -101,6 +101,14 @@ uint32_t sampleHashOf(HalFile& f, const uint64_t size) {
 // A page dot: a small square, filled for the current page.
 constexpr int16_t kDotSize = 12;
 constexpr int16_t kDotGap = 10;
+// Past this many slides the dots would run off the strip; a track takes over.
+constexpr int kMaxDots = 12;
+constexpr int16_t kTrackW = 240;
+// The two layout switches at the right end of the strip: one-up and four-up.
+constexpr int16_t kSwitchSize = 20;
+constexpr int16_t kSwitchGap = 14;
+constexpr int kBackSwipeEdge = 28;
+constexpr const char* kLayoutPath = "/wallpapers/.layout";
 
 // The Live tile's double frame: a thick outer rect with a hairline inside it.
 constexpr int16_t kLiveFrameWeight = 3;
@@ -198,6 +206,13 @@ void WallpapersActivity::onEnter() {
   refreshLiveLines();
   LOG_INF("WALL", "onEnter %ums: fonts=%u sweep=%u scan=%u active=%u (free-space deferred)", tActive - tEnter,
           tFonts - tEnter, tSweep - tFonts, tScan - tSweep, tActive - tScan);
+  single_ = false;
+  if (Storage.exists(kLayoutPath)) {
+    HalFile layout;
+    uint8_t value = 0;
+    if (Storage.openFileForRead("WALL", kLayoutPath, layout) && layout.read(&value, 1) == 1) single_ = value == 1;
+  }
+  pressX_ = -1;
   // Open on the page holding the set wallpaper, so the border is on screen.
   cachedPage_ = -1;
   page_ = 0;
@@ -234,6 +249,11 @@ void WallpapersActivity::scanLibrary() {
     if (wallpapers::isBuiltInFile(n)) ++have;
   }
   builtInsMissing_ = static_cast<int>(wallpapers::builtInCount()) - have;
+  int sticky = 0;
+  for (const std::string& n : names_) {
+    if (wallpapers::isStickyFile(n)) ++sticky;
+  }
+  stickyMissing_ = static_cast<int>(wallpapers::kStickyCount) - sticky;
 }
 
 void WallpapersActivity::listShuffleDir(std::vector<std::string>& out) const {
@@ -397,8 +417,36 @@ void WallpapersActivity::computeWarning() {
   }
 }
 
+wallpapersui::GridGeom WallpapersActivity::geomNow() const {
+  return wallpapersui::gridGeom(toybox::makeTarget(renderer).deviceContext(), single_);
+}
+
+void WallpapersActivity::setLayout(const bool single) {
+  if (single == single_) return;
+  // Keep the first wallpaper on screen on screen: the same tile leads the new page.
+  const int first = page_ * geomNow().perPage;
+  single_ = single;
+  page_ = first / geomNow().perPage;
+  clampPage();
+  cachedPage_ = -1;
+  HalFile file;
+  if (Storage.openFileForWrite("WALL", kLayoutPath, file)) {
+    const uint8_t value = single_ ? 1 : 4;
+    file.write(&value, 1);
+    file.flush();
+  }
+  requestUpdate();
+}
+
+void WallpapersActivity::turnPage(const int by) {
+  const int target = page_ + by;
+  if (target < 0 || target >= pageCount()) return;
+  page_ = target;
+  requestUpdate();
+}
+
 int WallpapersActivity::pageCount() const {
-  const int per = wallpapersui::gridGeom(toybox::makeTarget(renderer).deviceContext()).perPage;
+  const int per = geomNow().perPage;
   if (names_.empty() || per <= 0) return 1;
   // specialTiles(), not a literal 1. drawGrid and the hit-test both use it, and
   // it is 2 whenever any built-in is missing -- so a literal 1 here promised
@@ -780,7 +828,7 @@ WallpapersActivity::Thumb WallpapersActivity::decodeThumb(const std::string& pat
 }
 
 void WallpapersActivity::ensureThumbsForPage() {
-  const wallpapersui::GridGeom geom = wallpapersui::gridGeom(toybox::makeTarget(renderer).deviceContext());
+  const wallpapersui::GridGeom geom = geomNow();
   if (cachedPage_ == page_ && cachedPerPage_ == geom.perPage && !thumbs_.empty()) return;
 
   const uint32_t tThumbs = millis();
@@ -797,8 +845,15 @@ void WallpapersActivity::ensureThumbsForPage() {
     const int idx = combined - specials;
     if (idx >= static_cast<int>(names_.size())) break;
     std::string path = std::string(wallpapers::kLibraryDir) + "/" + names_[static_cast<size_t>(idx)];
-    thumbs_[static_cast<size_t>(slot)] =
-        thumbFor(names_[static_cast<size_t>(idx)], path, geom.cellW, geom.cellH, &decoded);
+    if (single_) {
+      // Straight from the file: the card's cache is keyed by name at the
+      // four-up size, and asking it for this one would evict that entry.
+      thumbs_[static_cast<size_t>(slot)] = decodeThumb(path, geom.cellW, geom.cellH);
+      ++decoded;
+    } else {
+      thumbs_[static_cast<size_t>(slot)] =
+          thumbFor(names_[static_cast<size_t>(idx)], path, geom.cellW, geom.cellH, &decoded);
+    }
   }
   LOG_INF("WALL", "thumbs page=%d decoded=%d (rest from cache) in %ums", page_, decoded, millis() - tThumbs);
   cachedPage_ = page_;
@@ -880,7 +935,9 @@ WallpapersActivity::Thumb WallpapersActivity::thumbFor(const std::string& name, 
 // which is the screen that has to feel instant. Cancelling is honoured: a
 // half-warmed cache is not wrong, only less warm, and the rest fills in lazily.
 void WallpapersActivity::prewarmThumbs() {
-  const wallpapersui::GridGeom geom = wallpapersui::gridGeom(toybox::makeTarget(renderer).deviceContext());
+  // Always at the four-up cell: that is the size the card's thumbnail cache
+  // holds. One-up decodes its single picture straight from the file.
+  const wallpapersui::GridGeom geom = wallpapersui::gridGeom(toybox::makeTarget(renderer).deviceContext(), false);
   fetchPhase_ = 2;
   fetchDone_ = 0;
   fetchTotal_ = static_cast<int>(names_.size());
@@ -921,6 +978,16 @@ void WallpapersActivity::drawThumbInto(const Thumb& t, const fui::Rect& box) con
   }
 }
 
+namespace {
+// Where a layout switch sits on the page strip: 0 the one-up, 1 the four-up.
+// One function, read by the drawing and by the hit-test.
+fui::Rect layoutSwitchRect(const fui::Rect& panel, const wallpapersui::GridGeom& geom, const int which) {
+  const int16_t right = static_cast<int16_t>(panel.width - toybox::kMargin);
+  const int16_t x = static_cast<int16_t>(right - (2 - which) * kSwitchSize - (1 - which) * kSwitchGap);
+  return fui::makeRect(x, static_cast<int16_t>(geom.pageDotsY - 4), kSwitchSize, kSwitchSize);
+}
+}  // namespace
+
 void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
   const int base = page_ * geom.perPage;
   const int specials = specialTiles();
@@ -940,7 +1007,10 @@ void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
         // PARTIAL: the user has their own wallpapers but not the built-in set,
         // so the offer stays on screen as a tile rather than vanishing because
         // one wallpaper exists. It retires itself when the set is complete.
-        drawGetSetTile(geom, th, slot);
+        drawGetSetTile(geom, th, slot, false);
+        continue;
+      case SpecialTile::GetSticky:
+        drawGetSetTile(geom, th, slot, true);
         continue;
       case SpecialTile::None:
         break;
@@ -982,11 +1052,12 @@ void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
     }
   }
 
-  // Page dots, when the library spans more than one page.
+  // Page dots, when the library spans more than one page; a track with a
+  // thumb once there are too many slides for dots.
   const int pages = pageCount();
-  if (pages > 1) {
+  const fui::Rect panel = toybox::makeTarget(renderer).deviceContext().screen();
+  if (pages > 1 && pages <= kMaxDots) {
     const int16_t totalW = static_cast<int16_t>(pages * kDotSize + (pages - 1) * kDotGap);
-    const fui::Rect panel = toybox::makeTarget(renderer).deviceContext().screen();
     int16_t x = static_cast<int16_t>((panel.width - totalW) / 2);
     for (int p = 0; p < pages; ++p) {
       if (p == page_) {
@@ -995,6 +1066,33 @@ void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
         renderer.drawRect(x, geom.pageDotsY, kDotSize, kDotSize, 1, true);
       }
       x = static_cast<int16_t>(x + kDotSize + kDotGap);
+    }
+  } else if (pages > kMaxDots) {
+    const int16_t x0 = static_cast<int16_t>((panel.width - kTrackW) / 2);
+    const int16_t mid = static_cast<int16_t>(geom.pageDotsY + kDotSize / 2);
+    renderer.fillRect(x0, static_cast<int16_t>(mid - 1), kTrackW, 2, true);
+    const int thumbW = kTrackW / pages < 14 ? 14 : kTrackW / pages;
+    const int thumbX = x0 + (kTrackW - thumbW) * page_ / (pages - 1);
+    renderer.fillRect(static_cast<int16_t>(thumbX), geom.pageDotsY, static_cast<int16_t>(thumbW), kDotSize, true);
+  }
+
+  // The layout switches: one slab for one-up, four small ones for four-up. The
+  // arrangement in use is drawn solid.
+  const fui::Rect one = layoutSwitchRect(panel, geom, 0);
+  const fui::Rect four = layoutSwitchRect(panel, geom, 1);
+  if (single_) {
+    renderer.fillRect(static_cast<int16_t>(one.x + 3), one.y, static_cast<int16_t>(one.width - 6), one.height, true);
+  } else {
+    renderer.drawRect(static_cast<int16_t>(one.x + 3), one.y, static_cast<int16_t>(one.width - 6), one.height, 2, true);
+  }
+  const int16_t sub = static_cast<int16_t>((four.width - 4) / 2);
+  for (int k = 0; k < 4; ++k) {
+    const int16_t sx = static_cast<int16_t>(four.x + (k % 2) * (sub + 4));
+    const int16_t sy = static_cast<int16_t>(four.y + (k / 2) * (sub + 4));
+    if (single_) {
+      renderer.drawRect(sx, sy, sub, sub, 2, true);
+    } else {
+      renderer.fillRect(sx, sy, sub, sub, true);
     }
   }
 }
@@ -1007,6 +1105,7 @@ void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
 int WallpapersActivity::specialTiles() const {
   int n = 1;  // the Live tile, set up or not
   if (builtInsMissing_ > 0) n += 1;
+  if (stickyMissing_ > 0) n += 1;  // the Sticky pack's offer, until it is all here
   return n;
 }
 
@@ -1021,6 +1120,7 @@ WallpapersActivity::SpecialTile WallpapersActivity::specialAt(const int combined
   // second control where people had already learned one
   // (same-pixel-different-action).
   if (combined == at++) return SpecialTile::Live;
+  if (stickyMissing_ > 0 && combined == at++) return SpecialTile::GetSticky;
   return SpecialTile::GetSet;
 }
 
@@ -1108,7 +1208,8 @@ void WallpapersActivity::drawLiveTile(const wallpapersui::GridGeom& geom, const 
   target.text(cap, wallpapersui::liveTileCaption(), style);
 }
 
-void WallpapersActivity::drawGetSetTile(const wallpapersui::GridGeom& geom, const fui::Rect& th, const int slot) const {
+void WallpapersActivity::drawGetSetTile(const wallpapersui::GridGeom& geom, const fui::Rect& th, const int slot,
+                                        const bool sticky) const {
   renderer.drawRect(th.x, th.y, th.width, th.height, 3, true);
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   fui::TextStyle style = toybox::themeTokens().smallText;
@@ -1125,7 +1226,11 @@ void WallpapersActivity::drawGetSetTile(const wallpapersui::GridGeom& geom, cons
   // beside a fixed noun says the same thing (the trivia and add-screen
   // precedent). The one-missing case was unreachable until the hold sheet could
   // delete a built-in, and it read "GET THE 1 BUILT-INS".
-  std::snprintf(label, sizeof(label), "GET %d MISSING", builtInsMissing_);
+  if (sticky) {
+    std::snprintf(label, sizeof(label), "GET %d MORE", stickyMissing_);
+  } else {
+    std::snprintf(label, sizeof(label), "GET %d MISSING", builtInsMissing_);
+  }
   const fui::Rect box =
       fui::makeRect(th.x + 6, static_cast<int16_t>(th.y + th.height / 2 - 30), static_cast<int16_t>(th.width - 12), 60);
   target.text(box, label, style);
@@ -1135,7 +1240,7 @@ void WallpapersActivity::drawGetSetTile(const wallpapersui::GridGeom& geom, cons
   const fui::Rect cap = wallpapersui::captionRect(geom, slot);
   fui::TextStyle capStyle = style;
   capStyle.maxLines = 1;
-  target.text(cap, "Tap to fetch", capStyle);
+  target.text(cap, sticky ? "Sticky pack" : "Tap to fetch", capStyle);
 }
 
 void WallpapersActivity::drawMarker(const fui::Rect& th) const {
@@ -1175,6 +1280,9 @@ constexpr size_t kQrByteSafeLen = 78;
 
 constexpr const char* kPackUrl = "https://github.com/ma-r-s/crossplay/releases/download/wallpapers/wallpapers.dat";
 constexpr const char* kPackPart = "/wallpapers.dat.part";
+// The Sticky pack rides in the fork's own repository, beside the site.
+constexpr const char* kStickyPackUrl =
+    "https://raw.githubusercontent.com/davozola/crossplay/xteink/site/wallpapers/sticky/sticky.dat";
 
 // The HAL exposes a size only through an open file, and the difference between
 // "absent" and "there but the wrong length" is the whole resume rule, so it is
@@ -2197,6 +2305,14 @@ void WallpapersActivity::pollAddArrivals() {
   requestUpdate();
 }
 
+const char* WallpapersActivity::packUrl() const { return fetchPack_ == 1 ? kStickyPackUrl : kPackUrl; }
+size_t WallpapersActivity::packCount() const {
+  return fetchPack_ == 1 ? wallpapers::kStickyCount : wallpapers::builtInCount();
+}
+const char* WallpapersActivity::packStem(const size_t index) const {
+  return fetchPack_ == 1 ? wallpapers::stickyStem(index) : wallpapers::builtInStem(index);
+}
+
 void WallpapersActivity::startSetDownload() {
   // The radio first: entering the TLS stack with WiFi never started fails in a
   // way whose message says nothing about WiFi.
@@ -2257,7 +2373,7 @@ void WallpapersActivity::runSetDownload() {
   fetchCancel_ = false;
   fetchDone_ = 0;
   fetchPhase_ = 0;
-  fetchTotal_ = static_cast<int>(wallpapers::kBuiltInCount);
+  fetchTotal_ = static_cast<int>(packCount());
   view_ = View::Fetching;
   interactionsReady_ = false;
   // requestUpdateAndWait, not requestUpdate: a plain request is DEFERRED and
@@ -2288,7 +2404,7 @@ void WallpapersActivity::runSetDownload() {
     }
   };
 
-  const auto err = HttpDownloader::downloadToFile(kPackUrl, kPackPart, progress, &fetchCancel_);
+  const auto err = HttpDownloader::downloadToFile(packUrl(), kPackPart, progress, &fetchCancel_);
   if (err != HttpDownloader::OK) {
     Storage.remove(kPackPart);
     // Every one of these offers TRY AGAIN. A screen that reports a failure and
@@ -2349,7 +2465,7 @@ bool WallpapersActivity::unpackSet() {
     return false;
   }
 
-  const size_t count = wallpapers::builtInCount();
+  const size_t count = packCount();
   for (size_t i = 0; i < count; ++i) {
     if (fetchCancel_) {
       pack.close();
@@ -2358,7 +2474,7 @@ bool WallpapersActivity::unpackSet() {
       return false;
     }
 
-    const std::string target = std::string(wallpapers::kLibraryDir) + "/" + wallpapers::builtInStem(i) + ".bmp";
+    const std::string target = std::string(wallpapers::kLibraryDir) + "/" + packStem(i) + ".bmp";
     if (fileSizeOf(target) == wallpapers::kWallpaperFileBytes) {
       // Already here and the right length: skip the bytes and move on.
       pack.seekCur(static_cast<size_t>(wallpapers::kWallpaperFileBytes));
@@ -2520,6 +2636,20 @@ void WallpapersActivity::loop() {
     pollAddArrivals();
   }
 
+  {
+    int px = 0;
+    int py = 0;
+    if (mappedInput.wasScreenTouchPressed(px, py)) pressX_ = px;
+  }
+  // A swipe to the right that begins in the left quarter is the system's Back.
+  // On the grid it is far likelier to be "the slide before", so it is one
+  // unless it began at the very edge or there is no slide before this one.
+  if (view_ == View::Grid && page_ > 0 && mappedInput.wasBackGesture() && pressX_ >= kBackSwipeEdge &&
+      mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    pressX_ = -1;
+    turnPage(-1);
+    return;
+  }
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Back unwinds the hold branch one step at a time. From the confirm it goes
     // to the sheet, NOT to the grid: Back on a confirm means "not that", and
@@ -2633,7 +2763,10 @@ void WallpapersActivity::loop() {
     const fui::ActionEvent action = interactions_.route(input);
     switch (action.action) {
       case wallpapersui::ActionGetSet:
-      case wallpapersui::ActionRetry:
+        fetchPack_ = 0;  // the offer screen is the built-in set's
+        startSetDownload();
+        return;
+      case wallpapersui::ActionRetry:  // whichever pack the failed fetch was for
         startSetDownload();
         return;
       case wallpapersui::ActionAddOwn:
@@ -2740,6 +2873,16 @@ void WallpapersActivity::loop() {
   if (view_ != View::Grid) return;
 
   const int pages = pageCount();
+  switch (mappedInput.wasSwipe()) {
+    case MappedInputManager::SwipeDir::Left:
+      turnPage(1);
+      return;
+    case MappedInputManager::SwipeDir::Right:
+      turnPage(-1);
+      return;
+    default:
+      break;
+  }
   if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
     if (page_ + 1 < pages) {
       ++page_;
@@ -2782,12 +2925,22 @@ void WallpapersActivity::loop() {
     }
   }
 
-  const wallpapersui::GridGeom geom = wallpapersui::gridGeom(toybox::makeTarget(renderer).deviceContext());
+  const wallpapersui::GridGeom geom = geomNow();
 
-  // A page dot?
-  if (pages > 1) {
+  const fui::Rect panel = toybox::makeTarget(renderer).deviceContext().screen();
+  // A layout switch? A generous box round each: they are small.
+  for (int which = 0; which < 2; ++which) {
+    const fui::Rect r = layoutSwitchRect(panel, geom, which);
+    if (tapX >= r.x - kSwitchGap / 2 && tapX < r.x + r.width + kSwitchGap / 2 && tapY >= r.y - 18 &&
+        tapY < r.y + r.height + 18) {
+      setLayout(which == 0);
+      return;
+    }
+  }
+
+  // A page dot, or a place on the track?
+  if (pages > 1 && pages <= kMaxDots) {
     const int16_t totalW = static_cast<int16_t>(pages * kDotSize + (pages - 1) * kDotGap);
-    const fui::Rect panel = toybox::makeTarget(renderer).deviceContext().screen();
     int16_t x = static_cast<int16_t>((panel.width - totalW) / 2);
     for (int p = 0; p < pages; ++p) {
       // A generous vertical band so the small dots are easy to hit.
@@ -2800,6 +2953,18 @@ void WallpapersActivity::loop() {
         return;
       }
       x = static_cast<int16_t>(x + kDotSize + kDotGap);
+    }
+  } else if (pages > kMaxDots) {
+    const int x0 = (panel.width - kTrackW) / 2;
+    if (tapX >= x0 - 12 && tapX < x0 + kTrackW + 12 && tapY >= geom.pageDotsY - 16 &&
+        tapY < geom.pageDotsY + kDotSize + 16) {
+      int p = (tapX - x0) * pages / kTrackW;
+      p = p < 0 ? 0 : (p >= pages ? pages - 1 : p);
+      if (p != page_) {
+        page_ = p;
+        requestUpdate();
+      }
+      return;
     }
   }
 
@@ -2844,8 +3009,10 @@ void WallpapersActivity::loop() {
       openPhone();
       return;
     case SpecialTile::GetSet:
+    case SpecialTile::GetSticky:
       if (held) return;
       choosing_ = false;
+      fetchPack_ = specialAt(combined) == SpecialTile::GetSticky ? 1 : 0;
       startSetDownload();
       return;
     case SpecialTile::None:
@@ -3116,7 +3283,7 @@ void WallpapersActivity::render(RenderLock&&) {
     model.warning = warning_.empty() ? nullptr : warning_.c_str();
     wallpapersui::buildOffer(surface, model);
   } else {
-    const wallpapersui::GridGeom geom = wallpapersui::gridGeom(device);
+    const wallpapersui::GridGeom geom = wallpapersui::gridGeom(device, single_);
     const int pages = pageCount();
     // "1 / 6", not "PAGE 1 / 6", and "21 SAVED" is gone. The band now carries a
     // third thing -- the chip -- and headerTitleWidth subtracts every one of
@@ -3190,6 +3357,8 @@ uint32_t WallpapersActivity::surfaceMeaning() const {
   // the tap was aimed at the screen before the mode changed -- but it is a tap
   // a person will feel, so it is written down here and in the pull request
   // rather than discovered on hardware.
-  return wallpapersui::gridMeaning(page_, static_cast<int>(view_), static_cast<int>(names_.size()), specialTiles(),
-                                   choosing_);
+  // The layout rides in with the page: page 2 of four-up and page 2 of one-up
+  // put different wallpapers under the same finger.
+  return wallpapersui::gridMeaning(page_ * 2 + (single_ ? 1 : 0), static_cast<int>(view_),
+                                   static_cast<int>(names_.size()), specialTiles(), choosing_);
 }

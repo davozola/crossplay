@@ -59,7 +59,45 @@ constexpr Entry kBuiltIns[] = {
     {"vortex", "Vortex", "Vortex"},
     {"waves", "Waves", "Waves"},
 };
+
+// The Sticky pack, in the order tools_local/sticky_wallpapers/gen.py writes it.
+constexpr Entry kSticky[] = {
+    {"sticky-moonrise", "Moonrise", "Moonrise"},
+    {"sticky-swell", "Night Swell", "Swell"},
+    {"sticky-regatta", "Regatta", "Regatta"},
+    {"sticky-dunes", "Dunes", "Dunes"},
+    {"sticky-summit", "Summit", "Summit"},
+    {"sticky-orbit", "Orbit", "Orbit"},
+    {"sticky-lighthouse", "Lighthouse", "Lighthouse"},
+    {"sticky-eixample", "Eixample", "Eixample"},
+    {"sticky-outrun", "Outrun", "Outrun"},
+    {"sticky-lissajous", "Lissajous", "Lissajous"},
+    {"sticky-jellyfish", "Jellyfish", "Jellyfish"},
+    {"sticky-pines", "Pines", "Pines"},
+    {"sticky-chart", "Sea Chart", "Sea Chart"},
+    {"sticky-startrails", "Star Trails", "Star Trails"},
+    {"sticky-patchbay", "Patchbay", "Patchbay"},
+    {"sticky-vinyl", "Vinyl", "Vinyl"},
+};
+
+std::string_view stemOf(std::string_view fileName) {
+  const size_t dot = fileName.rfind('.');
+  return dot != std::string_view::npos && dot > 0 ? fileName.substr(0, dot) : fileName;
+}
 }  // namespace
+
+static_assert(sizeof(kSticky) / sizeof(kSticky[0]) == kStickyCount,
+              "kStickyCount and the kSticky table disagree -- update the constant with the table");
+
+const char* stickyStem(const size_t index) { return index < kStickyCount ? kSticky[index].stem : ""; }
+
+bool isStickyFile(const std::string_view fileName) {
+  const std::string_view stem = stemOf(fileName);
+  for (const Entry& e : kSticky) {
+    if (stem == e.stem) return true;
+  }
+  return false;
+}
 
 // The header publishes the count as a constant so sentences and size estimates
 // can be constexpr; this is what stops the two from drifting apart.
@@ -84,9 +122,11 @@ bool isBuiltInFile(const std::string_view fileName) {
 }
 
 bool sortsBefore(const std::string_view a, const std::string_view b) {
-  const bool ab = isBuiltInFile(a);
-  const bool bb = isBuiltInFile(b);
-  if (ab != bb) return !ab;  // a user's own wallpaper comes first
+  // A user's own wallpapers first, then the Sticky pack, then the built-ins.
+  const auto rank = [](const std::string_view n) { return isBuiltInFile(n) ? 2 : (isStickyFile(n) ? 1 : 0); };
+  const int ra = rank(a);
+  const int rb = rank(b);
+  if (ra != rb) return ra < rb;
   return a < b;
 }
 
@@ -96,6 +136,11 @@ DisplayName displayName(std::string_view fileName) {
   const size_t dot = stem.rfind('.');
   if (dot != std::string_view::npos && dot > 0) stem = stem.substr(0, dot);
   for (const Entry& e : kBuiltIns) {
+    if (stem.size() == std::strlen(e.stem) && stem.compare(e.stem) == 0) {
+      return DisplayName{e.full, e.brief};
+    }
+  }
+  for (const Entry& e : kSticky) {
     if (stem.size() == std::strlen(e.stem) && stem.compare(e.stem) == 0) {
       return DisplayName{e.full, e.brief};
     }
