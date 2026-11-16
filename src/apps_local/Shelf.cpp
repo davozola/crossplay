@@ -33,12 +33,14 @@
 #include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
+#include "pomodoro/PomodoroActivity.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "study/StudyActivity.h"
 #include "sudoku/SudokuActivity.h"
 #include "toybattle/ToyBattleActivity.h"
 #include "trivia/TriviaActivity.h"
+#include "ui/ExtraIcons.h"
 #include "ui/ToyboxIcons.h"
 #include "underhand/UnderhandActivity.h"
 #include "wallpapers/WallpapersActivity.h"
@@ -91,6 +93,7 @@ constexpr shelf::Item kApps[] = {
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
