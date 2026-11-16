@@ -22,7 +22,7 @@
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
-#include "fmlab/FmLabActivity.h"
+#include "fmguide/FmGuideActivity.h"
 #include "forehead/ForeheadActivity.h"
 #include "go/GoActivity.h"
 #include "hackernews/HackerNewsActivity.h"
@@ -134,7 +134,7 @@ constexpr shelf::Item kApps[] = {
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
     {"NAVAL WEATHER", &icon_naval_32, &NavalActivity::create},
     {"MARKETS", &icon_markets_32, &MarketsActivity::create},
-    {"FM SYNTH LAB", &icon_fmlab_32, &FmLabActivity::create},
+    {"FM-1 GUIAS", &icon_fmlab_32, &FmGuideActivity::create},
     {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create},
     {"RPN 12C", &icon_rpn_32, &RpnActivity::create},
 };
