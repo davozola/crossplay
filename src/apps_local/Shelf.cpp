@@ -47,6 +47,7 @@
 #include "sudoku/SudokuActivity.h"
 #include "tak/TakActivity.h"
 #include "toybattle/ToyBattleActivity.h"
+#include "triples/TriplesActivity.h"
 #include "trivia/TriviaActivity.h"
 #include "ui/ExtraIcons.h"
 #include "ui/ToyboxIcons.h"
@@ -93,6 +94,7 @@ constexpr shelf::Item kGames[] = {
     {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create},
     {"KAKURO", &icon_kakuro_32, &KakuroActivity::create},
     {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create},
+    {"TRIPLES", &icon_triples_32, &TriplesActivity::create},
     {"ILYA", &icon_kids_32, &KidsActivity::create},
     {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither},
     {"SHIKAKU", &icon_shikaku_32, &LogicActivity::createShikaku},
