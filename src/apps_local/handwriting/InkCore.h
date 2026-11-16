@@ -13,11 +13,33 @@
 
 namespace ink {
 
-enum class Tool : uint8_t { Pen = 0, Eraser = 1 };
+// The id is what a stroke's header stores, so the two original tools keep
+// theirs and pages written before the other nibs existed still read.
+enum class Tool : uint8_t { Pen = 0, Eraser = 1, Fine = 2, Marker = 3, Pencil = 4 };
+constexpr int kToolCount = 5;
 
+constexpr int kFineWidth = 2;
 constexpr int kPenWidth = 4;
+constexpr int kMarkerWidth = 10;
+constexpr int kPencilWidth = 8;
 constexpr int kEraserWidth = 26;
-inline int widthOf(const Tool tool) { return tool == Tool::Pen ? kPenWidth : kEraserWidth; }
+inline int widthOf(const Tool tool) {
+  switch (tool) {
+    case Tool::Fine:
+      return kFineWidth;
+    case Tool::Marker:
+      return kMarkerWidth;
+    case Tool::Pencil:
+      return kPencilWidth;
+    case Tool::Eraser:
+      return kEraserWidth;
+    case Tool::Pen:
+    default:
+      return kPenWidth;
+  }
+}
+inline bool isNib(const Tool tool) { return tool != Tool::Eraser; }
+const char* toolName(Tool tool);
 
 // Points of every stroke on a page, end to end. A stroke is a header entry
 // (x = kStrokeMark, y = tool) followed by its points.
@@ -78,6 +100,15 @@ void forEachSegment(const Page& page, F&& segment) {
 // Draws the page into a 1-bit buffer, row-major, MSB first, 1 = ink.
 // `rowBytes` is (width + 7) / 8; the buffer is cleared first.
 void rasterise(const Page& page, uint8_t* bits, int rowBytes);
+// Adds to a buffer that already holds the page's first `from` points only
+// what came after them, up to `upTo`. The pencil is a half-tone and the eraser
+// clears, both exactly as rasterise() would have left them, so drawing a page
+// in steps and drawing it at once give the same bits.
+void rasteriseMore(const Page& page, uint8_t* bits, int rowBytes, int from, int upTo);
+// A `tw` x `th` thumbnail of a rasterised page: a thumbnail pixel is ink when
+// any pixel under it is, except that a half-inked block keeps its half-tone. Same bit layout, rows of (tw + 7) / 8
+// bytes.
+void thumbnail(const uint8_t* bits, int rowBytes, int width, int height, uint8_t* out, int tw, int th);
 
 // A 1-bit BMP (white background, black ink) of `bits`: the 62-byte header the
 // file starts with, for a `width` x `height` image. Rows follow bottom-up,
