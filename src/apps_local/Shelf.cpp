@@ -13,6 +13,7 @@
 #include "ShelfHidden.h"
 #include "ShelfOrder.h"
 #include "ShelfState.h"
+#include "batch/BatchActivity.h"
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
 #include "casa/CasaActivity.h"
@@ -121,6 +122,7 @@ constexpr shelf::Item kGames[] = {
 };
 constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
+    {"THE BATCH", &icon_batch_32, &BatchActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
