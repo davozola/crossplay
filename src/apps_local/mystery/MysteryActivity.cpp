@@ -215,27 +215,29 @@ void MysteryActivity::loop() {
   requestUpdate();
 }
 
+namespace {
+constexpr int kCaseRowH = 78;  // six of them fit under the introduction
+}  // namespace
+
 void MysteryActivity::buildCases(toybox::Screen& screen) {
   lab::chrome(screen, "MISTERIOS");
   const int x = toybox::kMargin;
   const int inner = screen.device().width - x * 2;
   int y = toybox::kChromeHeight + 14;
-  y = prose(screen, kBody, x, y, inner,
-            "Tres casos. En cada uno, cuatro sospechosos y tres lugares. Pregunta, mira y, cuando lo tengas, acusa.") +
-      18;
+  y = prose(screen, kBody, x, y, inner, "Seis casos. Pregunta, mira y, cuando lo tengas, acusa.") + 14;
   for (int i = 0; i < my::kCases; ++i) {
     const my::Case& c = my::caseAt(i);
     const my::Progress& p = progress_[i];
-    const fui::Rect r = lab::rect(x, y, inner, 104);
+    const fui::Rect r = lab::rect(x, y, inner, kCaseRowH);
     lab::button(screen, r, "", ActionCase, i);
     char line[toybox::kIntChars + 12];
     std::snprintf(line, sizeof(line), "CASO %d", i + 1);
-    lab::caption(screen, r.x + 18, r.y + 16, inner - 36, line, fui::TextAlign::Left, fui::Color::DarkGray);
-    lab::label(screen, lab::rect(r.x + 18, r.y + 38, inner - 36, toybox::kDisplayCut.inkHeight), c.title,
+    lab::caption(screen, r.x + 18, r.y + 10, inner - 36, line, fui::TextAlign::Left, fui::Color::DarkGray);
+    lab::label(screen, lab::rect(r.x + 18, r.y + 31, inner - 36, toybox::kDisplayCut.inkHeight), c.title,
                toybox::kDisplayFont, toybox::kDisplayCut, fui::TextAlign::Left);
     const char* state = p.best ? my::rankName(p.best) : (p.steps ? "EN CURSO" : "NUEVO");
-    lab::caption(screen, r.x + 18, r.y + 16, inner - 36, state, fui::TextAlign::Right);
-    y += 104 + 10;
+    lab::caption(screen, r.x + 18, r.y + 10, inner - 36, state, fui::TextAlign::Right);
+    y += kCaseRowH + 8;
   }
 }
 

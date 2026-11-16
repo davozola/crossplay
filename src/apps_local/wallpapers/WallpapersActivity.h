@@ -295,6 +295,9 @@ class WallpapersActivity final : public Activity {
   // One wallpaper to a slide, or four. A fact about how this reader likes to
   // browse, so it is kept on the card (kLayoutPath) and visible on the strip.
   bool single_ = false;
+  // The photo frame: how often a sleeping device moves on to the next picture
+  // of a chosen set. An index into wakejobs' choices; 0 is never.
+  int frameChoice_ = 0;
   wallpapersui::GridGeom geomNow() const;
   void setLayout(bool single);
   void turnPage(int by);

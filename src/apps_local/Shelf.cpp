@@ -14,6 +14,7 @@
 #include "ShelfState.h"
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
+#include "casa/CasaActivity.h"
 #include "checkers/CheckersActivity.h"
 #include "chess/ChessActivity.h"
 #include "chessclock/ChessClockActivity.h"
@@ -123,6 +124,7 @@ constexpr shelf::Item kApps[] = {
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
     {"HOY", &icon_hoy_32, &TodayActivity::create},
+    {"CASA", &icon_casa_32, &CasaActivity::create},
     {"RELOJ", &icon_clock_32, &ClockActivity::create},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},

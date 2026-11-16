@@ -342,6 +342,332 @@ constexpr Case kCaseList[kCases] = {
         "el la, pero la grabación no miente: lo dio el oboe. Aurelio bebió su té antes de salir. No llegó al "
         "segundo movimiento.",
     },
+    {
+        "EL PORTULANO",
+        "Archivo de Santa Clara, en Tortosa. A las siete, al acabar su conferencia, la conservadora Irene Castell "
+        "abre la vitrina de la sala noble: el portulano de 1439, la pieza mayor de la casa, es ahora una copia. A "
+        "las cinco aún estaba allí el auténtico. Mañana viene la prensa. Cuatro personas pasaron hoy junto a la "
+        "vitrina.",
+        {
+            {"IRENE CASTELL",
+             "CONSERVADORA",
+             "Conservadora del archivo. Encontró el portulano hace cuatro años en un legajo mal catalogado y habla "
+             "de él como de un hijo. Pálida y furiosa.",
+             "Dio su conferencia de seis a siete en el claustro, delante de sesenta personas, sin moverse del "
+             "atril. Si el portulano no aparece, pierde el cargo y el hallazgo de su vida.",
+             {{"¿Cuándo vio el portulano por última vez?",
+               "A las cinco. Hugo le quitó una mancha de humedad en la mesa de la sala, lo miramos juntos con la "
+               "lupa y lo devolví yo a la vitrina. De seis a siete estuve en el claustro, hablando de él.",
+               -1, -1},
+              {"¿Quién ha tocado hoy la pieza?",
+               "Tres personas. Yo. Hugo, que la limpió. Y Marta, la jefa de sala, que cerró la sala noble con llave "
+               "cuando bajé al claustro. Nadie más se acerca: lo tengo prohibido.",
+               -1, 5},
+              {"¿Qué le pasa con Sergi Oms?",
+               "Que cree que el hallazgo era suyo, porque el legajo estaba en su sección. Ayer dijo delante de "
+               "todos que cualquiera encuentra lo que otro ha ordenado. Pero estuvo en primera fila toda la tarde.",
+               -1, 4}}},
+            {"HUGO BALLESTER",
+             "RESTAURADOR",
+             "Restaurador de papel y pergamino, con taller en el barrio viejo. Trabaja para medio obispado. Manos "
+             "finas, voz baja, una sonrisa que llega tarde.",
+             "",
+             {{"¿Qué hizo usted esta tarde?",
+               "Vine a las cinco, limpié la mancha, cobré y me fui. A las cinco y media ya estaba en la calle. Tengo "
+               "el taller lleno de trabajo, no me quedo a escuchar conferencias.",
+               -1, -1},
+              {"¿Usa usted un tubo doble de planos?",
+               "Como cualquier restaurador. Llevo pergaminos de un lado a otro todos los días. Hoy traía un "
+               "facsímil para enseñárselo a un historiador de la casa. ¿A cuál? No recuerdo el nombre.",
+               3, -1},
+              {"Su taller tiene un aviso de embargo.",
+               "Una mala racha, la tiene todo el mundo. ¿Y por eso voy a robar una carta que no se puede vender? "
+               "Aunque... siempre hay quien compra sin preguntar. Eso lo sabe cualquiera del oficio.",
+               1, -1}}},
+            {"MARTA LLOP",
+             "JEFA DE SALA",
+             "Jefa de sala del archivo. Lleva las llaves, los horarios y la hoja de firmas de la entrada. No se le "
+             "escapa un minuto.",
+             "Cerró la sala noble a las seis y pasó la hora en la mesa de entrada del claustro, repartiendo "
+             "auriculares de traducción. Dos bedeles estuvieron con ella.",
+             {{"¿Quién tiene llave de la sala noble?",
+               "Yo, y hay una copia en conserjería. La cerré a las seis en punto, cuando Irene bajó. Pero antes "
+               "estuvo abierta una hora larga, con gente entrando y saliendo.",
+               -1, -1},
+              {"¿A qué hora salió Hugo del edificio?",
+               "Aquí lo tengo: firmó la salida a las 18:25. No a las cinco y media. Y salió por la puerta del "
+               "huerto, que no es por donde entró. Me extrañó, pero iba cargado.",
+               3, 2},
+              {"¿Notó algo raro en la sala?",
+               "Al cerrar, la vitrina tenía el paño de terciopelo mal puesto, con una esquina por fuera. Pensé que "
+               "lo habría dejado así el restaurador. No la abrí: no es mi trabajo.",
+               -1, -1}}},
+            {"SERGI OMS",
+             "HISTORIADOR",
+             "Historiador del archivo, veinte años en la sección de mapas. El legajo del portulano era de los "
+             "suyos. Tamborilea con los dedos sobre la rodilla.",
+             "Escuchó la conferencia entera en primera fila, a la vista de la conferenciante y de toda la sala. En "
+             "el turno de preguntas hizo dos, y no precisamente amables.",
+             {{"¿Dónde estuvo de seis a siete?",
+               "En primera fila, tomando notas de todo lo que Irene contó mal. Pregunte a cualquiera. Hasta levanté "
+               "la mano dos veces.",
+               -1, -1},
+              {"¿Envidia usted ese portulano?",
+               "Envidio el hallazgo, no el pergamino. Un portulano robado no se puede enseñar: lo conoce todo el "
+               "mundo. Para un historiador no vale nada. Para otra clase de gente, sí.",
+               -1, -1},
+              {"¿Le enseñó Hugo algún facsímil hoy?",
+               "¿A mí? No. Ni a mí ni a nadie de la sección, que yo sepa. Lo vi cruzar el pasillo a las seis y "
+               "cuarto, con prisa y un tubo grande al hombro. Ni saludó.",
+               3, -1}}},
+        },
+        {
+            {"SALA NOBLE",
+             "La vitrina, abierta. Dentro, un facsímil: pergamino nuevo, envejecido a mano con un tinte pardo para "
+             "imitar el original. De lejos engaña; con lupa, la tinta no ha cuarteado. La cerradura de la sala no "
+             "está forzada.",
+             0},
+            {"PUERTA DEL HUERTO",
+             "La cámara del huerto grabó a las 18:20 a un hombre de espaldas saliendo con un tubo doble de planos, "
+             "de los que llevan dos rollos. La puerta se abre desde dentro sin llave.",
+             3},
+            {"TALLER DE HUGO",
+             "Pergaminos tensados y olor a cola. En el banco, un frasco de tinte pardo recién usado. En el cajón, "
+             "un aviso de embargo por dos meses de alquiler y un número de teléfono de Ginebra apuntado.",
+             1},
+        },
+        {"Lo que hay en la vitrina es un facsímil envejecido a mano: trabajo de un profesional.",
+         "El taller de Hugo tiene un aviso de embargo, y un frasco de tinte pardo recién usado.",
+         "Hugo dijo que se fue a las cinco y media, pero firmó la salida a las 18:25, por el huerto.",
+         "A las 18:20 un hombre salió por el huerto con un tubo doble de planos.",
+         "Sergi cree que el hallazgo del portulano era suyo.",
+         "Solo tres personas tocaron hoy el portulano: Irene, Hugo y Marta."},
+        6,
+        1,
+        1,
+        3,
+        2,
+        "Hugo trajo en su tubo doble un facsímil que él mismo había envejecido. Mientras limpiaba el portulano hizo "
+        "el cambio y esperó en el edificio a que empezara la conferencia. A las 18:20 salió por el huerto con el "
+        "auténtico, camino de un comprador de Ginebra que pagaría el embargo. La hoja de firmas dice a qué hora.",
+    },
+    {
+        "VENTISCA",
+        "Refugio de Colomers, Pirineo. Dos días de ventisca: nadie ha subido ni bajado. Al amanecer, la guarda ha "
+        "encontrado a Gaspar Novell, guía veterano, muerto en el cobertizo de la leña, con un golpe en la sien. La "
+        "nieve de la puerta de atrás está pisada. Quedan cuatro personas en el refugio.",
+        {
+            {"BERTA ARNAU",
+             "GUARDA DEL REFUGIO",
+             "Guarda del refugio desde hace doce inviernos. Duerme junto a la cocina, con un oído en la estufa. "
+             "Pocas palabras, todas exactas.",
+             "Su cuarto da al comedor, y Mireia, que no podía dormir, estuvo allí leyendo de cuatro a seis: Berta no "
+             "pasó. Fue ella quien dio la alarma por radio.",
+             {{"¿Qué oyó esta noche?",
+               "El viento, sobre todo. Pero a las cinco y diez sonó el cerrojo de la puerta de atrás: chirría. Una "
+               "vez, y al rato otra. Pensé que alguien iba a por leña y me volví a dormir.",
+               -1, 0},
+              {"¿Cómo se llevaba Gaspar con los demás?",
+               "Con Oriol, mal desde el martes; cenaban sin mirarse. Con la doctora discutió por dinero de un viaje "
+               "que se canceló. Y al señor Codina lo trataba con mucho cuidado, como quien debe algo.",
+               -1, 5},
+              {"¿De quién es el frontal del cobertizo?",
+               "Del refugio no es: los nuestros son rojos. Ese es de los buenos, de guía. Oriol llevaba uno igual "
+               "anoche en la cena, colgado del cuello.",
+               3, -1}}},
+            {"JULIAN CODINA",
+             "CLIENTE",
+             "Cliente de Gaspar: quería subir al Montardo. Ingeniero jubilado, de Lleida. Educado, despacio, con una "
+             "tristeza vieja en la cara.",
+             "Tiene una rodilla operada y no baja la escalera sin ayuda: Mireia tuvo que acompañarlo al comedor a "
+             "las seis. Su saco estaba caliente cuando ella lo despertó.",
+             {{"¿Qué hizo usted esta noche?",
+               "Dormir mal, como siempre en un refugio. Me acosté a las diez. No me moví de la litera hasta que la "
+               "doctora vino a buscarme a las seis, con la noticia.",
+               -1, -1},
+              {"¿Vio a alguien levantarse a las cinco?",
+               "Ver, no. Pero me desperté con el cerrojo y miré el reloj: las cinco y diez. La litera de enfrente, "
+               "la de Oriol, estaba vacía. Toqué el saco al ir a por agua: frío.",
+               0, 2},
+              {"Su hermano murió en una expedición de Gaspar.",
+               "Hace nueve años, sí. Vine a que me contara cómo fue, no a otra cosa. Anteanoche me lo contó, y me "
+               "pidió perdón. Llevaba nueve años esperando eso. No iba a matarlo ahora.",
+               4, -1}}},
+            {"ORIOL PRAT",
+             "GUIA AYUDANTE",
+             "Guía joven, tres temporadas con Gaspar. Fuerte, rápido, orgulloso de serlo. Se frota las manos como si "
+             "aún tuviera frío.",
+             "",
+             {{"¿Qué hizo usted esta noche?",
+               "Dormir de un tirón, de diez a seis. Estaba reventado de abrir huella ayer. Me despertó el grito de "
+               "Berta. No oí nada, ni cerrojos ni nada.",
+               -1, -1},
+              {"¿Qué pasó el martes en la cresta?",
+               "Nada. Un tramo fácil, lo pasamos sin cuerda para ir más rápido, venía mal tiempo. No se cayó nadie. "
+               "Gaspar hizo un drama: decía que eso no se le hace a un cliente. Es de otra época.",
+               1, -1},
+              {"Su litera estaba vacía a las cinco.",
+               "Fui al baño. O a por agua, yo qué sé. ¿Quién lleva la cuenta a esas horas? Mi frontal lo perdí "
+               "ayer en la huella, así que si han encontrado uno, no prueba nada.",
+               2, -1}}},
+            {"MIREIA SANS",
+             "MEDICA",
+             "Médica de urgencias, de vacaciones. Venía a hacer una travesía que Gaspar canceló por el tiempo. "
+             "Práctica, cansada, con ojeras de guardia.",
+             "Estuvo de cuatro a seis en el comedor, leyendo junto a la estufa: desde allí se ve la puerta del "
+             "cuarto de Berta, pero no la de atrás. Sus botas estaban secas.",
+             {{"¿Qué puede decir del cuerpo?",
+               "Un solo golpe, con algo pesado y romo: un tronco, diría. Murió entre las cinco y las seis. No se "
+               "cayó: estaba de espaldas a la puerta, agachado sobre la leña.",
+               -1, -1},
+              {"¿Qué discutió con Gaspar?",
+               "Seiscientos euros. Pagué la travesía por adelantado y la canceló. Me los iba a devolver al bajar; "
+               "lo dijo delante de todos. Por seiscientos euros no se mata a nadie, y menos a quien te los debe.",
+               5, -1},
+              {"¿Vio pasar a alguien por el comedor?",
+               "A nadie. Pero la escalera de las literas baja directa al pasillo de atrás, sin pasar por el comedor. "
+               "Oí crujir los peldaños poco después de las cinco. Pasos ligeros, de alguien joven.",
+               -1, -1}}},
+        },
+        {
+            {"COBERTIZO",
+             "Leña apilada y un tronco con sangre. Debajo de la pila, medio escondido, un frontal de guía con las "
+             "iniciales O. P. rotuladas en la cinta. En la nieve de la puerta, un solo par de huellas de ida y otro "
+             "de vuelta.",
+             3},
+            {"MOCHILA DE GASPAR",
+             "Mapas, una cuerda, un cuaderno. En el cuaderno, el borrador de una carta a la federación: «El martes "
+             "mi ayudante Oriol Prat dejó sin cuerda a cuatro clientes en la cresta. No debe guiar». Sin firmar aún.",
+             1},
+            {"LIBRO DE REGISTRO",
+             "El libro del refugio guarda las firmas de veinte años. Alguien ha dejado una hoja doblada en una "
+             "página de hace nueve: expedición guiada por G. Novell, cinco nombres. Uno, Andreu Codina, está "
+             "subrayado a lápiz.",
+             4},
+        },
+        {"A las cinco y diez sonó dos veces el cerrojo de la puerta de atrás.",
+         "Gaspar iba a denunciar a Oriol a la federación por dejar sin cuerda a unos clientes.",
+         "A las cinco y diez la litera de Oriol estaba vacía y el saco, frío.",
+         "Bajo la leña del cobertizo hay un frontal de guía con las iniciales O. P.",
+         "El hermano de Julián murió hace nueve años en una expedición de Gaspar.",
+         "Gaspar le debía a Mireia el dinero de una travesía cancelada."},
+        6,
+        2,
+        1,
+        3,
+        2,
+        "Gaspar iba a enviar la carta al bajar: Oriol perdería la licencia. A las cinco, Oriol lo siguió al "
+        "cobertizo para convencerlo; Gaspar ni se volvió, y él cogió un tronco. Con las prisas se le cayó el "
+        "frontal entre la leña. Dijo que durmió de un tirón, pero su saco estaba frío y el cerrojo sonó dos veces.",
+    },
+    {
+        "MENU CERRADO",
+        "Restaurante Can Llop, Cadaqués. En el segundo postre, el crítico Fermín Aguado se ha desplomado sobre la "
+        "mesa siete. Está en el hospital y saldrá de esta: alguien le dio un sedante fuerte. Mañana debía publicar "
+        "su crítica de la casa. Cuatro personas estuvieron lo bastante cerca de él esta noche.",
+        {
+            {"CARME LLOP",
+             "CHEF Y DUENA",
+             "Chef y dueña. Es su segundo restaurante; el primero cerró hace seis años. Brazos cruzados, delantal "
+             "impecable, la mandíbula apretada.",
+             "No salió de la cocina en todo el servicio: el pase está abierto a la sala y veinte comensales la "
+             "vieron emplatar. Los platos de Fermín los llevó el camarero, y dieron limpio.",
+             {{"¿Dónde estuvo durante la cena?",
+               "En mi cocina, de ocho a once, como cada noche. El pase está abierto: me ve toda la sala. No me "
+               "acerqué a la mesa siete; a un crítico no se le hace la pelota.",
+               -1, -1},
+              {"¿Conocía usted a Fermín de antes?",
+               "Me cerró el primer restaurante con una página. «Cocina de catálogo», escribió. Tardé seis años en "
+               "levantar este. Hoy quería que se comiera sus palabras, no que se durmiera encima.",
+               -1, 4},
+              {"¿Quién se acercó a su mesa?",
+               "El sumiller, a servir. El otro crítico, que cenaba con él. Y la sobrina, que llegó pronto, dejó "
+               "algo en el guardarropa y luego rondó por la barra hasta los postres.",
+               -1, -1}}},
+            {"ADRIA FONT",
+             "SUMILLER",
+             "Sumiller de la casa. Sirvió los seis vinos del menú en la mesa siete. Joven, minucioso, con la "
+             "servilleta siempre doblada en el brazo.",
+             "Descorchó cada botella delante de la mesa y Víctor bebió de las mismas. El laboratorio no ha "
+             "encontrado nada en las botellas ni en las copas.",
+             {{"¿Qué sirvió usted en la mesa siete?",
+               "Seis vinos, seis botellas abiertas allí mismo. El señor Reig bebió de todas y está perfectamente. "
+               "Lo único que tomó el señor Aguado y nadie más fue su pastilla, con el agua, antes del postre.",
+               -1, -1},
+              {"¿Cómo estaban los dos críticos?",
+               "Tirantes. Se disputan la misma columna en el diario, dicen. El señor Reig no dejó de pincharle: que "
+               "si estaba mayor, que si ya no distinguía un tinto. Pero no se levantó de la silla.",
+               -1, 5},
+              {"¿A qué hora llegó la sobrina?",
+               "Pronto, antes que los entrantes. La vi en el guardarropa con el abrigo de su tío en las manos. "
+               "Luego dijo a todo el mundo que acababa de llegar. Me pareció raro y no dije nada.",
+               3, -1}}},
+            {"LOLA AGUADO",
+             "SOBRINA Y AGENTE",
+             "Sobrina de Fermín y su agente: le lleva la agenda, los contratos y las medicinas. Simpática, rápida, "
+             "mira el móvil cada medio minuto.",
+             "",
+             {{"¿Cuándo llegó usted al restaurante?",
+               "A los postres. Venía a recoger a mi tío: ya no conduce de noche. Entré, lo vi caerse y llamé yo a "
+               "la ambulancia. Estoy destrozada, entiéndalo.",
+               -1, -1},
+              {"¿Quién prepara el pastillero de su tío?",
+               "Yo, cada lunes. ¿Y qué? Tiene setenta años y se lía con las cápsulas. Cualquiera pudo abrirlo esta "
+               "noche: lo deja siempre en el bolsillo del abrigo.",
+               0, 1},
+              {"¿Qué son los tres mil euros de Can Tosca?",
+               "Una... asesoría. Les ayudé con la carta. Mi tío lo malinterpretó, se ponía imposible con esas "
+               "cosas. Íbamos a aclararlo mañana. No hacía falta ningún abogado.",
+               2, -1}}},
+            {"VICTOR REIG",
+             "CRITICO RIVAL",
+             "Crítico del mismo diario, veinte años más joven. Cenaba con Fermín por orden del director. Irónico, "
+             "bien vestido, algo pálido ahora.",
+             "No se levantó de la mesa en toda la cena; lo confirman el sumiller y la mesa de al lado. Nunca tuvo "
+             "el pastillero en la mano: Fermín lo sacó del abrigo él mismo.",
+             {{"¿Qué pasó en la mesa?",
+               "Cenamos, discutimos, lo normal. Antes del segundo postre pidió su abrigo, sacó el pastillero y se "
+               "tomó la cápsula de la noche. Diez minutos después se le cerraban los ojos.",
+               -1, -1},
+              {"¿Es verdad que quiere su columna?",
+               "Claro que la quiero. Y la tendré cuando se jubile, que será pronto. No necesito dormirlo para eso: "
+               "le basta con seguir escribiendo como escribe.",
+               5, -1},
+              {"¿Le habló Fermín de su sobrina?",
+               "Esta noche, sí. Dijo que alguien vendía críticas con su nombre y que ya sabía quién. «La sangre no "
+               "lo tapa todo», dijo. Mañana iba a ver a un abogado, antes de publicar.",
+               -1, -1}}},
+        },
+        {
+            {"MESA SIETE",
+             "Copas, migas, una servilleta en el suelo. Junto al plato, el pastillero de Fermín, con los días de la "
+             "semana. En el hueco de hoy queda media cápsula abierta: el polvo de dentro no es del color de las "
+             "otras.",
+             0},
+            {"MOVIL DE FERMIN",
+             "En borradores, un mensaje sin enviar: «Lola: sé lo de los tres mil euros de Can Tosca por una crítica "
+             "que yo no he escrito. Mañana a las diez, en el abogado. No me llames».",
+             2},
+            {"GUARDARROPA",
+             "El abrigo de Fermín cuelga en la percha 12. La encargada apunta las horas: la ficha 13, a nombre de L. "
+             "Aguado, se dio a las 20:40. Los postres salieron a las 22:30.",
+             3},
+        },
+        {"El sedante estaba en una cápsula del pastillero de Fermín, no en el vino ni en la comida.",
+         "Lola rellena el pastillero de su tío cada lunes.",
+         "Fermín sabía que Lola cobró tres mil euros por una crítica falsa e iba a ir al abogado.",
+         "Lola dijo que llegó a los postres, pero el guardarropa le dio ficha a las 20:40.",
+         "Fermín cerró el primer restaurante de Carme con una crítica.",
+         "Víctor y Fermín se disputan la misma columna."},
+        6,
+        2,
+        2,
+        1,
+        3,
+        "Lola vendía críticas con la firma de su tío. Él lo descubrió y al día siguiente iba al abogado. Ella llegó "
+        "a las 20:40, cambió la cápsula de la noche en el pastillero del abrigo y esperó en la barra: con Fermín "
+        "dormido, tendría un día para borrar su rastro. Luego fingió que acababa de llegar. La ficha la desmiente.",
+    },
 };
 
 }  // namespace

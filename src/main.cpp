@@ -43,6 +43,7 @@
 #include "apps_local/Shelf.h"
 #include "apps_local/live/LiveEngine.h"
 #include "apps_local/powerprobe/PowerProbe.h"
+#include "apps_local/wake/WakeJobs.h"
 
 // How long the device sleeps before waking itself, in microseconds. 0 means
 // only the power button ends a sleep, which is how every build has behaved
@@ -402,8 +403,9 @@ CROSSPLAY_SLEEP_NORETURN static void startDeepSleepArmed(const uint64_t timerMic
 // (card #620). Live's own number when it has one, the build's otherwise: the
 // same choice enterDeepSleep makes.
 [[maybe_unused]] static uint64_t resleepTimerMicros() {
-  const uint32_t liveSeconds = live::engine::resleepSeconds();
-  return liveSeconds > 0 ? static_cast<uint64_t>(liveSeconds) * 1000000ULL : kTimerWakeMicros;
+  // The frame's and CASA's own times ride along with Live's: the soonest wins.
+  const uint32_t seconds = wakejobs::rearmSeconds(live::engine::resleepSeconds());
+  return seconds > 0 ? static_cast<uint64_t>(seconds) * 1000000ULL : kTimerWakeMicros;
 }
 
 // Plugin-event delivery on the way into deep sleep. sleep.enter is delivered
@@ -525,6 +527,10 @@ void enterDeepSleep(bool fromTimeout = false, bool unattended = false) {
     activityManager.goToSleep(fromTimeout);
   }
 
+  // The photo frame and CASA: when this sleep should end by itself for them.
+  // Asked here because the answer is on the card, which is put away below.
+  const uint32_t wakeSeconds = wakejobs::armSeconds(liveTimerSeconds, /*attended=*/!unattended);
+
   if (isQuickResumeSleep) {
     saveSleepFrameBuffer();
   } else if (!unattended && Storage.exists(SLEEP_FRAME_FILE)) {
@@ -551,8 +557,7 @@ void enterDeepSleep(bool fromTimeout = false, bool unattended = false) {
   // build-time constant stays as the power probe's own wake: it exists so a
   // sleeping board can be measured at all, and a device with Live off is still
   // the device that measurement describes.
-  const uint64_t timerMicros =
-      liveTimerSeconds > 0 ? static_cast<uint64_t>(liveTimerSeconds) * 1000000ULL : kTimerWakeMicros;
+  const uint64_t timerMicros = wakeSeconds > 0 ? static_cast<uint64_t>(wakeSeconds) * 1000000ULL : kTimerWakeMicros;
   startDeepSleepArmed(timerMicros);
 }
 
@@ -825,7 +830,11 @@ void setup() {
       LOG_DBG("MAIN", "Timer wake: checking Live");
       bool timerBroughtSomething = false;
       const uint32_t nextWake = live::engine::onSleep(timerBroughtSomething, /*timerFired=*/true);
-      if (timerBroughtSomething) {
+      // The frame's picture is due, or CASA's reading was (taken inside). A new
+      // picture reaches the glass the way a Live message does: by the break.
+      const bool frameDue = wakejobs::onTimerWake();
+      if (frameDue) LOG_INF("MAIN", "Timer wake: the photo frame's next picture is due");
+      if (timerBroughtSomething || frameDue) {
         // A new message arrived, and drawing it needs the display and the fonts
         // that this path deliberately skipped. Breaking out of the switch lets
         // setup() finish, which paints and then sleeps again through
@@ -837,9 +846,11 @@ void setup() {
       // Nothing new. Straight back down, with Live's own number when it has one
       // so the next wake lands when the service asked for it rather than on the
       // probe's fixed interval.
+      const uint32_t resleepAfterTimer = wakejobs::rearmSeconds(nextWake);
       powerprobe::beforeSleep();
       Storage.prepareForDeepSleep();
-      startDeepSleepArmed(nextWake > 0 ? static_cast<uint64_t>(nextWake) * 1000000ULL : kTimerWakeMicros);
+      startDeepSleepArmed(resleepAfterTimer > 0 ? static_cast<uint64_t>(resleepAfterTimer) * 1000000ULL
+                                                : kTimerWakeMicros);
       break;
     }
 #endif

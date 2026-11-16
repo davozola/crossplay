@@ -142,6 +142,12 @@ int main() {
   check(restore(back, blob, kSaveBytes) && back[1].asked == 0x0A5 && back[1].clues == 0x15 && back[1].steps == 7 &&
             back[2].solved && back[2].best == 2 && back[0].steps == 0,
         "round trip");
+  // A save from when there were three cases keeps those and starts the rest.
+  back[4].steps = 9;
+  check(restore(back, blob, 1 + 3 * 8) && back[2].solved && back[1].steps == 7 && back[4].steps == 0 && !back[5].solved,
+        "an older, shorter save");
+  check(!restore(back, blob, 1 + 3 * 8 + 5) && !restore(back, blob, kSaveBytes + 8) && !restore(back, blob, 0),
+        "odd sizes");
   blob[0] = 7;
   check(!restore(back, blob, kSaveBytes), "unknown version");
   check(std::strcmp(rankName(1), "INSPECTOR JEFE") == 0 && std::strcmp(rankName(0), "SIN RESOLVER") == 0, "rank names");

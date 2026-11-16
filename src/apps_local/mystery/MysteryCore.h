@@ -12,7 +12,7 @@
 
 namespace mystery {
 
-constexpr int kCases = 3;
+constexpr int kCases = 6;
 constexpr int kSuspects = 4;
 constexpr int kQuestions = 3;
 constexpr int kPlaces = 3;
@@ -85,6 +85,7 @@ void restart(Progress& p);
 
 constexpr size_t kSaveBytes = 1 + kCases * 8;
 size_t save(const Progress* all, uint8_t* out, size_t cap);
+// A save from a build with fewer cases restores those and leaves the rest new.
 bool restore(Progress* all, const uint8_t* in, size_t size);
 
 }  // namespace mystery
