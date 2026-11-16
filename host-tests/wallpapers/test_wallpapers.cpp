@@ -767,6 +767,45 @@ int main() {
     CHECK(wallpapers::lastNewName(two, V{"W0001.BMP", "W0002.BMP", up(3)}) == 2);
   }
 
+  // The Sticky pack: its own table, sorted between a reader's own pictures and
+  // the built-ins, named for people, and matching the pack file byte for byte
+  // in count and order.
+  {
+    CHECK(wallpapers::kStickyCount == 16);
+    for (size_t i = 0; i < wallpapers::kStickyCount; ++i) {
+      const std::string stem = wallpapers::stickyStem(i);
+      CHECK(stem.rfind("sticky-", 0) == 0);
+      CHECK(wallpapers::isStickyFile(stem + ".bmp") && !wallpapers::isBuiltInFile(stem + ".bmp"));
+      CHECK(wallpapers::displayName(stem + ".bmp").full != stem);
+      CHECK(wallpapers::sortsBefore("my-photo.bmp", stem + ".bmp"));
+      CHECK(wallpapers::sortsBefore(stem + ".bmp", "bauhaus.bmp"));
+    }
+    CHECK(std::string(wallpapers::stickyStem(wallpapers::kStickyCount)).empty());
+    CHECK(!wallpapers::isStickyFile("sticky-nothing.bmp") && !wallpapers::isStickyFile("waves.bmp"));
+    CHECK(wallpapers::displayName("sticky-swell.bmp").full == "Night Swell");
+    std::FILE* pack = std::fopen("../../site/wallpapers/sticky/sticky.dat", "rb");
+    CHECK(pack != nullptr);
+    if (pack) {
+      std::fseek(pack, 0, SEEK_END);
+      CHECK(static_cast<uint64_t>(std::ftell(pack)) == wallpapers::kWallpaperFileBytes * wallpapers::kStickyCount);
+      // Each slot of the pack is the file of that name, so the order is the table's.
+      for (size_t i = 0; i < wallpapers::kStickyCount; ++i) {
+        const std::string path = std::string("../../site/wallpapers/sticky/") + wallpapers::stickyStem(i) + ".bmp";
+        std::FILE* one = std::fopen(path.c_str(), "rb");
+        CHECK(one != nullptr);
+        if (!one) continue;
+        unsigned char a[256];
+        unsigned char b[256];
+        std::fseek(pack, static_cast<long>(i * wallpapers::kWallpaperFileBytes + 20000), SEEK_SET);
+        std::fseek(one, 20000, SEEK_SET);
+        CHECK(std::fread(a, 1, sizeof(a), pack) == sizeof(a) && std::fread(b, 1, sizeof(b), one) == sizeof(b));
+        CHECK(std::memcmp(a, b, sizeof(a)) == 0);
+        std::fclose(one);
+      }
+      std::fclose(pack);
+    }
+  }
+
   std::printf("wallpapers: %d checks, %d failed\n", checksRun, checksFailed);
   return checksFailed == 0 ? 0 : 1;
 }

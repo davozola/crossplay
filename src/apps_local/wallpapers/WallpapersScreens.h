@@ -41,7 +41,9 @@ struct GridGeom {
   int16_t pageDotsY = 0;  // where the page-dot strip sits (when more than one page)
 };
 
-GridGeom gridGeom(const fui::DeviceContext& device);
+// `single` is the one-to-a-slide arrangement: one cell as large as the body
+// allows. The default is the two-by-two grid.
+GridGeom gridGeom(const fui::DeviceContext& device, bool single = false);
 
 // slot is 0..perPage-1, row-major. thumbRect is the image; cellRect includes
 // the caption row; captionRect is empty in variants without captions.

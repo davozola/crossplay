@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade veintiuna cosas:
+Sticky**. Conserva todo lo del original y añade veintidós cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -32,6 +32,7 @@ Sticky**. Conserva todo lo del original y añade veintiuna cosas:
 | **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
 | **Naval Weather** | Parte marítimo de los sitios guardados en Weather: viento en nudos, oleaje, mar de fondo y agua, una semana, consultable sin red. |
+| **Wallpapers** (ampliada) | Galería con swipe entre diapositivas, una o cuatro por diapositiva, y un segundo pack de 16 fondos dibujados para la Sticky que se descarga por Wi-Fi. |
 | **Markets**     | Bitcoin, S&P 500 y Nasdaq en un panel para tenerlo de pie en la mesa, con detalle de cada uno. |
 | **FM Synth Lab** | Chuleta para un sinte FM de seis operadores (M-VAVE FM-1): los 32 algoritmos dibujados, qué hace cada ratio al espectro y la forma de la envolvente. |
 | **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |

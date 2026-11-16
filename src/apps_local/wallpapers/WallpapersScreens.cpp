@@ -254,11 +254,11 @@ void chrome(toybox::Screen& screen, const char* title, const char* rightLabel, c
 
 }  // namespace
 
-GridGeom gridGeom(const fui::DeviceContext& device) {
+GridGeom gridGeom(const fui::DeviceContext& device, const bool single) {
   const fui::Rect safe = device.safeRect();
   GridGeom g;
-  g.cols = 2;
-  g.rows = kRows;
+  g.cols = single ? 1 : 2;
+  g.rows = single ? 1 : kRows;
   g.perPage = g.cols * g.rows;
   g.captionH = kCaptionH;
   g.markerRoom = kMarkerRoom;
