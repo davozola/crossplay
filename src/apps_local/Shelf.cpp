@@ -23,6 +23,7 @@
 #include "clock/ClockActivity.h"
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
+#include "discover/DiscoverActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "fmguide/FmGuideActivity.h"
 #include "forehead/ForeheadActivity.h"
@@ -123,6 +124,7 @@ constexpr shelf::Item kGames[] = {
 constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
     {"THE BATCH", &icon_batch_32, &BatchActivity::create},
+    {"DISCOVER", &icon_discover_32, &DiscoverActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},

@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade veintinueve cosas:
+Sticky**. Conserva todo lo del original y añade treinta cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -45,6 +45,7 @@ Sticky**. Conserva todo lo del original y añade veintinueve cosas:
 | **Mancala** | Kalah contra la máquina (tres niveles) o entre dos, con 3 a 6 semillas por hoyo e instrucciones. |
 | **Tactics** | Problemas de ajedrez de Lichess desde un paquete en la SD: dificultad que sigue tu nivel, pistas, reto diario y estadísticas. |
 | **The Batch** | El boletín semanal de DeepLearning.AI: archivo desde el primer número, cada número partido en sus noticias con el tiempo de lectura, favoritos y lectura sin red de lo ya abierto. |
+| **Discover** | Lo nuevo de GitHub con más estrellas: filtro por tema (IA, firmware, sintes, emuladores, gadgets), lenguaje, estrellas y antigüedad; ficha de cada repositorio, su README y una lista de guardados. |
 | **Misterios** | Seis casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
 | **Ilya**        | Seis minijuegos en catalán para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas con cuatro animales. |
 | **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
@@ -93,7 +94,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **40 games and 19 apps**,
+that holds still is good at: **40 games and 20 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -164,6 +165,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | --------------- | ------------------------------------------------------------------------ |
 | **Hacker News** | The front page in a reading serif, articles kept on the card.            |
 | **The Batch**   | DeepLearning.AI's weekly newsletter, story by story, kept on the card.   |
+| **Discover**    | New repositories on GitHub by topic, language, stars and age.            |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
 | **Wallpapers**  | Pick an image on the card as the sleep screen, one tap to set it.        |
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
@@ -280,6 +282,10 @@ Most of the shelf never touches the network. Of the parts that do:
   for the instruments on its cards and in the portfolio; how much of each you hold
   stays on the card and is never sent; with auto-refresh on it does so on a timer and keeps the
   device awake and on Wi-Fi to do it.
+- **Discover asks GitHub directly.** Its search goes to the public
+  [GitHub API](https://docs.github.com/rest/search) with no account, which allows
+  ten searches a minute, and a README comes from raw.githubusercontent.com. GitHub
+  sees the search and the device's address; nothing else is sent.
 - **The Batch reads through the same third party.** Issues and the newsletter's
   front page come as text from [r.jina.ai](https://r.jina.ai), and the archive's
   list from a [feed a third party keeps](https://github.com/Olshansk/rss-feeds) on
