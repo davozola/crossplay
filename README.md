@@ -1,6 +1,6 @@
 <h1 align="center">
   <img src="site/assets/logo.svg#gh-light-mode-only" width="72" alt="CrossPlay"><img src="site/assets/logo-dark.svg#gh-dark-mode-only" width="72" alt="CrossPlay"><br>
-  CrossPlay
+  CrossPlay · fork de davozola
 </h1>
 
 <p align="center">
@@ -9,15 +9,56 @@
 </p>
 
 <p align="center">
-  <a href="https://crossplay.ma-r-s.com">Try it in your browser</a> &middot;
+  <a href="#este-fork">Este fork</a> &middot;
   <a href="#what-is-on-it">What is on it</a> &middot;
-  <a href="#install-it">Install it</a> &middot;
-  <a href="https://github.com/ma-r-s/crossplay/releases">Releases</a>
+  <a href="#instalar-este-fork">Instalar este fork</a> &middot;
+  <a href="https://github.com/davozola/crossplay/releases">Releases</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/ma-r-s/crossplay/actions/workflows/crossplay-ci.yml"><img src="https://github.com/ma-r-s/crossplay/actions/workflows/crossplay-ci.yml/badge.svg?branch=xteink" alt="Build status"></a>
-</p>
+## Este fork
+
+Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
+de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
+Sticky**. Conserva todo lo del original y añade siete cosas:
+
+| Nuevo           | Qué es                                                                  |
+| --------------- | ----------------------------------------------------------------------- |
+| **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
+| **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
+| **Chess Clock** | Reloj de ajedrez con incremento; cada uno toca su mitad.                |
+| **Inner Clock** | Toca, cuenta 5 o 10 segundos de cabeza y vuelve a tocar. Al centésimo.  |
+| **Kakuro**      | Sumas cruzadas, cada tablero con una única solución demostrada.         |
+| **Mastermind**  | Descifra el código de formas, solo contra el dispositivo.               |
+| **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
+
+Lo que sigue es, en su mayoría, el README del proyecto original. Hay tres cosas
+que no aplican a este fork:
+
+- **La demo en el navegador y el instalador web** (`crossplay.ma-r-s.com`)
+  son del original: instalan su versión, no esta, y no tienen las apps nuevas.
+- **"Check for updates" en el dispositivo** descarga la versión oficial y
+  borraría las apps de este fork. No lo uses.
+- **Los errores de este fork** van a
+  [sus propios issues](https://github.com/davozola/crossplay/issues), no al
+  proyecto original.
+
+### Instalar este fork
+
+Con [esptool](https://github.com/espressif/esptool) y la imagen completa
+(`*-full.bin`) de las [releases de este fork](https://github.com/davozola/crossplay/releases),
+con la Sticky conectada por USB:
+
+```bash
+pip install esptool
+esptool.py --chip esp32s3 --port /dev/cu.usbmodem1101 --baud 921600 \
+  write_flash 0x0 crossplay-davozola-sticky-full.bin
+```
+
+El puerto cambia según el ordenador (`/dev/ttyACM0` en Linux, `COM5` en
+Windows). La tarjeta SD no se toca. Para compilarla tú mismo, mira
+[Build it](#build-it) y usa `pio run -e gh_release_sticky`.
+
+---
 
 ![CrossPlay on the Xteink X4 Pro](site/assets/shots/og.png)
 
@@ -167,7 +208,7 @@ Confirm exists only on the Sticky, which
 
 Every release is flashed to a real X4 Pro and a real Sticky before it ships.
 That is still a small field record, so if you install it, please
-[say what happened](https://github.com/ma-r-s/crossplay/issues), either way.
+[say what happened](https://github.com/davozola/crossplay/issues), either way.
 
 ## What it does over the network
 
