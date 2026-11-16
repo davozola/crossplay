@@ -14,6 +14,7 @@
 #include <string>
 
 #include "ShelfHidden.h"
+#include "ShelfOrder.h"
 
 namespace {
 
@@ -239,9 +240,69 @@ void testAnEmptyFolderHasNoRows() {
   check(shelf::shownRowForIn(all, kGames, 3, titles) == 0, "and every item is before row 0");
 }
 
+// The last opened come first, newest on top, and nothing is listed twice.
+void testTheLastOpenedLeadTheFolder() {
+  const shelf::HiddenSet none;
+  shelf::HiddenSet recent;
+  check(shelf::noteRecent(recent, "SUDOKU"), "a first opening is news");
+  check(shelf::noteRecent(recent, "NOT IN THIS FOLDER"), "another folder's title is kept");
+  check(shelf::noteRecent(recent, "BATTLESHIP"), "a second opening is news");
+  check(!shelf::noteRecent(recent, "BATTLESHIP"), "opening the newest again changes nothing");
+  check(shelf::orderedItemIn(none, recent, kGames, 0, titles) == 1, "the newest is row 0");
+  check(shelf::orderedItemIn(none, recent, kGames, 1, titles) == 3, "the one before it is row 1");
+  check(shelf::orderedItemIn(none, recent, kGames, 2, titles) == 0, "then the table, from its top");
+  check(shelf::orderedItemIn(none, recent, kGames, 3, titles) == 2, "skipping what was lifted");
+  check(shelf::orderedItemIn(none, recent, kGames, kGames - 1, titles) == kGames - 1, "to its last row");
+  check(shelf::orderedItemIn(none, recent, kGames, kGames, titles) == -1, "and no row after it");
+  for (int item = 0; item < kGames; ++item) {
+    const int row = shelf::orderedRowForIn(none, recent, kGames, item, titles);
+    check(shelf::orderedItemIn(none, recent, kGames, row, titles) == item, "a row and its item agree");
+  }
+  const shelf::HiddenSet gone = hiding({"BATTLESHIP"});
+  check(shelf::orderedItemIn(gone, recent, kGames, 0, titles) == 3, "a hidden recent is not listed");
+  check(shelf::orderedItemIn(gone, recent, kGames, 1, titles) == 0, "and the rest close up");
+}
+
+void testOnlyAFewAreLifted() {
+  const shelf::HiddenSet none;
+  shelf::HiddenSet recent;
+  for (int i = 0; i < kGames; ++i) shelf::noteRecent(recent, titles(i));
+  check(shelf::orderedItemIn(none, recent, kGames, 0, titles) == kGames - 1, "the newest leads");
+  check(shelf::orderedItemIn(none, recent, kGames, shelf::kRecentRows, titles) == 0, "after three the table resumes");
+  for (int i = 0; i < 40; ++i) {
+    char title[16];
+    std::snprintf(title, sizeof(title), "T%d", i);
+    shelf::noteRecent(recent, title);
+  }
+  check(recent.size() == shelf::kRecentKept, "the history is capped");
+}
+
+void testFavouritesKeepTheirOrderAndTheirLimit() {
+  const shelf::HiddenSet none;
+  shelf::HiddenSet favourites;
+  int held[shelf::kFavouriteSlots];
+  shelf::toggleFavouriteIn(favourites, kGames, 4, titles);
+  shelf::toggleFavouriteIn(favourites, kGames, 1, titles);
+  check(shelf::favouriteItemsIn(none, favourites, kGames, titles, held) == 2, "two favourites");
+  check(held[0] == 4 && held[1] == 1, "in the order they were chosen");
+  shelf::toggleFavouriteIn(favourites, kGames, 4, titles);
+  check(shelf::favouriteItemsIn(none, favourites, kGames, titles, held) == 1 && held[0] == 1,
+        "a second toggle removes");
+  shelf::toggleFavouriteIn(favourites, kGames, 0, titles);
+  shelf::toggleFavouriteIn(favourites, kGames, 2, titles);
+  shelf::toggleFavouriteIn(favourites, kGames, 3, titles);
+  shelf::toggleFavouriteIn(favourites, kGames, 5, titles);
+  check(shelf::favouriteItemsIn(none, favourites, kGames, titles, held) == 5, "five favourites");
+  check(held[0] == 1 && held[4] == 5, "still in the order they were chosen");
+  check(shelf::favouriteItemsIn(hiding({"CHESS"}), favourites, kGames, titles, held) == 4, "a hidden one is left out");
+}
+
 }  // namespace
 
 int main() {
+  testTheLastOpenedLeadTheFolder();
+  testOnlyAFewAreLifted();
+  testFavouritesKeepTheirOrderAndTheirLimit();
   testNothingHiddenIsTheDefault();
   testOneTitlePerLine();
   testTheRoundTrip();

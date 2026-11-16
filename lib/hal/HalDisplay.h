@@ -56,6 +56,9 @@ class HalDisplay {
   // baseline before the next differential update (the tiled grayscale cleanup
   // does). Panels without deferral fall back to a blocking refresh.
   void displayBufferAsync(RefreshMode mode = RefreshMode::FAST_REFRESH);
+  // Fast refresh that sends only a panel-memory rectangle to the controller.
+  // x and w must be multiples of 8.
+  void displayWindow(int x, int y, int w, int h);
   // Block until a pending deferred refresh completes (no-op when none is).
   void waitRefreshComplete();
   // True when displayBufferAsync() genuinely overlaps (panel driver defers);

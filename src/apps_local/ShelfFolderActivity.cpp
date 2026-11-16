@@ -5,6 +5,7 @@
 #include <Memory.h>
 
 #include "Shelf.h"
+#include "ShelfOrder.h"
 #include "ShelfScreen.h"
 #include "player/PlayerName.h"
 #include "ui/Toybox.h"
@@ -16,8 +17,19 @@ std::unique_ptr<Activity> ShelfFolderActivity::create(GfxRenderer& renderer, Map
   return makeUniqueNoThrow<ShelfFolderActivity>(renderer, mappedInput, folderIndex);
 }
 
+namespace {
+// Kept while the device is on, so the filter is still there on the way back
+// from the game it was used to find.
+bool favouritesOnlyIn[8] = {};
+}  // namespace
+
 int ShelfFolderActivity::rowsInList() const {
-  return choosing ? shelf::folders()[folder].count : shelf::shownCount(folder);
+  if (choosing) return shelf::folders()[folder].count;
+  if (favouritesOnly) {
+    int held[shelf::kFavouriteSlots];
+    return shelf::favourites(folder, held);
+  }
+  return shelf::shownCount(folder);
 }
 
 int ShelfFolderActivity::itemAtRow(const int row) const {
@@ -27,6 +39,10 @@ int ShelfFolderActivity::itemAtRow(const int row) const {
   // chooser lists everything -- a chooser over the shown items could not show
   // you what you had hidden.
   if (choosing) return row < shelf::folders()[folder].count ? row : -1;
+  if (favouritesOnly) {
+    int held[shelf::kFavouriteSlots];
+    return row < shelf::favourites(folder, held) ? held[row] : -1;
+  }
   return shelf::shownItem(folder, row);
 }
 
@@ -47,6 +63,7 @@ void ShelfFolderActivity::buildPage(const int first, const int count) {
       items[i].label = "";
       icons[i] = nullptr;
       checks[i] = false;
+      stars[i] = false;
       // And it must not still answer for whatever the last page put here: the
       // row is registered whatever its label says, so a stale value is a blank
       // row that opens a game.
@@ -56,6 +73,7 @@ void ShelfFolderActivity::buildPage(const int first, const int count) {
     items[i].label = self.items[item].title;
     icons[i] = self.items[item].icon;
     checks[i] = !shelf::isHidden(folder, item);
+    stars[i] = shelf::isFavourite(folder, item);
     // The row's index in the WHOLE list, so a tap says which entry it is rather
     // than which row of which page. The list component emits actionValue rather
     // than the row, which is what lets the screen be handed a slice at all.
@@ -70,14 +88,29 @@ void ShelfFolderActivity::onEnter() {
   // it, or on the first row of the page it was showing when it was walked out
   // of. This activity is destroyed the moment it launches something and again
   // the moment you leave, so neither can survive in a member.
+  favouritesOnly = folder >= 0 && folder < 8 && favouritesOnlyIn[folder];
   itemCount = rowsInList();
   // resumeRowFor is the whole answer to "the folder shrank since": it pins a row
   // past the end to the last one, so the folder opens on its last page rather
   // than dropping the memory and opening on its first. Named there rather than
   // clamped here, so it is one rule with one test instead of an `if`.
-  selected = shelfui::resumeRowFor(shelf::resumeRowIn(folder), itemCount);
+  if (favouritesOnly && itemCount == 0) {
+    favouritesOnly = false;
+    favouritesOnlyIn[folder] = false;
+    itemCount = rowsInList();
+  }
+  selected = favouritesOnly ? 0 : shelfui::resumeRowFor(shelf::resumeRowIn(folder), itemCount);
   // The page itself is built in render(), which is the only place that knows how
   // many rows fit.
+  requestUpdate();
+}
+
+void ShelfFolderActivity::setFavouritesOnly(const bool on) {
+  favouritesOnly = on;
+  if (folder >= 0 && folder < 8) favouritesOnlyIn[folder] = on;
+  interactionsReady = false;
+  itemCount = rowsInList();
+  selected = on ? 0 : shelfui::resumeRowFor(shelf::resumeRowIn(folder), itemCount);
   requestUpdate();
 }
 
@@ -143,7 +176,25 @@ bool ShelfFolderActivity::showPage(const int page) {
 void ShelfFolderActivity::loop() {
   namespace fui = freeink::ui;
 
+  int pressX = 0;
+  int pressY = 0;
+  if (mappedInput.wasScreenTouchPressed(pressX, pressY)) swipeStartX = pressX;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    // A swipe to the right is the page before, and it is also the system's
+    // Back when it starts in the left quarter. So that one gesture cannot
+    // mean two things at an invisible line, a Back that came from a swipe
+    // turns the page while there is a page before to turn to, and leaves only
+    // from the first page: swiping right walks back through the pages and
+    // then out. A swipe begun at the very edge always leaves.
+    if (mappedInput.wasBackGesture() && swipeStartX >= kBackSwipeEdge && !choosing && itemCount > 0) {
+      const int from = shelfui::pageFor(selected, rowsPerPage);
+      if (from > 0) {
+        swipeStartX = -1;
+        showPage(from - 1);
+        return;
+      }
+    }
     // Back has two rules in this fork -- an app returns to its folder, a folder
     // returns to Home -- and choosing adds the only exception: it closes the
     // mode and stays put. A mode that Back walked straight out of would make
@@ -161,6 +212,27 @@ void ShelfFolderActivity::loop() {
   fui::InputSnapshot input;
   int tapX = 0;
   int tapY = 0;
+  // A long press on a row makes it a favourite, or stops it being one.
+  if (!choosing && interactionsReady && mappedInput.wasScreenLongPress(tapX, tapY)) {
+    fui::InputSnapshot held;
+    held.touchReleased = true;
+    held.touchX = static_cast<int16_t>(tapX);
+    held.touchY = static_cast<int16_t>(tapY);
+    const fui::ActionEvent on = interactions.route(held);
+    const int item = on.action == shelfui::ActionOpen ? itemAtRow(on.value) : -1;
+    if (item >= 0) {
+      interactionsReady = false;
+      shelf::toggleFavourite(folder, item);
+      itemCount = rowsInList();
+      if (favouritesOnly && itemCount == 0) {
+        setFavouritesOnly(false);
+      } else if (selected >= itemCount) {
+        selected = itemCount - 1;
+      }
+      requestUpdate();
+    }
+    return;
+  }
   if (mappedInput.wasScreenTapped(tapX, tapY)) {
     input.touchReleased = true;
     input.touchX = static_cast<int16_t>(tapX);
@@ -193,19 +265,15 @@ void ShelfFolderActivity::loop() {
   const bool keyPrev = mappedInput.wasReleased(MappedInputManager::Button::Up) ||
                        mappedInput.wasReleased(MappedInputManager::Button::Left);
 
-  // And a VERTICAL swipe pages, both ways: up carries the list upwards to the
-  // next page, the way the content moves under a finger, which is the same way
-  // round as Hacker News's story list and the reader. Learn it once.
+  // A swipe pages, on both axes. Up or to the left is the next page, the way
+  // the content moves under a finger; down or to the right is the one before.
   //
-  // Vertical because it is the only axis Back does not own. Back is a
-  // left-to-right swipe anchored in the left 25% of the panel (120px of 480),
-  // so on the horizontal axis the backward page turn and the exit are the SAME
-  // visible gesture separated by an invisible boundary -- and this list paged
-  // sideways for exactly that reason until a cold tester swiped back from page
-  // two and landed on Home. A gesture whose meaning flips on a line nothing
-  // draws cannot be made discoverable; it can only be moved off that axis. So
-  // the horizontal axis carries Back and nothing else here, and the whole
-  // paired step lives where it is symmetrical.
+  // The horizontal axis is shared with Back, which is a left-to-right swipe
+  // anchored in the left quarter of the panel. This list once paged sideways
+  // and stopped, because a tester swiped back from page two and landed on
+  // Home: the same gesture meant two things either side of a line nothing
+  // drew. It pages sideways again with that settled above, where Back is
+  // handled: a rightward swipe is the page before for as long as there is one.
   //
   // One band is consumed above this activity and cannot be had: a down-swipe
   // STARTING in the top 14% (y <= 112) is the light-panel gesture, taken by
@@ -221,8 +289,9 @@ void ShelfFolderActivity::loop() {
   // Home instead. What sits below 688 on this screen is the page bar and the
   // player bar, so the cost is a swipe begun on chrome.
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
-  const bool next = keyNext || swipe == MappedInputManager::SwipeDir::Up;
-  const bool prev = keyPrev || swipe == MappedInputManager::SwipeDir::Down;
+  const bool next = keyNext || swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Left;
+  const bool prev =
+      keyPrev || swipe == MappedInputManager::SwipeDir::Down || swipe == MappedInputManager::SwipeDir::Right;
 
   if (itemCount > 0 && (next || prev)) {
     // A folder that fits on one page has no page to step to, and moving the
@@ -252,6 +321,10 @@ void ShelfFolderActivity::loop() {
     selected = event.value;
     const int item = itemAtRow(selected);
     if (item >= 0) shelf::openItem(folder, item, renderer, mappedInput);
+    return;
+  }
+  if (event.action == shelfui::ActionToggleFavourites) {
+    setFavouritesOnly(!favouritesOnly);
     return;
   }
   if (event.action == shelfui::ActionChoose) {
@@ -309,7 +382,9 @@ void ShelfFolderActivity::render(RenderLock&&) {
   // while browsing and the chooser's caption in it while choosing, so the two
   // modes fit the same games on the same page and entering the chooser adds
   // boxes to the list rather than reshuffling it.
-  const shelfui::Paging paging = shelfui::pagingFor(device, tokens, self.showsDeviceName, itemCount);
+  int held[shelf::kFavouriteSlots];
+  const bool starShown = !choosing && (favouritesOnly || shelf::favourites(folder, held) > 0);
+  const shelfui::Paging paging = shelfui::pagingFor(device, tokens, self.showsDeviceName, itemCount, starShown);
   rowsPerPage = paging.rowsPerPage;
   const int page = shelfui::pageFor(selected, rowsPerPage);
   const int first = shelfui::rowForPage(page, rowsPerPage);
@@ -339,6 +414,9 @@ void ShelfFolderActivity::render(RenderLock&&) {
   model.playerName = self.showsDeviceName ? player::name() : nullptr;
   model.page = page;
   model.pageCount = paging.pageCount;
+  model.stars = stars;
+  model.starShown = starShown;
+  model.starOn = favouritesOnly;
   shelfui::buildMenu(screen, model);
 
   interactionsReady = true;

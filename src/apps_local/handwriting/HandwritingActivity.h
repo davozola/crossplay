@@ -74,6 +74,10 @@ class HandwritingActivity final : public Activity {
   // True from asking for a repaint until the panel has shown it.
   std::atomic<bool> painting{false};
   int paintedCount = 0;
+  // The framebuffer holds the page as last painted, so a stroke in progress
+  // can add its new ink to it instead of rebuilding the screen.
+  bool pageOnPanel = false;
+  bool renderStroke();
   uint32_t lastStrokeEndMs = 0;
   uint32_t savedShownMs = 0;
   // CLEAR asks twice; this is when it asked.

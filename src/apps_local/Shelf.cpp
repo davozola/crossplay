@@ -11,6 +11,7 @@
 #include "../activities/ActivityManager.h"
 #include "ShelfFolderActivity.h"
 #include "ShelfHidden.h"
+#include "ShelfOrder.h"
 #include "ShelfState.h"
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
@@ -182,6 +183,8 @@ constexpr char kStatePath[] = "/.crosspoint/shelf.cfg";
 // device's life, and the two have no reason to share a write, a buffer or a
 // parser -- shelf.cfg's is a fixed 96 bytes precisely because it is small.
 constexpr char kHiddenPath[] = "/.crosspoint/shelf-hidden.cfg";
+constexpr char kRecentPath[] = "/.crosspoint/shelf-recent.cfg";
+constexpr char kFavouritesPath[] = "/.crosspoint/shelf-favs.cfg";
 #endif
 
 // Where leave() sends an app. Set when an item is opened, read when it leaves.
@@ -222,6 +225,8 @@ bool stateLoaded = false;
 // the first question anyone asks of it and not at boot, because the shelf has
 // no init hook -- the same lazy load the position uses, for the same reason.
 shelf::HiddenSet hiddenItems;
+shelf::HiddenSet recentItems;
+shelf::HiddenSet favouriteItems;
 bool hiddenLoaded = false;
 
 // The Activity that the open item launched, by name. `openFolderIndex` alone
@@ -314,8 +319,21 @@ void ensureHiddenLoaded() {
   if (hiddenLoaded) return;
   hiddenLoaded = true;
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
+  if (Storage.exists(kRecentPath)) shelf::parseHidden(Storage.readFile(kRecentPath).c_str(), recentItems);
+  if (Storage.exists(kFavouritesPath)) shelf::parseHidden(Storage.readFile(kFavouritesPath).c_str(), favouriteItems);
   if (!Storage.exists(kHiddenPath)) return;
   shelf::parseHidden(Storage.readFile(kHiddenPath).c_str(), hiddenItems);
+#endif
+}
+
+void saveTitles(const char* path, const shelf::HiddenSet& titles) {
+#if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
+  if (!Storage.writeFile(path, String(shelf::formatHidden(titles).c_str()))) {
+    LOG_ERR("SHELF", "Could not write %s", path);
+  }
+#else
+  (void)path;
+  (void)titles;
 #endif
 }
 
@@ -410,6 +428,8 @@ bool openItem(const int folder, const int item, GfxRenderer& renderer, MappedInp
   // so there is no "after" to run in.
   openFolderIndex = folder;
   homeReturn = true;
+  ensureHiddenLoaded();
+  if (noteRecent(recentItems, parent.items[item].title)) saveTitles(kRecentPath, recentItems);
   saveIfChanged(folder, item);
   setOpenTitle(parent.items[item].title);
   if (!replaceWith(parent.items[item].create(renderer, mappedInput), parent.items[item].title)) {
@@ -459,13 +479,13 @@ int shownCount(const int folder) {
 int shownItem(const int folder, const int row) {
   if (folder < 0 || folder >= kFolderCount) return -1;
   ensureHiddenLoaded();
-  return shownItemIn(hiddenItems, kFolders[folder].count, row, titlesOf(folder));
+  return orderedItemIn(hiddenItems, recentItems, kFolders[folder].count, row, titlesOf(folder));
 }
 
 int shownRowFor(const int folder, const int item) {
   if (folder < 0 || folder >= kFolderCount) return 0;
   ensureHiddenLoaded();
-  return shownRowForIn(hiddenItems, kFolders[folder].count, item, titlesOf(folder));
+  return orderedRowForIn(hiddenItems, recentItems, kFolders[folder].count, item, titlesOf(folder));
 }
 
 void autostartFromEnv(GfxRenderer& renderer, MappedInputManager& mappedInput) {
@@ -540,6 +560,25 @@ void leave(GfxRenderer& renderer, MappedInputManager& mappedInput) {
     return;
   }
   activityManager.goHome();
+}
+
+int favourites(const int folder, int* out) {
+  if (folder < 0 || folder >= kFolderCount) return 0;
+  ensureHiddenLoaded();
+  return favouriteItemsIn(hiddenItems, favouriteItems, kFolders[folder].count, titlesOf(folder), out);
+}
+
+bool isFavourite(const int folder, const int item) {
+  if (folder < 0 || folder >= kFolderCount || item < 0 || item >= kFolders[folder].count) return false;
+  ensureHiddenLoaded();
+  return favouriteItems.contains(kFolders[folder].items[item].title);
+}
+
+void toggleFavourite(const int folder, const int item) {
+  if (folder < 0 || folder >= kFolderCount) return;
+  ensureHiddenLoaded();
+  toggleFavouriteIn(favouriteItems, kFolders[folder].count, item, titlesOf(folder));
+  saveTitles(kFavouritesPath, favouriteItems);
 }
 
 int lastFolderOnHome() {

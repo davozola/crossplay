@@ -143,6 +143,12 @@ int shownItem(int folder, int row);
 // to agree.
 int shownRowFor(int folder, int item);
 
+// The folder's favourites, as item indices in the order they were chosen:
+// fills `out` (room for shelf::kFavouriteSlots) and returns how many.
+int favourites(int folder, int* out);
+bool isFavourite(int folder, int item);
+void toggleFavourite(int folder, int item);
+
 // Record, on the way into deep sleep, whether a shelf item is what the user is
 // looking at. `currentActivityName` is the name of the activity on screen; an
 // item counts as open only when that is the activity the item launched, so
