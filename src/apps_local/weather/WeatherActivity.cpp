@@ -109,8 +109,12 @@ void WeatherActivity::cachePath(const wx::Place& place, char* out, const size_t 
 
 bool WeatherActivity::loadCache() {
   if (placeCount_ == 0) return false;
+  return loadCacheFor(places_[selected_], forecast_);
+}
+
+bool WeatherActivity::loadCacheFor(const wx::Place& place, wx::Forecast& out) const {
   char path[64];
-  cachePath(places_[selected_], path, sizeof(path));
+  cachePath(place, path, sizeof(path));
   if (!Storage.exists(path)) return false;
   HalFile file;
   if (!Storage.openFileForRead("WTHR", path, file)) return false;
@@ -122,7 +126,22 @@ bool WeatherActivity::loadCache() {
     return false;
   }
   if (file.read(body.get(), size) != static_cast<int>(size)) return false;
-  return wx::parseForecast(body.get(), size, forecast_);
+  return wx::parseForecast(body.get(), size, out);
+}
+
+// The list shows each city's last forecast, read back from the card once on
+// the way in rather than on every frame.
+void WeatherActivity::openCities() {
+  auto scratch = makeUniqueNoThrow<wx::Forecast>();
+  for (int i = 0; i < placeCount_; ++i) {
+    glance_[i] = weatherui::CityGlance{};
+    if (!scratch || !loadCacheFor(places_[i], *scratch)) continue;
+    glance_[i].have = true;
+    glance_[i].code = static_cast<int16_t>(scratch->current.code);
+    glance_[i].day = scratch->current.isDay;
+    glance_[i].temp = scratch->current.temp;
+  }
+  view_ = View::Cities;
 }
 
 bool WeatherActivity::saveCache(const char* body, const size_t len) {
@@ -289,7 +308,7 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
   namespace ui = weatherui;
   switch (event.action) {
     case ui::ActionCities:
-      view_ = View::Cities;
+      openCities();
       break;
     case ui::ActionRefresh:
       if (placeCount_ == 0) return;
@@ -314,6 +333,7 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
       if (selected_ >= placeCount_) selected_ = placeCount_ > 0 ? placeCount_ - 1 : 0;
       saveState();
       haveForecast_ = loadCache();
+      openCities();
       break;
     }
     case ui::ActionAdd:
@@ -321,7 +341,8 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
       askCity();
       return;
     case ui::ActionUnits:
-      fahrenheit_ = !fahrenheit_;
+      if ((event.value == 1) == fahrenheit_) return;
+      fahrenheit_ = event.value == 1;
       saveState();
       break;
     case ui::ActionPick: {
@@ -367,12 +388,18 @@ void WeatherActivity::render(RenderLock&&) {
       m.place = placeCount_ ? &places_[selected_] : nullptr;
       m.forecast = haveForecast_ ? &forecast_ : nullptr;
       m.fahrenheit = fahrenheit_;
+      m.faces.ctx = &target;
+      m.faces.bindTitle = [](void* ctx, const bool huge) {
+        static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
+                                                           huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
+      };
       weatherui::buildForecast(surface, m);
       break;
     }
     case View::Cities: {
       weatherui::CitiesModel m;
       m.places = places_;
+      m.glance = glance_;
       m.count = placeCount_;
       m.selected = selected_;
       m.fahrenheit = fahrenheit_;
@@ -389,7 +416,7 @@ void WeatherActivity::render(RenderLock&&) {
     }
     case View::Status: {
       weatherui::StatusModel m;
-      m.title = "WEATHER";
+      m.kind = statusDismissable_ ? weatherui::StatusKind::Problem : weatherui::StatusKind::Working;
       m.headline = statusHeadline_;
       m.detail = statusDetail_;
       m.dismissable = statusDismissable_;

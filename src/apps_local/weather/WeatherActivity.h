@@ -31,6 +31,8 @@ class WeatherActivity final : public Activity {
   void loadState();
   void saveState();
   bool loadCache();
+  bool loadCacheFor(const weather::Place& place, weather::Forecast& out) const;
+  void openCities();
   bool saveCache(const char* body, size_t len);
   void cachePath(const weather::Place& place, char* out, size_t cap) const;
 
@@ -54,6 +56,7 @@ class WeatherActivity final : public Activity {
   // ~1.4 KB: on the heap with the activity, not the stack.
   weather::Forecast forecast_;
   bool haveForecast_ = false;
+  weatherui::CityGlance glance_[weather::kMaxPlaces];
 
   char query_[48] = "";
   weather::Place results_[weather::kMaxResults];

@@ -22,14 +22,32 @@ enum : fui::ActionId {
   ActionDismiss,
 };
 
+// The builder cannot reach the renderer, and the hero temperature is set in a
+// cut bigger than the three the target holds. The activity lends it this to
+// swap the title slot to the huge cut for that one string and back.
+struct FaceSwap {
+  void* ctx = nullptr;
+  void (*bindTitle)(void* ctx, bool huge) = nullptr;
+};
+
 struct ForecastModel {
   const weather::Place* place = nullptr;
   const weather::Forecast* forecast = nullptr;  // null: nothing fetched yet
   bool fahrenheit = false;
+  FaceSwap faces;
+};
+
+// What a saved city's cached forecast says now, for its row in the list.
+struct CityGlance {
+  bool have = false;
+  bool day = true;
+  int16_t code = 0;
+  float temp = 0;
 };
 
 struct CitiesModel {
   const weather::Place* places = nullptr;
+  const CityGlance* glance = nullptr;  // one per place, or null
   int count = 0;
   int selected = 0;
   bool fahrenheit = false;
@@ -41,8 +59,10 @@ struct ResultsModel {
   int count = 0;
 };
 
+enum class StatusKind : uint8_t { Working, Problem };
+
 struct StatusModel {
-  const char* title = "WEATHER";
+  StatusKind kind = StatusKind::Working;
   const char* headline = "";
   const char* detail = "";
   bool dismissable = false;
@@ -53,8 +73,7 @@ void buildCities(toybox::Screen& screen, const CitiesModel& model);
 void buildResults(toybox::Screen& screen, const ResultsModel& model);
 void buildStatus(toybox::Screen& screen, const StatusModel& model);
 
-// The sky glyph in a `size` square centred on (cx, cy). Exposed for the shelf
-// census and the host renderer.
+// The sky glyph in a `size` square centred on (cx, cy).
 void skyIcon(toybox::Screen& screen, weather::Sky sky, bool day, int cx, int cy, int size);
 
 }  // namespace weatherui
