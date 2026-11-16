@@ -33,6 +33,7 @@
 #include "kakuro/KakuroActivity.h"
 #include "kids/KidsActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
+#include "logic/LogicActivity.h"
 #include "markets/MarketsActivity.h"
 #include "mastermind/MastermindActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
@@ -93,6 +94,10 @@ constexpr shelf::Item kGames[] = {
     {"KAKURO", &icon_kakuro_32, &KakuroActivity::create},
     {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create},
     {"ILYA", &icon_kids_32, &KidsActivity::create},
+    {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither},
+    {"SHIKAKU", &icon_shikaku_32, &LogicActivity::createShikaku},
+    {"AKARI", &icon_akari_32, &LogicActivity::createAkari},
+    {"HASHI", &icon_hashi_32, &LogicActivity::createHashi},
 };
 constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
