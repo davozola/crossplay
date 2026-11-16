@@ -44,6 +44,7 @@
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
+#include "rpn/RpnActivity.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "sudoku/SudokuActivity.h"
@@ -121,6 +122,7 @@ constexpr shelf::Item kApps[] = {
     {"MARKETS", &icon_markets_32, &MarketsActivity::create},
     {"FM SYNTH LAB", &icon_fmlab_32, &FmLabActivity::create},
     {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create},
+    {"RPN 12C", &icon_rpn_32, &RpnActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
