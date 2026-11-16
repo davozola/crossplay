@@ -15,6 +15,7 @@
 #include "../../DevMode.h"
 #include "../../SilentRestart.h"
 #include "../../activities/network/WifiSelectionActivity.h"
+#include "../../activities/util/KeyboardEntryActivity.h"
 #include "../../components/UITheme.h"
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
@@ -64,18 +65,21 @@ void MarketsActivity::loadState() {
   if (!Storage.exists(kSavePath)) return;
   HalFile file;
   if (!Storage.openFileForRead("MKTS", kSavePath, file)) return;
-  uint8_t data[3] = {};
-  if (file.read(data, sizeof(data)) != sizeof(data) || data[0] != kSaveVersion) return;
+  uint8_t data[4] = {};
+  // The period came later: a shorter file is an older one, and still good.
+  if (file.read(data, sizeof(data)) < 3 || data[0] != kSaveVersion) return;
+  if (data[3] < mk::kPeriods) period_ = static_cast<mk::Period>(data[3]);
   for (const int choice : marketsui::kAutoChoices) {
     if (choice == data[1]) autoMinutes_ = choice;
   }
-  if (data[2] <= static_cast<uint8_t>(marketsui::Span::Quarter)) span_ = static_cast<marketsui::Span>(data[2]);
+  if (data[2] <= static_cast<uint8_t>(marketsui::Span::Year)) span_ = static_cast<marketsui::Span>(data[2]);
 }
 
 void MarketsActivity::saveState() {
   HalFile file;
   if (!Storage.openFileForWrite("MKTS", kSavePath, file)) return;
-  const uint8_t data[3] = {kSaveVersion, static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(span_)};
+  const uint8_t data[4] = {kSaveVersion, static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(span_),
+                           static_cast<uint8_t>(period_)};
   file.write(data, sizeof(data));
   file.flush();
 }
@@ -91,13 +95,85 @@ int MarketsActivity::fetchAll() {
   return ok;
 }
 
-void MarketsActivity::reprice() { marketsstore::pricePortfolio(portfolio_, priced_, euro_); }
+void MarketsActivity::reprice() { marketsstore::pricePortfolio(portfolio_, priced_, euro_, period_); }
 
 void MarketsActivity::openAmount(const int instrument) {
   amountInstrument_ = instrument;
   const int at = mk::positionOf(portfolio_, instrument);
   mk::entryFrom(at >= 0 ? portfolio_.positions[at].amount : 0, entry_);
   view_ = View::Amount;
+}
+
+// The keyboard, for a ticker or a name; what comes back goes out as a search.
+void MarketsActivity::askSearch() {
+  searchFrom_ = view_;
+  auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, "TICKER OR NAME", "", 20);
+  if (!keyboard) {
+    LOG_ERR("MKTS", "OOM: the keyboard");
+    return;
+  }
+  startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
+    interactionsReady_ = false;
+    if (!result.isCancelled) {
+      mk::tidyQuery(std::get<KeyboardResult>(result.data).text.c_str(), query_, sizeof(query_));
+      if (query_[0] != 0) {
+        job_ = Job::Search;
+        startRefresh();
+      }
+    }
+    requestUpdate();
+  });
+}
+
+void MarketsActivity::runSearch() {
+  int status = 0;
+  foundCount_ = marketsstore::search(query_, found_, kMaxFound, status);
+  view_ = View::Results;
+}
+
+// Makes a symbol one of the instruments, sparing the slots the cards and the
+// portfolio are using. -1 when every slot is in use.
+int MarketsActivity::adopt(const char* symbol, const char* company) {
+  bool used[mk::kCustom] = {};
+  auto spare = [&](const int instrument) {
+    if (instrument >= mk::kBuiltIn && instrument < mk::kInstruments) used[instrument - mk::kBuiltIn] = true;
+  };
+  for (int i = 0; i < mk::kAssets; ++i) spare(mk::instrumentOf(static_cast<mk::Asset>(i)));
+  for (int i = 0; i < portfolio_.count; ++i) spare(portfolio_.positions[i].instrument);
+  bool recycled = false;
+  const int instrument = mk::addCustom(symbol, company, used, &recycled);
+  if (instrument < mk::kBuiltIn) return instrument;
+  if (recycled) marketsstore::forget(instrument);
+  marketsstore::saveCustoms();
+  return instrument;
+}
+
+// An instrument chosen in a picker, or found by a search started from one.
+// `fresh` is one just added, which has no quote on the card yet.
+void MarketsActivity::pick(const int instrument, const bool fresh) {
+  if (!mk::present(instrument)) return;
+  const View from = view_ == View::Results ? searchFrom_ : view_;
+  if (from == View::HoldingPicker) {
+    if (!mk::instrumentAt(instrument).ownable) {
+      view_ = View::Portfolio;
+      showStatus("NOT THIS ONE", "ITS PRICE IS NOT IN DOLLARS OR EUROS, SO IT CANNOT BE ADDED TO THE TOTAL.", true);
+      return;
+    }
+    openAmount(instrument);
+    return;
+  }
+  mk::Picks picks = mk::picks();
+  picks.slot[static_cast<int>(open_)] = static_cast<uint8_t>(instrument);
+  marketsstore::savePicks(picks);
+  // The quote kept for it, if it was ever fetched; otherwise the card says to
+  // refresh, and one just found is fetched straight away.
+  quotes_[static_cast<int>(open_)] = mk::Quote{};
+  loadCached(open_);
+  view_ = View::Dashboard;
+  if (fresh && !quotes_[static_cast<int>(open_)].valid) {
+    job_ = Job::Refresh;
+    startRefresh();
+  }
 }
 
 void MarketsActivity::startRefresh() {
@@ -112,6 +188,7 @@ void MarketsActivity::startRefresh() {
       std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
         if (result.isCancelled) {
           step_ = Step::Idle;
+          job_ = Job::Refresh;
           showStatus("NO WI-FI", "QUOTES NEED A NETWORK. THE LAST ONES FETCHED STAY ON THE CARD.", true);
         } else {
           step_ = Step::Ready;
@@ -129,6 +206,20 @@ void MarketsActivity::showStatus(const char* headline, const char* detail, const
 }
 
 void MarketsActivity::loop() {
+  if (step_ == Step::Ready && job_ == Job::Search) {
+    step_ = Step::Running;
+    statusHeadline_ = "SEARCHING";
+    statusDetail_ = query_;
+    requestUpdateAndWait();
+    return;
+  }
+  if (step_ == Step::Running && job_ == Job::Search) {
+    step_ = Step::Idle;
+    job_ = Job::Refresh;
+    runSearch();
+    requestUpdate();
+    return;
+  }
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = "FETCHING";
@@ -178,6 +269,8 @@ void MarketsActivity::loop() {
       view_ = statusBack_;
     } else if (view_ == View::CardPicker) {
       view_ = View::Detail;
+    } else if (view_ == View::Results) {
+      view_ = searchFrom_;
     } else if (view_ == View::HoldingPicker || view_ == View::Amount) {
       view_ = View::Portfolio;
     } else {
@@ -226,7 +319,7 @@ void MarketsActivity::route(const fui::ActionEvent& event) {
       break;
     }
     case ui::ActionSpan:
-      if (event.value < 0 || event.value > static_cast<int16_t>(ui::Span::Quarter)) return;
+      if (event.value < 0 || event.value > static_cast<int16_t>(ui::Span::Year)) return;
       span_ = static_cast<ui::Span>(event.value);
       saveState();
       break;
@@ -245,21 +338,35 @@ void MarketsActivity::route(const fui::ActionEvent& event) {
       view_ = View::HoldingPicker;
       break;
     case ui::ActionPick:
-      if (event.value < 0 || event.value >= mk::kInstruments) return;
-      if (view_ == View::CardPicker) {
-        mk::Picks picks = mk::picks();
-        picks.slot[static_cast<int>(open_)] = static_cast<uint8_t>(event.value);
-        marketsstore::savePicks(picks);
-        // The quote kept for it, if it was ever fetched; otherwise the card
-        // says to refresh.
-        quotes_[static_cast<int>(open_)] = mk::Quote{};
-        loadCached(open_);
-        view_ = View::Dashboard;
-      } else if (view_ == View::HoldingPicker) {
-        openAmount(event.value);
-      } else {
-        return;
+      if (view_ != View::CardPicker && view_ != View::HoldingPicker) return;
+      pick(event.value, false);
+      break;
+    case ui::ActionSearch:
+      if (view_ != View::CardPicker && view_ != View::HoldingPicker) return;
+      askSearch();
+      return;
+    case ui::ActionFound: {
+      if (view_ != View::Results) return;
+      int instrument = -1;
+      if (event.value == -1) {
+        instrument = adopt(query_, "");
+      } else if (event.value >= 0 && event.value < foundCount_) {
+        instrument = adopt(found_[event.value].symbol, found_[event.value].company);
       }
+      if (instrument < 0) {
+        view_ = searchFrom_;
+        showStatus("NO ROOM",
+                   "NINE ADDED INSTRUMENTS ARE ALL IN USE. TAKE ONE OFF A CARD OR OUT OF THE PORTFOLIO FIRST.", true);
+        break;
+      }
+      pick(instrument, true);
+      break;
+    }
+    case ui::ActionPeriod:
+      if (view_ != View::Portfolio || event.value < 0 || event.value >= mk::kPeriods) return;
+      period_ = static_cast<mk::Period>(event.value);
+      saveState();
+      reprice();
       break;
     case ui::ActionPosition:
       if (event.value < 0 || event.value >= portfolio_.count) return;
@@ -328,6 +435,7 @@ void MarketsActivity::render(RenderLock&&) {
       m.portfolio = &portfolio_;
       m.priced = priced_;
       m.euro = euro_;
+      m.period = period_;
       m.faces = faces;
       marketsui::buildPortfolio(surface, m);
       break;
@@ -354,6 +462,15 @@ void MarketsActivity::render(RenderLock&&) {
       m.held = mk::positionOf(portfolio_, amountInstrument_) >= 0;
       m.faces = faces;
       marketsui::buildAmount(surface, m);
+      break;
+    }
+    case View::Results: {
+      marketsui::ResultsModel m;
+      m.query = query_;
+      m.found = found_;
+      m.count = foundCount_;
+      m.asTyped = mk::tickerLike(query_);
+      marketsui::buildResults(surface, m);
       break;
     }
     case View::Status: {

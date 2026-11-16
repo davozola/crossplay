@@ -25,8 +25,17 @@ void savePicks(const markets::Picks& picks);
 
 void loadPortfolio(markets::Portfolio& out);
 void savePortfolio(const markets::Portfolio& portfolio);
-// Each holding's price from the quotes on the card, and the euro's in dollars
+// Each holding's price in dollars from the quotes on the card, and the euro's
 // (0 when it has not been fetched).
-void pricePortfolio(const markets::Portfolio& portfolio, markets::Priced* priced, double& euro);
+// `previous` is the close the period is measured from.
+void pricePortfolio(const markets::Portfolio& portfolio, markets::Priced* priced, double& euro, markets::Period period);
+
+// What was added by ticker or name, kept on the card. loadPicks() reads it.
+void saveCustoms();
+// Drops the quote kept for an instrument, when its slot is given to another.
+void forget(int instrument);
+// Asks CNBC's symbol lookup, blocking; Wi-Fi must be up. How many it found,
+// or -1 when there was no usable answer (`status` says what came instead).
+int search(const char* query, markets::Found* out, int cap, int& status);
 
 }  // namespace marketsstore

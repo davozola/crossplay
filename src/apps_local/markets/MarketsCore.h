@@ -11,7 +11,7 @@
 
 namespace markets {
 
-constexpr int kMaxCloses = 96;  // three months of trading days, with room
+constexpr int kMaxCloses = 270;  // a year of trading days, with room
 
 // The dashboard's three cards, in its order. Which instrument each one shows
 // is chosen from the catalogue below; the names are the ones it began with.
@@ -28,8 +28,48 @@ struct AssetInfo {
 };
 
 // Everything that can be put on a card. Crypto is Coinbase's; the rest CNBC's.
-constexpr int kInstruments = 21;
+// The catalogue comes first, and after it the slots for what the owner added
+// by ticker or name, which may be empty.
+constexpr int kBuiltIn = 21;
+constexpr int kCustom = 9;
+constexpr int kInstruments = kBuiltIn + kCustom;
 const AssetInfo& instrumentAt(int instrument);
+// False for an empty slot.
+bool present(int instrument);
+
+// --- Instruments added by ticker or name. All of them are CNBC's. ---
+
+constexpr size_t kSymbolChars = 12;   // with the terminator: what a quote answer is matched in
+constexpr size_t kCompanyChars = 24;  // the caption under the name
+
+// The instrument with this source symbol, or -1.
+int findSymbol(const char* symbol);
+// Adds a symbol and returns its instrument, or the one that already has it.
+// With no empty slot it takes over the first one `used` leaves free (`used`
+// has kCustom entries; null means none are spared) and sets `recycled`, so the
+// caller can drop that slot's cached quote. -1 when there is no room or the
+// symbol cannot be one.
+int addCustom(const char* symbol, const char* company, const bool* used, bool* recycled);
+// What its prices turned out to be counted in. True when that is news.
+bool setCustomCurrency(int instrument, const char* currency);
+void clearCustoms();
+// One line a slot: symbol, company and currency between tabs.
+constexpr size_t kCustomsBytes = kCustom * (kSymbolChars + kCompanyChars + 8);
+size_t packCustoms(char* out, size_t cap);
+void unpackCustoms(const char* in, size_t len);
+
+// What was typed, as a search goes out: capitals, single spaces, no ends.
+void tidyQuery(const char* typed, char* out, size_t cap);
+// True when it could itself be a symbol: short and with no space in it.
+bool tickerLike(const char* query);
+void lookupUrl(const char* query, char* out, size_t cap);
+struct Found {
+  char symbol[kSymbolChars];
+  char company[kCompanyChars];
+  char exchange[12];
+};
+// CNBC's symbol lookup answer. Returns how many it read, `cap` at most.
+int parseLookup(const char* json, size_t len, Found* out, int cap);
 // What its price is counted in: "EUR" for the three European indexes, "USD" otherwise.
 const char* currencyOf(int instrument);
 // The euro in dollars, for a portfolio's total; -1 if it left the catalogue.
@@ -79,6 +119,9 @@ bool applyCnbcQuote(const char* json, size_t len, Asset asset, Quote& q);
 void coinbaseUrl(char* out, size_t cap);  // Bitcoin's
 void coinbaseUrlFor(const char* product, char* out, size_t cap);
 void cnbcBarsUrlFor(const char* symbol, int32_t today, char* out, size_t cap);
+// The same over `daysBack` days: a year's worth for the long changes.
+void cnbcBarsUrlSpan(const char* symbol, int32_t today, int daysBack, char* out, size_t cap);
+constexpr int kYearOfDays = 380;
 // One quote answer for several symbols at once.
 void cnbcQuoteUrlFor(const char* const* symbols, int count, char* out, size_t cap);
 bool applyCnbcQuoteFor(const char* json, size_t len, const char* symbol, Quote& q);
@@ -90,6 +133,13 @@ int32_t daysFromCivil(int year, int month, int day);
 double previousClose(const Quote& q);
 double dayChange(const Quote& q);
 double dayChangePercent(const Quote& q);
+// The spans a portfolio's change is counted over, in calendar time.
+enum class Period : uint8_t { Day = 0, Week = 1, Month = 2, Ytd = 3, Year = 4 };
+constexpr int kPeriods = 5;
+// The close a period is measured from: yesterday's, the one a week, a month or
+// a year before the newest, or the last of the year before. The oldest held
+// when the history does not reach that far.
+double closeBefore(const Quote& q, Period period);
 // Percent change from the close `sessions` trading days back to the price;
 // clamped to the history held. False when there is none to compare with.
 bool changeOver(const Quote& q, int sessions, double& percent);

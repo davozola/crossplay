@@ -26,10 +26,13 @@ enum : fui::ActionId {
   ActionKey,  // value: the character on the key
   ActionSaveAmount,
   ActionRemovePosition,
+  ActionPeriod,  // value: markets::Period, for the portfolio's change
+  ActionSearch,  // type a ticker or a name
+  ActionFound,   // value: a search result, or -1 for what was typed as it stands
 };
 
 // The slice of history the detail chart shows.
-enum class Span : uint8_t { Week = 0, Month = 1, Quarter = 2 };
+enum class Span : uint8_t { Week = 0, Month = 1, Quarter = 2, Year = 3 };
 
 // The minutes the auto-refresh picker offers; 0 is off.
 constexpr int kAutoChoices[] = {0, 5, 15, 30, 60};
@@ -67,6 +70,7 @@ struct PortfolioModel {
   const markets::Portfolio* portfolio = nullptr;
   const markets::Priced* priced = nullptr;  // one for each holding
   double euro = 0;                          // a euro in dollars; 0 when unknown
+  markets::Period period = markets::Period::Day;
   FaceSwap faces;
 };
 
@@ -86,6 +90,15 @@ struct AmountModel {
   FaceSwap faces;
 };
 
+// What a search brought back, and the offer to take what was typed as a symbol.
+struct ResultsModel {
+  const char* query = "";
+  const markets::Found* found = nullptr;
+  int count = 0;  // -1 when the lookup did not answer
+  bool asTyped = false;
+};
+
+void buildResults(toybox::Screen& screen, const ResultsModel& model);
 void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model);
 void buildPicker(toybox::Screen& screen, const PickerModel& model);
 void buildAmount(toybox::Screen& screen, const AmountModel& model);
