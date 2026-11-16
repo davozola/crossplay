@@ -62,81 +62,106 @@ bool fmtVolume(const double v, const char* want) {
 int main() {
   using namespace markets;
 
-  // --- an index, after the close ---
+  // --- an index: bars, then the quote laid over them ---
   {
-    const std::string json = slurp("sp500.json");
-    check(!json.empty(), "fixture sp500.json readable");
+    const std::string bars = slurp("cnbc_spx.json");
+    const std::string quote = slurp("cnbc_quote.json");
+    check(!bars.empty() && !quote.empty(), "cnbc fixtures readable");
     Quote q;
-    check(parseQuote(json.data(), json.size(), q), "sp500 parses");
-    check(q.valid && q.count == 64, "the null close is dropped with its stamp");
-    check(near(q.price, 6459.6), "price from meta");
-    check(near(previousClose(q), 6441.19), "previous close is the close before the last");
-    check(near(dayChange(q), 18.41), "day change");
-    check(near(dayChangePercent(q), 18.41 / 6441.19 * 100.0, 0.001), "day change percent");
-    check(std::strcmp(q.currency, "USD") == 0 && std::strcmp(q.zone, "EST") == 0, "currency and zone");
-    check(q.gmtOffset == -18000, "gmt offset");
-    check(!sessionOpen(q), "a price stamped at the bell is a closed session");
-    const Civil c = civilOf(q.time, q.gmtOffset);
-    check(c.year == 2026 && c.month == 11 && c.day == 13 && c.hour == 16 && c.minute == 0,
-          "last trade in exchange time");
+    check(parseCnbcBars(bars.data(), bars.size(), q), "spx bars parse");
+    check(q.valid && q.count == 75, "every bar kept");
+    check(near(q.price, 7561.67) && near(q.dayHigh, 7621.78) && near(q.dayLow, 7499.40), "the last bar is the day");
+    check(near(previousClose(q), 7592.40), "previous close is the bar before");
+    check(near(dayChange(q), -30.73), "day change");
+    check(std::strcmp(q.currency, "USD") == 0 && std::strcmp(q.zone, "EST") == 0 && q.gmtOffset == -18000, "new york");
+    check(!sessionOpen(q), "no session is claimed");
     int y = 0, m = 0, d = 0;
     civilOfDay(q.days[q.count - 1], y, m, d);
-    check(y == 2026 && m == 11 && d == 13, "last close's day");
+    check(y == 2026 && m == 11 && d == 13, "last bar's day");
     civilOfDay(q.days[0], y, m, d);
-    check(y == 2026 && m == 8 && d == 17, "first close's day");
+    check(y == 2026 && m == 8 && d == 3, "first bar's day");
+    const Civil c = civilOf(q.time, q.gmtOffset);
+    check(c.month == 11 && c.day == 13 && c.hour == 16, "stamped at that day's bell");
     float lo = 0, hi = 0;
     closeRange(q, 0, lo, hi);
-    check(near(lo, 6122.23) && near(hi, 6462.01), "range over everything held");
-    closeRange(q, 5, lo, hi);
-    check(lo >= 6122.23f && hi <= 6462.01f && lo <= hi, "range over a week sits inside it");
+    check(near(q.yearHigh, hi, 0.01) && near(q.yearLow, lo, 0.01), "without a quote the year is the range held");
+    check(applyCnbcQuote(quote.data(), quote.size(), Asset::Sp500, q), "spx quote applies");
+    check(q.count == 75 && near(q.price, 7561.67) && near(q.yearHigh, 7844.52) && near(q.yearLow, 6316.91),
+          "same day: the price stays the last close and the year's range arrives");
     double pct = 0;
     check(changeOver(q, 5, pct), "week change exists");
     check(near(pct, (q.price - q.closes[q.count - 6]) / q.closes[q.count - 6] * 100.0, 0.001), "week change value");
-    check(changeOver(q, 5000, pct), "a span longer than the history clamps to its start");
-    check(near(pct, (q.price - q.closes[0]) / q.closes[0] * 100.0, 0.001), "clamped change value");
-    check(!changeOver(q, 0, pct), "no change over no sessions");
+    check(changeOver(q, 5000, pct) && !changeOver(q, 0, pct), "spans clamp");
+
+    // A quote from a session the bars do not hold yet becomes a new close.
+    const std::string ixic = slurp("cnbc_ixic.json");
+    Quote n;
+    check(parseCnbcBars(ixic.data(), ixic.size(), n) && n.count == 75 && n.volume > 1e9,
+          "ixic bars parse, with volume");
+    const float before = n.closes[n.count - 1];
+    check(applyCnbcQuote(quote.data(), quote.size(), Asset::Nasdaq, n), "ixic quote applies");
+    check(n.count == 76 && near(n.price, 25136.273) && near(previousClose(n), before, 0.01), "today is appended");
+    civilOfDay(n.days[n.count - 1], y, m, d);
+    check(m == 11 && d == 16 && near(n.dayHigh, 25423.089), "dated from a full timestamp");
+    Quote stale = q;
+    stale.days[stale.count - 1] += 3;
+    stale.price = 1;
+    check(applyCnbcQuote(quote.data(), quote.size(), Asset::Sp500, stale) && near(stale.price, 1),
+          "an older quote does not move the price");
+    Quote none;
+    check(!applyCnbcQuote(quote.data(), quote.size(), Asset::Sp500, none), "nothing to lay a quote over");
+    check(!applyCnbcQuote("{}", 2, Asset::Sp500, q) && near(q.price, 7561.67),
+          "a quote without the symbol changes nothing");
   }
 
-  // --- bitcoin, mid-session ---
+  // --- bitcoin ---
   {
-    const std::string json = slurp("btc.json");
+    const std::string json = slurp("coinbase.json");
     Quote q;
-    check(parseQuote(json.data(), json.size(), q), "btc parses");
-    check(q.count == 92, "92 daily closes kept");
-    check(sessionOpen(q), "a price inside the trading period is an open session");
-    check(q.gmtOffset == 0 && std::strcmp(q.zone, "UTC") == 0, "utc");
-    const Civil c = civilOf(q.time, q.gmtOffset);
-    check(c.month == 11 && c.day == 16 && c.hour == 7 && c.minute == 58, "btc last trade time");
-    check(near(q.volume, 4.21e10, 1), "volume");
+    check(parseCoinbase(json.data(), json.size(), q), "coinbase parses");
+    check(q.count == kMaxCloses, "the newest closes fill the buffer");
+    check(near(q.price, 63961.67) && near(q.dayHigh, 65366.39) && near(q.dayLow, 63922), "today's candle");
+    check(near(previousClose(q), 65315.35), "yesterday's close");
+    check(q.days[q.count - 1] - q.days[0] == kMaxCloses - 1, "oldest first, a day apart");
+    int y = 0, m = 0, d = 0;
+    civilOfDay(q.days[q.count - 1], y, m, d);
+    check(y == 2026 && m == 11 && d == 16, "today");
+    check(q.yearHigh > q.dayHigh && q.yearLow < q.dayLow && q.yearLow > 0, "the range covers every candle");
+    check(near(q.volume, 4666.779, 0.01) && std::strcmp(q.zone, "UTC") == 0 && q.gmtOffset == 0, "volume and zone");
   }
 
   // --- rejects ---
   {
     Quote q;
-    const char* err = "{\"chart\":{\"result\":null,\"error\":{\"code\":\"Not Found\",\"description\":\"No data\"}}}";
-    check(!parseQuote(err, std::strlen(err), q) && !q.valid, "error answer rejected");
-    check(!parseQuote("", 0, q), "empty rejected");
-    check(!parseQuote("Too Many Requests", 17, q), "plain-text 429 body rejected");
-    const std::string json = slurp("nasdaq.json");
-    check(parseQuote(json.data(), json.size(), q), "nasdaq parses");
+    check(!parseCoinbase("", 0, q) && !parseCoinbase("Too Many Requests", 17, q) && !parseCoinbase("{}", 2, q),
+          "not candles");
+    check(!parseCoinbase("[[1794787200,1,2,3,4,5]]", 24, q), "one candle is not a history");
+    check(!parseCnbcBars("", 0, q) && !parseCnbcBars("<!DOCTYPE html>", 15, q) &&
+              !parseCnbcBars("{\"barData\":{}}", 14, q),
+          "not bars");
+    const std::string json = slurp("cnbc_spx.json");
     Quote half;
-    parseQuote(json.data(), json.size() / 2, half);  // must not crash
+    parseCnbcBars(json.data(), json.size() / 2, half);  // must not crash
     check(half.count <= kMaxCloses, "truncated answer safe");
+    const std::string candles = slurp("coinbase.json");
+    parseCoinbase(candles.data(), candles.size() / 3, half);
+    check(half.count <= kMaxCloses, "truncated candles safe");
   }
 
-  // --- more closes than the buffer keeps the newest ---
+  // --- more bars than the buffer keeps the newest ---
   {
-    std::string json = "{\"chart\":{\"result\":[{\"meta\":{\"regularMarketPrice\":300,\"gmtoffset\":0},\"timestamp\":[";
-    for (int i = 0; i < 200; ++i) json += (i ? "," : "") + std::to_string(86400 * (20000 + i));
-    json += "],\"indicators\":{\"quote\":[{\"close\":[";
-    for (int i = 0; i < 200; ++i) json += (i ? "," : "") + std::to_string(100 + i);
-    json += "]}]}}]}}";
+    std::string json = "{\"barData\":{\"priceBars\":[";
+    for (int i = 0; i < 200; ++i) {
+      char bar[96];
+      std::snprintf(bar, sizeof(bar),
+                    "%s{\"close\":\"%d.5\",\"high\":\"1\",\"low\":\"1\",\"tradeTime\":\"2026%02d%02d000000\"}",
+                    i ? "," : "", 100 + i, 1 + i / 28, 1 + i % 28);
+      json += bar;
+    }
+    json += "]}}";
     Quote q;
-    check(parseQuote(json.data(), json.size(), q), "long history parses");
-    check(q.count == kMaxCloses, "capped at the buffer");
-    check(near(q.closes[q.count - 1], 299) && near(q.closes[0], 300 - kMaxCloses),
-          "the newest closes are the ones kept");
-    check(q.days[q.count - 1] == 20199, "stamps stay in step with their closes");
+    check(parseCnbcBars(json.data(), json.size(), q) && q.count == kMaxCloses && near(q.price, 299.5),
+          "long history keeps the newest");
   }
 
   // --- formatting ---
@@ -181,11 +206,15 @@ int main() {
 
   // --- urls and the table ---
   {
-    char url[160];
-    quoteUrl(Asset::Sp500, url, sizeof(url));
-    check(std::strstr(url, "/chart/%5EGSPC?range=3mo&interval=1d") != nullptr, "index url");
-    quoteUrl(Asset::Bitcoin, url, sizeof(url));
-    check(std::strstr(url, "/chart/BTC-USD?") != nullptr, "btc url");
+    char url[240];
+    coinbaseUrl(url, sizeof(url));
+    check(std::strstr(url, "api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400") != nullptr,
+          "btc url");
+    cnbcBarsUrl(Asset::Sp500, daysFromCivil(2026, 11, 16), url, sizeof(url));
+    check(std::strstr(url, "/bars/.SPX/1D/20260714000000/20261118000000/adjusted/EST5EDT.json") != nullptr, "bars url");
+    cnbcQuoteUrl(url, sizeof(url));
+    check(std::strstr(url, "symbols=.SPX%7C.IXIC&") != nullptr && std::strlen(url) < sizeof(url) - 1, "quote url");
+    check(daysFromCivil(1970, 1, 1) == 0 && daysFromCivil(2026, 11, 16) == 20773, "days from civil");
     check(infoOf(Asset::Bitcoin).always && !infoOf(Asset::Nasdaq).always, "only bitcoin trades around the clock");
   }
 

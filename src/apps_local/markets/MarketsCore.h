@@ -1,9 +1,10 @@
 #pragma once
 
-// MARKETS' model: one instrument's quote and daily closes read out of a Yahoo
-// Finance chart answer, and the arithmetic and number formatting the screens
-// show. Freestanding (no Arduino), so host-tests/markets runs it against a
-// fixture in the answer's shape.
+// MARKETS' model: one instrument's quote and daily closes, and the arithmetic
+// and number formatting the screens show. Bitcoin is read out of Coinbase's
+// daily candles; the two indexes out of CNBC's daily bars, with its quote
+// answer laid over them for the live price and the year's range. Freestanding
+// (no Arduino), so host-tests/markets runs it against fixtures in those shapes.
 
 #include <cstddef>
 #include <cstdint>
@@ -19,7 +20,7 @@ constexpr int kAssets = 3;
 struct AssetInfo {
   const char* name;     // "BITCOIN"
   const char* caption;  // "BTC / USD"
-  const char* symbol;   // Yahoo's, URL-encoded
+  const char* symbol;   // the source's own: Coinbase's product or CNBC's symbol
   const char* file;     // cache file stem
   bool always;          // trades around the clock
 };
@@ -46,9 +47,21 @@ struct Quote {
   int count = 0;
 };
 
-// False unless the answer holds a price and at least two closes.
-bool parseQuote(const char* json, size_t len, Quote& out);
-void quoteUrl(Asset asset, char* out, size_t cap);
+// Coinbase's candles for a product: an array of [time, low, high, open, close,
+// volume], newest first. False unless it holds at least two.
+bool parseCoinbase(const char* json, size_t len, Quote& out);
+// CNBC's daily bars for one symbol, oldest first. False unless it holds two.
+bool parseCnbcBars(const char* json, size_t len, Quote& out);
+// Lays CNBC's quote for `asset` over bars already read: the live price as the
+// last close, the day's and the year's range. False when the answer has no
+// such symbol, which leaves `q` as it was.
+bool applyCnbcQuote(const char* json, size_t len, Asset asset, Quote& q);
+
+void coinbaseUrl(char* out, size_t cap);
+// Bars for the four months up to `today`, a day count since 1970.
+void cnbcBarsUrl(Asset asset, int32_t today, char* out, size_t cap);
+void cnbcQuoteUrl(char* out, size_t cap);
+int32_t daysFromCivil(int year, int month, int day);
 
 double previousClose(const Quote& q);
 double dayChange(const Quote& q);
