@@ -252,12 +252,12 @@ Most of the shelf never touches the network. Of the parts that do:
   York Times itself only for the day or two that mirror has not caught up with,
   never for a day after today; Trivia's question pack and xkcd's comics are downloaded once onto
   the card.
-- **Weather asks Open-Meteo, and Markets asks Yahoo Finance.** Weather sends
+- **Weather asks Open-Meteo, and Markets asks Coinbase and CNBC.** Weather sends
   the city name you type to Open-Meteo's geocoder and a saved city's
   coordinates to its forecast API; Naval Weather sends the same coordinates to
-  its marine and forecast APIs. Markets fetches three public quotes from
-  Yahoo Finance's chart endpoint, which is not an official API and can change
-  without notice; with auto-refresh on it does so on a timer and keeps the
+  its marine and forecast APIs. Markets fetches Bitcoin's daily candles from
+  Coinbase's public API and the two indexes from CNBC's chart and quote
+  endpoints, which are not an official API and can change without notice; with auto-refresh on it does so on a timer and keeps the
   device awake and on Wi-Fi to do it.
 - **Opening a Hacker News article sends its URL to a third party.** The story
   list comes from the public [Algolia API](https://hn.algolia.com/api), and

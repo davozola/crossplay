@@ -8,7 +8,7 @@
 #include "MarketsScreens.h"
 
 // MARKETS: Bitcoin, the S&P 500 and the Nasdaq on one screen that can stand on
-// a desk. Quotes come from Yahoo Finance's chart endpoint, one small answer per
+// a desk. Bitcoin comes from Coinbase's daily candles and the indexes from CNBC, one small answer per
 // instrument, and are kept on the card so the last ones read with no network.
 // With auto-refresh on, the device stays awake and fetches again by itself.
 class MarketsActivity final : public Activity {
@@ -33,7 +33,7 @@ class MarketsActivity final : public Activity {
   void loadState();
   void saveState();
   bool loadCached(markets::Asset asset);
-  bool fetch(markets::Asset asset);
+  void saveCached(markets::Asset asset);
   int fetchAll();
   void startRefresh();
   void showStatus(const char* headline, const char* detail, bool dismissable);
@@ -54,6 +54,8 @@ class MarketsActivity final : public Activity {
   const char* statusHeadline_ = "";
   const char* statusDetail_ = "";
   bool statusDismissable_ = false;
+  // What each source answered on the last round, for the page shown when none did.
+  char report_[96] = "";
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;

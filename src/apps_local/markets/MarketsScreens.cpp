@@ -217,9 +217,16 @@ void chart(toybox::Screen& screen, const fui::Rect& r, const mk::Quote& q, const
 void statusLine(const mk::Asset asset, const mk::Quote& q, char* out, const size_t cap) {
   const mk::Civil c = mk::civilOf(q.time, q.gmtOffset);
   if (mk::infoOf(asset).always) {
-    std::snprintf(out, cap, "%d %s %02d:%02d %s", c.day, mk::monthName(c.month), c.hour, c.minute, q.zone);
+    // A time on the stroke of midnight is a candle's day, not a clock reading.
+    if (q.time % 86400 == 0)
+      std::snprintf(out, cap, "%d %s %s", c.day, mk::monthName(c.month), q.zone);
+    else
+      std::snprintf(out, cap, "%d %s %02d:%02d %s", c.day, mk::monthName(c.month), c.hour, c.minute, q.zone);
   } else if (mk::sessionOpen(q)) {
     std::snprintf(out, cap, "OPEN %02d:%02d %s", c.hour, c.minute, q.zone);
+  } else if (q.sessionEnd == 0) {
+    // The source does not say whether the exchange is open: give the day the price is from.
+    std::snprintf(out, cap, "AS OF %d %s", c.day, mk::monthName(c.month));
   } else {
     std::snprintf(out, cap, "CLOSED %d %s", c.day, mk::monthName(c.month));
   }
@@ -479,7 +486,10 @@ void buildDetail(toybox::Screen& screen, const DetailModel& model) {
   y += 12;
   if (q.dayHigh > 0 && q.dayLow > 0) rangeRow(screen, x, y, inner, "TODAY", q.dayLow, q.dayHigh, q.price);
   y += 34;
-  if (q.yearHigh > 0 && q.yearLow > 0) rangeRow(screen, x, y, inner, "52 WEEKS", q.yearLow, q.yearHigh, q.price);
+  if (q.yearHigh > 0 && q.yearLow > 0) {
+    // Coinbase hands over 300 daily candles, not a year of them.
+    rangeRow(screen, x, y, inner, info.always ? "300 DAYS" : "52 WEEKS", q.yearLow, q.yearHigh, q.price);
+  }
   y += 38;
   box(screen, x, y, inner, toybox::kHairline, kInk);
   y += 14;
