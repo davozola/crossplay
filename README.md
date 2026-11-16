@@ -26,7 +26,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **28 games and 10 apps**,
+that holds still is good at: **29 games and 10 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -78,6 +78,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Tak**          | Build a road edge to edge. 4x4 to 6x6, against the device or a friend.       |
 | **Inner Clock**  | Tap, count 5 or 10 seconds in your head, tap again. To the hundredth.        |
 | **Kakuro**       | Cross sums, 5x5 to 9x9. Every grid proved to have one answer, no guessing.   |
+| **Mastermind**   | Crack the hidden code of shapes, alone against the device. Three levels.     |
 
 ### Apps
 
