@@ -41,16 +41,16 @@ int decimalsFor(const double magnitude) { return magnitude >= 10000 ? 0 : 2; }
 
 namespace {
 
-constexpr AssetInfo kCatalogue[kInstruments] = {
+constexpr AssetInfo kCatalogue[kBuiltIn] = {
     {"BITCOIN", "BTC / USD", "BTC-USD", "btc", true, true},
-    {"S&P 500", "US LARGE CAPS", ".SPX", "sp500", false, false},
-    {"NASDAQ", "COMPOSITE", ".IXIC", "nasdaq", false, false},
+    {"S&P 500", "US LARGE CAPS", ".SPX", "sp500", false, true},
+    {"NASDAQ", "COMPOSITE", ".IXIC", "nasdaq", false, true},
     {"ETHEREUM", "ETH / USD", "ETH-USD", "eth", true, true},
     {"SOLANA", "SOL / USD", "SOL-USD", "sol", true, true},
-    {"DOW JONES", "INDUSTRIALS", ".DJI", "dji", false, false},
-    {"DAX", "GERMANY 40", ".GDAXI", "dax", false, false},
-    {"IBEX 35", "SPAIN", ".IBEX", "ibex", false, false},
-    {"STOXX 50", "EURO ZONE", ".STOXX50E", "stoxx", false, false},
+    {"DOW JONES", "INDUSTRIALS", ".DJI", "dji", false, true},
+    {"DAX", "GERMANY 40", ".GDAXI", "dax", false, true},
+    {"IBEX 35", "SPAIN", ".IBEX", "ibex", false, true},
+    {"STOXX 50", "EURO ZONE", ".STOXX50E", "stoxx", false, true},
     {"APPLE", "AAPL", "AAPL", "aapl", false, true},
     {"MICROSOFT", "MSFT", "MSFT", "msft", false, true},
     {"NVIDIA", "NVDA", "NVDA", "nvda", false, true},
@@ -61,7 +61,7 @@ constexpr AssetInfo kCatalogue[kInstruments] = {
     {"SPY", "S&P 500 ETF", "SPY", "spy", false, true},
     {"QQQ", "NASDAQ 100 ETF", "QQQ", "qqq", false, true},
     {"GLD", "GOLD ETF", "GLD", "gld", false, true},
-    {"GOLD", "USD / OUNCE", "@GC.1", "gold", false, false},
+    {"GOLD", "USD / OUNCE", "@GC.1", "gold", false, true},
     {"EUR / USD", "EURO IN DOLLARS", "EUR=", "eurusd", false, false},
 };
 constexpr int kEuro = 20;
@@ -89,11 +89,241 @@ void escape(const char* symbol, char* out, const size_t cap) {
 
 }  // namespace
 
-const AssetInfo& instrumentAt(const int instrument) {
-  return kCatalogue[instrument >= 0 && instrument < kInstruments ? instrument : 0];
+namespace {
+
+// What the owner added. `info` points into the slot's own strings.
+struct CustomSlot {
+  char symbol[kSymbolChars] = "";
+  char name[10] = "";
+  char company[kCompanyChars] = "";
+  char currency[4] = "";
+  AssetInfo info = {"", "", "", "", false, false};
+};
+CustomSlot customs[kCustom];
+constexpr const char* kCustomFiles[kCustom] = {"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"};
+
+void refreshSlot(const int slot) {
+  CustomSlot& c = customs[slot];
+  std::memcpy(c.name, c.symbol, sizeof(c.name) - 1);
+  c.name[sizeof(c.name) - 1] = 0;
+  // Held in dollars or in euros, which the total knows how to count.
+  const bool countable =
+      c.currency[0] == 0 || std::strcmp(c.currency, "USD") == 0 || std::strcmp(c.currency, "EUR") == 0;
+  c.info = AssetInfo{c.name, c.company[0] ? c.company : c.symbol, c.symbol, kCustomFiles[slot], false, countable};
 }
 
-const char* currencyOf(const int instrument) { return instrument >= 6 && instrument <= 8 ? "EUR" : "USD"; }
+bool symbolChar(const char c) {
+  return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '=' || c == '@' || c == '^';
+}
+
+// Capitals the pixel faces have, and nothing else.
+void tidyInto(const char* in, char* out, const size_t cap) {
+  size_t at = 0;
+  bool space = false;
+  for (; in != nullptr && *in != 0 && at + 1 < cap; ++in) {
+    char c = *in;
+    if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    const bool keep = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '&' ||
+                      c == '=' || c == '@' || c == '^' || c == '/';
+    if (!keep) {
+      space = at > 0;
+      continue;
+    }
+    if (space && at + 2 < cap) out[at++] = ' ';
+    space = false;
+    out[at++] = c;
+  }
+  if (cap > 0) out[at] = 0;
+}
+
+}  // namespace
+
+const AssetInfo& instrumentAt(const int instrument) {
+  if (instrument >= kBuiltIn && instrument < kInstruments) return customs[instrument - kBuiltIn].info;
+  return kCatalogue[instrument >= 0 && instrument < kBuiltIn ? instrument : 0];
+}
+
+bool present(const int instrument) {
+  if (instrument < 0 || instrument >= kInstruments) return false;
+  return instrument < kBuiltIn || customs[instrument - kBuiltIn].symbol[0] != 0;
+}
+
+const char* currencyOf(const int instrument) {
+  if (instrument >= kBuiltIn && instrument < kInstruments) {
+    const char* c = customs[instrument - kBuiltIn].currency;
+    return c[0] ? c : "USD";
+  }
+  return instrument >= 6 && instrument <= 8 ? "EUR" : "USD";
+}
+
+int findSymbol(const char* symbol) {
+  if (symbol == nullptr || *symbol == 0) return -1;
+  for (int i = 0; i < kInstruments; ++i) {
+    if (present(i) && std::strcmp(instrumentAt(i).symbol, symbol) == 0) return i;
+  }
+  return -1;
+}
+
+int addCustom(const char* symbol, const char* company, const bool* used, bool* recycled) {
+  if (recycled != nullptr) *recycled = false;
+  if (symbol == nullptr || *symbol == 0 || std::strlen(symbol) >= kSymbolChars) return -1;
+  for (const char* c = symbol; *c != 0; ++c) {
+    if (!symbolChar(*c)) return -1;
+  }
+  const int already = findSymbol(symbol);
+  if (already >= 0) return already;
+  int slot = -1;
+  for (int i = 0; i < kCustom && slot < 0; ++i) {
+    if (customs[i].symbol[0] == 0) slot = i;
+  }
+  for (int i = 0; i < kCustom && slot < 0; ++i) {
+    if (used == nullptr || !used[i]) {
+      slot = i;
+      if (recycled != nullptr) *recycled = true;
+    }
+  }
+  if (slot < 0) return -1;
+  CustomSlot& c = customs[slot];
+  std::snprintf(c.symbol, sizeof(c.symbol), "%s", symbol);
+  tidyInto(company, c.company, sizeof(c.company));
+  c.currency[0] = 0;
+  refreshSlot(slot);
+  return kBuiltIn + slot;
+}
+
+bool setCustomCurrency(const int instrument, const char* currency) {
+  if (instrument < kBuiltIn || instrument >= kInstruments || currency == nullptr) return false;
+  CustomSlot& c = customs[instrument - kBuiltIn];
+  if (c.symbol[0] == 0 || std::strlen(currency) != 3 || std::strcmp(c.currency, currency) == 0) return false;
+  std::snprintf(c.currency, sizeof(c.currency), "%s", currency);
+  refreshSlot(instrument - kBuiltIn);
+  return true;
+}
+
+void clearCustoms() {
+  for (int i = 0; i < kCustom; ++i) {
+    customs[i] = CustomSlot{};
+    refreshSlot(i);
+  }
+}
+
+size_t packCustoms(char* out, const size_t cap) {
+  size_t at = 0;
+  for (int i = 0; i < kCustom; ++i) {
+    const CustomSlot& c = customs[i];
+    const int n = std::snprintf(out + at, cap - at, "%s\t%s\t%s\n", c.symbol, c.company, c.currency);
+    if (n < 0 || static_cast<size_t>(n) >= cap - at) return 0;
+    at += static_cast<size_t>(n);
+  }
+  return at;
+}
+
+void unpackCustoms(const char* in, const size_t len) {
+  clearCustoms();
+  size_t at = 0;
+  for (int slot = 0; slot < kCustom && at < len; ++slot) {
+    char field[3][kCompanyChars] = {"", "", ""};
+    int which = 0;
+    size_t n = 0;
+    for (; at < len && in[at] != '\n'; ++at) {
+      if (in[at] == '\t') {
+        if (which < 2) ++which;
+        n = 0;
+      } else if (n + 1 < sizeof(field[0])) {
+        field[which][n++] = in[at];
+        field[which][n] = 0;
+      }
+    }
+    ++at;
+    if (field[0][0] == 0 || std::strlen(field[0]) >= kSymbolChars) continue;
+    // Straight into its own slot, so the cache files keep meaning what they did.
+    CustomSlot& c = customs[slot];
+    std::snprintf(c.symbol, sizeof(c.symbol), "%.*s", static_cast<int>(sizeof(c.symbol) - 1), field[0]);
+    std::snprintf(c.company, sizeof(c.company), "%s", field[1]);
+    if (std::strlen(field[2]) == 3) std::snprintf(c.currency, sizeof(c.currency), "%.3s", field[2]);
+    refreshSlot(slot);
+  }
+}
+
+void tidyQuery(const char* typed, char* out, const size_t cap) { tidyInto(typed, out, cap); }
+
+bool tickerLike(const char* query) {
+  if (query == nullptr || *query == 0 || std::strlen(query) >= kSymbolChars) return false;
+  for (const char* c = query; *c != 0; ++c) {
+    if (!symbolChar(*c)) return false;
+  }
+  return true;
+}
+
+void lookupUrl(const char* query, char* out, const size_t cap) {
+  int at = std::snprintf(out, cap, "https://symlookup.cnbc.com/symservice/symlookup.do?prefix=");
+  for (const char* c = query; c != nullptr && *c != 0 && at > 0 && static_cast<size_t>(at) + 4 < cap; ++c) {
+    const bool plain = (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '.' || *c == '-';
+    at += std::snprintf(out + at, cap - static_cast<size_t>(at), plain ? "%c" : "%%%02X",
+                        plain ? *c : static_cast<unsigned char>(*c));
+  }
+  if (at > 0 && static_cast<size_t>(at) < cap) {
+    std::snprintf(out + at, cap - static_cast<size_t>(at), "&partnerid=20064&pgok=1&pgsize=12");
+  }
+}
+
+namespace {
+
+// The string value of `key` between `from` and `to`, or false.
+bool valueIn(const char* from, const char* to, const char* key, char* out, const size_t cap) {
+  const size_t keyLen = std::strlen(key);
+  for (const char* p = from; p + keyLen + 2 < to; ++p) {
+    if (*p != '"' || std::strncmp(p + 1, key, keyLen) != 0 || p[1 + keyLen] != '"') continue;
+    const char* v = p + keyLen + 2;
+    while (v < to && (*v == ' ' || *v == ':')) ++v;
+    if (v >= to || *v != '"') return false;
+    ++v;
+    size_t n = 0;
+    for (; v < to && *v != '"'; ++v) {
+      if (*v == '\\' && v + 1 < to) ++v;
+      if (n + 1 < cap) out[n++] = *v;
+    }
+    out[n] = 0;
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+int parseLookup(const char* json, const size_t len, Found* out, const int cap) {
+  int count = 0;
+  const char* end = json + len;
+  const char* at = json;
+  while (count < cap && at < end) {
+    // One result is one object; none of them nests another.
+    const char* open = static_cast<const char*>(std::memchr(at, '{', static_cast<size_t>(end - at)));
+    if (open == nullptr) break;
+    const char* next = static_cast<const char*>(std::memchr(open + 1, '{', static_cast<size_t>(end - open - 1)));
+    const char* close = static_cast<const char*>(std::memchr(open + 1, '}', static_cast<size_t>(end - open - 1)));
+    if (close == nullptr) break;
+    if (next != nullptr && next < close) {
+      at = next;
+      continue;
+    }
+    at = close + 1;
+    char symbol[24];
+    char company[64];
+    if (!valueIn(open, close, "symbolName", symbol, sizeof(symbol)) || !tickerLike(symbol)) continue;
+    bool seen = false;
+    for (int i = 0; i < count; ++i) seen = seen || std::strcmp(out[i].symbol, symbol) == 0;
+    if (seen) continue;
+    Found& f = out[count++];
+    std::snprintf(f.symbol, sizeof(f.symbol), "%.*s", static_cast<int>(sizeof(f.symbol) - 1), symbol);
+    company[0] = 0;
+    valueIn(open, close, "companyName", company, sizeof(company));
+    tidyInto(company, f.company, sizeof(f.company));
+    char exchange[32] = "";
+    valueIn(open, close, "exchangeName", exchange, sizeof(exchange));
+    tidyInto(exchange, f.exchange, sizeof(f.exchange));
+  }
+  return count;
+}
 
 int euroInstrument() { return kEuro; }
 
@@ -101,7 +331,7 @@ Picks defaultPicks() { return Picks{{0, 1, 2}}; }
 
 void setPicks(const Picks& picks) {
   const Picks fallback = defaultPicks();
-  for (int i = 0; i < kAssets; ++i) current.slot[i] = picks.slot[i] < kInstruments ? picks.slot[i] : fallback.slot[i];
+  for (int i = 0; i < kAssets; ++i) current.slot[i] = present(picks.slot[i]) ? picks.slot[i] : fallback.slot[i];
 }
 
 Picks picks() { return current; }
@@ -119,9 +349,9 @@ void coinbaseUrlFor(const char* product, char* out, const size_t cap) {
 
 void coinbaseUrl(char* out, const size_t cap) { coinbaseUrlFor(kCatalogue[0].symbol, out, cap); }
 
-void cnbcBarsUrlFor(const char* symbol, const int32_t today, char* out, const size_t cap) {
+void cnbcBarsUrlSpan(const char* symbol, const int32_t today, const int daysBack, char* out, const size_t cap) {
   int y0 = 0, m0 = 0, d0 = 0, y1 = 0, m1 = 0, d1 = 0;
-  civilOfDay(today - 125, y0, m0, d0);
+  civilOfDay(today - daysBack, y0, m0, d0);
   civilOfDay(today + 2, y1, m1, d1);
   char escaped[40];
   escape(symbol, escaped, sizeof(escaped));
@@ -129,6 +359,10 @@ void cnbcBarsUrlFor(const char* symbol, const int32_t today, char* out, const si
       out, cap,
       "https://ts-api.cnbc.com/harmony/app/bars/%s/1D/%04d%02d%02d000000/%04d%02d%02d000000/adjusted/EST5EDT.json",
       escaped, y0 % 10000, m0 % 100, d0 % 100, y1 % 10000, m1 % 100, d1 % 100);
+}
+
+void cnbcBarsUrlFor(const char* symbol, const int32_t today, char* out, const size_t cap) {
+  cnbcBarsUrlSpan(symbol, today, 125, out, cap);
 }
 
 void cnbcBarsUrl(const Asset asset, const int32_t today, char* out, const size_t cap) {
@@ -206,8 +440,9 @@ bool parseCoinbase(const char* json, const size_t len, Quote& out) {
   const Span candles = arrayOf(json, len);
   if (!candles.ok()) return false;
   // Newest first. The first kMaxCloses are kept, the rest only widen the range.
-  float newest[kMaxCloses];
-  int32_t newestDay[kMaxCloses];
+  // Static: two kilobytes are better off the stack, and one answer is read at a time.
+  static float newest[kMaxCloses];
+  static int32_t newestDay[kMaxCloses];
   int kept = 0;
   double high = 0, low = 0;
   forEach(candles, 400, [&](const int i, const Span& candle) {
@@ -331,6 +566,9 @@ bool applyCnbcQuoteFor(const char* json, const size_t len, const char* want, Quo
       q.closes[q.count - 1] = static_cast<float>(last);
       q.price = last;
     }
+    char currency[8] = "";
+    flatjson::string(member(quote, "currencyCode"), currency, sizeof(currency));
+    if (std::strlen(currency) == 3) std::snprintf(q.currency, sizeof(q.currency), "%.3s", currency);
     const double high = loose(member(quote, "high"));
     const double low = loose(member(quote, "low"));
     if (high > 0 && low > 0 && q.price == last) {
@@ -348,6 +586,23 @@ bool applyCnbcQuoteFor(const char* json, const size_t len, const char* want, Quo
 }
 
 double previousClose(const Quote& q) { return q.count >= 2 ? static_cast<double>(q.closes[q.count - 2]) : q.price; }
+
+double closeBefore(const Quote& q, const Period period) {
+  if (q.count < 2) return q.price;
+  if (period == Period::Day) return previousClose(q);
+  const int32_t newest = q.days[q.count - 1];
+  int32_t target = newest - 365;
+  if (period == Period::Week) target = newest - 7;
+  if (period == Period::Month) target = newest - 30;
+  if (period == Period::Ytd) {
+    int year = 0, month = 0, day = 0;
+    civilOfDay(newest, year, month, day);
+    target = daysFromCivil(year, 1, 1) - 1;
+  }
+  double close = q.closes[0];
+  for (int i = 0; i < q.count - 1 && q.days[i] <= target; ++i) close = q.closes[i];
+  return close;
+}
 
 double dayChange(const Quote& q) { return q.price - previousClose(q); }
 
@@ -478,7 +733,7 @@ const char* monthName(const int month) {
 }
 
 bool setPosition(Portfolio& portfolio, const int instrument, const double amount) {
-  if (instrument < 0 || instrument >= kInstruments || !kCatalogue[instrument].ownable) return false;
+  if (!present(instrument) || !instrumentAt(instrument).ownable) return false;
   const int at = positionOf(portfolio, instrument);
   if (!(amount > 0)) {
     if (at < 0) return false;

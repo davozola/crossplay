@@ -19,13 +19,14 @@ namespace mk = markets;
 namespace {
 
 constexpr char kCacheDir[] = "/.crosspoint/markets";
-constexpr uint8_t kCacheVersion = 2;    // 1 kept the source's raw answer
-constexpr size_t kMaxBody = 64 * 1024;  // 300 daily candles are ~22 KB
+constexpr uint8_t kCacheVersion = 3;     // 1 kept the source's raw answer
+constexpr size_t kMaxBody = 128 * 1024;  // 300 daily candles are ~22 KB
 // CNBC's endpoints are written for a browser; the others take anything.
 constexpr char kBrowserAgent[] =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
 constexpr char kPicksPath[] = "/.crosspoint/markets/picks";
+constexpr char kCustomsPath[] = "/.crosspoint/markets/custom";
 constexpr char kPortfolioPath[] = "/.crosspoint/markets/cartera";
 bool picksLoaded = false;
 
@@ -113,6 +114,12 @@ void saveInstrument(const int instrument, const mk::Quote& quote) {
 void loadPicks() {
   if (picksLoaded) return;
   picksLoaded = true;
+  // What was added by hand first: a pick may be one of them.
+  mk::clearCustoms();
+  if (Storage.exists(kCustomsPath)) {
+    const String kept = Storage.readFile(kCustomsPath);
+    mk::unpackCustoms(kept.c_str(), kept.length());
+  }
   mk::setPicks(mk::defaultPicks());
   if (!Storage.exists(kPicksPath)) return;
   HalFile file;
@@ -137,8 +144,33 @@ void savePicks(const mk::Picks& picks) {
   file.flush();
 }
 
+void saveCustoms() {
+  Storage.ensureDirectoryExists(kCacheDir);
+  char text[mk::kCustomsBytes];
+  if (mk::packCustoms(text, sizeof(text)) == 0) return;
+  if (!Storage.writeFile(kCustomsPath, String(text))) LOG_ERR("MKTS", "Could not write %s", kCustomsPath);
+}
+
+void forget(const int instrument) {
+  if (!mk::present(instrument)) return;
+  char path[64];
+  cachePath(instrument, "q", path, sizeof(path));
+  if (Storage.exists(path)) Storage.remove(path);
+}
+
+int search(const char* query, mk::Found* out, const int cap, int& status) {
+  Storage.ensureDirectoryExists(kCacheDir);
+  char url[256];
+  mk::lookupUrl(query, url, sizeof(url));
+  std::unique_ptr<char[]> body;
+  size_t size = 0;
+  if (!get(url, body, size, status)) return -1;
+  return mk::parseLookup(body.get(), size, out, cap);
+}
+
 void loadPortfolio(mk::Portfolio& out) {
   out.count = 0;
+  loadPicks();
   if (!Storage.exists(kPortfolioPath)) return;
   HalFile file;
   uint8_t bytes[mk::kPortfolioBytes];
@@ -157,7 +189,7 @@ void savePortfolio(const mk::Portfolio& portfolio) {
   file.flush();
 }
 
-void pricePortfolio(const mk::Portfolio& portfolio, mk::Priced* priced, double& euro) {
+void pricePortfolio(const mk::Portfolio& portfolio, mk::Priced* priced, double& euro, const mk::Period period) {
   euro = 0;
   auto quote = makeUniqueNoThrow<mk::Quote>();
   if (!quote) {
@@ -165,14 +197,25 @@ void pricePortfolio(const mk::Portfolio& portfolio, mk::Priced* priced, double& 
     for (int i = 0; i < portfolio.count; ++i) priced[i] = mk::Priced{};
     return;
   }
+  if (mk::euroInstrument() >= 0 && loadInstrument(mk::euroInstrument(), *quote)) euro = quote->price;
   for (int i = 0; i < portfolio.count; ++i) {
     priced[i] = mk::Priced{};
-    if (!loadInstrument(portfolio.positions[i].instrument, *quote)) continue;
+    const int instrument = portfolio.positions[i].instrument;
+    if (!loadInstrument(instrument, *quote)) continue;
+    // Everything is totalled in dollars: euros at the rate fetched with them,
+    // and what is counted in anything else is left unpriced.
+    double rate = 1;
+    const char* currency = mk::currencyOf(instrument);
+    if (std::strcmp(currency, "EUR") == 0) {
+      rate = euro;
+    } else if (std::strcmp(currency, "USD") != 0) {
+      rate = 0;
+    }
+    if (!(rate > 0)) continue;
     priced[i].valid = true;
-    priced[i].price = quote->price;
-    priced[i].previous = mk::previousClose(*quote);
+    priced[i].price = quote->price * rate;
+    priced[i].previous = mk::closeBefore(*quote, period) * rate;
   }
-  if (mk::euroInstrument() >= 0 && loadInstrument(mk::euroInstrument(), *quote)) euro = quote->price;
 }
 
 bool loadCached(const mk::Asset asset, mk::Quote& out) {
@@ -246,8 +289,15 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
       } else if (today == 0) {
         std::snprintf(word, sizeof(word), "NO DATE");
       } else {
-        mk::cnbcBarsUrlFor(info.symbol, today, url, sizeof(url));
+        // A year of bars, and the four months this always asked for if the
+        // source will not give that many.
+        mk::cnbcBarsUrlSpan(info.symbol, today, mk::kYearOfDays, url, sizeof(url));
         parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
+        if (!parsed) {
+          body.reset();
+          mk::cnbcBarsUrlFor(info.symbol, today, url, sizeof(url));
+          parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
+        }
         outcome(parsed, status, word, sizeof(word));
       }
       body.reset();
@@ -277,6 +327,11 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
 
   int arrived = 0;
   int cards = 0;
+  bool learnt = false;
+  for (int i = 0; i < count; ++i) {
+    if (have[i] && mk::setCustomCurrency(wanted[i], fetched[i].currency)) learnt = true;
+  }
+  if (learnt) saveCustoms();
   for (int i = 0; i < count; ++i) {
     if (!have[i]) continue;
     ++arrived;

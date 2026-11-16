@@ -300,6 +300,12 @@ void card(toybox::Screen& screen, const fui::Rect& r, const mk::Asset asset, con
   // A month of closes along the foot, inside the card's outline.
   const int chartBottom = r.y + r.height - 3;
   chart(screen, rect(r.x + 3, y, r.width - 6, chartBottom - y), q, monthSessions, true, 2);
+  // Which stretch that is, on a patch of paper in the chart's corner.
+  const char* const stretch = "1 MONTH";
+  const int tagW = textWidth(screen, stretch, toybox::kTileFont) + 12;
+  const int tagH = toybox::kTileCut.inkHeight + 8;
+  box(screen, r.x + 8, chartBottom - tagH - 4, tagW, tagH, fui::Paint::solid(fui::Color::White), 4);
+  caption(screen, r.x + 14, chartBottom - tagH, tagW, stretch);
 }
 
 }  // namespace
@@ -312,6 +318,8 @@ int sessionsIn(const Span span, const mk::Asset asset, const mk::Quote& quote) {
     case Span::Month:
       return always ? 30 : 22;
     case Span::Quarter:
+      return always ? 91 : 64;
+    case Span::Year:
     default:
       return quote.count;
   }
@@ -450,10 +458,10 @@ void buildDetail(toybox::Screen& screen, const DetailModel& model) {
   y += 36 + 18;
 
   // The span tabs and the chart they slice.
-  static const char* const kTabs[3] = {"1 WEEK", "1 MONTH", "3 MONTHS"};
-  const int gap = 8;
-  const int tabW = (inner - gap * 2) / 3;
-  for (int i = 0; i < 3; ++i) {
+  static const char* const kTabs[4] = {"1 WEEK", "1 MONTH", "3 MON", "1 YEAR"};
+  const int gap = 6;
+  const int tabW = (inner - gap * 3) / 4;
+  for (int i = 0; i < 4; ++i) {
     fui::ButtonProps t;
     t.label = kTabs[i];
     t.action = ActionSpan;
@@ -650,10 +658,30 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
     if (t.priced > 0) {
       const int pillW = changePill(screen, x, y, 40, mk::percentOf(t.value, t.previous));
       mk::formatChange(t.value - t.previous, a, sizeof(a));
-      std::snprintf(b, sizeof(b), "%s USD TODAY", a);
+      static const char* const kOver[mk::kPeriods] = {"TODAY", "IN A WEEK", "IN A MONTH", "THIS YEAR", "IN A YEAR"};
+      std::snprintf(b, sizeof(b), "%s USD %s", a, kOver[static_cast<int>(model.period) % mk::kPeriods]);
       caption(screen, x + pillW + 14, y + (40 - toybox::kTileCut.inkHeight) / 2, inner - pillW - 14, b);
     }
-    y += 40 + 16;
+    y += 40 + 12;
+    {
+      // What the change is counted over, here and on every row.
+      static const char* const kTabs[mk::kPeriods] = {"DAY", "WEEK", "MON", "YTD", "YEAR"};
+      const int tabGap = 6;
+      const int tabW = (inner - tabGap * (mk::kPeriods - 1)) / mk::kPeriods;
+      for (int i = 0; i < mk::kPeriods; ++i) {
+        fui::ButtonProps tab;
+        tab.label = kTabs[i];
+        tab.action = ActionPeriod;
+        tab.value = static_cast<int16_t>(i);
+        tab.styles = toybox::rowStyles();
+        tab.text = toybox::buttonText(screen.theme());
+        tab.radius = kRadius;
+        tab.minTouchSize = 0;
+        tab.state = i == static_cast<int>(model.period) ? fui::StateSelected : fui::StateNormal;
+        screen.button(tab, rect(x + i * (tabW + tabGap), y, tabW, 36));
+      }
+    }
+    y += 36 + 12;
     if (t.priced > 0 && model.euro > 0) {
       // The same total in euros, at the rate fetched with the quotes.
       mk::formatPriceShort(t.value / model.euro, a, sizeof(a));
@@ -671,7 +699,8 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
 
     // A row a holding: what and how much on the left, its worth and its day
     // on the right. The whole row opens the keypad.
-    const int rowH = 62;
+    int rowH = (bottom - 48 - 8 - y) / (pf.count > 0 ? pf.count : 1);
+    if (rowH > 62) rowH = 62;
     for (int i = 0; i < pf.count; ++i) {
       const mk::AssetInfo& info = mk::instrumentAt(pf.positions[i].instrument);
       const fui::Rect r = rect(x, y, inner, rowH);
@@ -683,8 +712,8 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
       row.styles.normal.borderWidth = 0;
       row.minTouchSize = 0;
       screen.button(row, r);
-      const int ty = y + 8;
-      const int cy = ty + toybox::kUiCut.inkHeight + 8;
+      const int ty = y + (rowH >= 60 ? 8 : 5);
+      const int cy = ty + toybox::kUiCut.inkHeight + (rowH >= 60 ? 8 : 6);
       label(screen, rect(x, ty, inner / 2, toybox::kUiCut.inkHeight), info.name, toybox::kUiFont, toybox::kUiCut,
             fui::TextAlign::Left);
       mk::formatAmount(pf.positions[i].amount, a, sizeof(a));
@@ -733,32 +762,100 @@ void buildPicker(toybox::Screen& screen, const PickerModel& model) {
   const fui::DeviceContext device = screen.device();
   const int inner = device.width - toybox::kMargin * 2;
   const int bottom = device.height - kBottomReserve - 6;
-  const int gap = 8;
+  const int gap = 6;
   const int colW = (inner - gap) / 2;
-  int shown = 0;
-  for (int i = 0; i < mk::kInstruments; ++i) {
+  auto listed = [&](const int i) {
+    if (!mk::present(i)) return false;
     const mk::AssetInfo& info = mk::instrumentAt(i);
-    if (model.ownableOnly && (!info.ownable || (model.held && mk::positionOf(*model.held, i) >= 0))) continue;
-    ++shown;
-  }
+    return !(model.ownableOnly && (!info.ownable || (model.held && mk::positionOf(*model.held, i) >= 0)));
+  };
+  int shown = 0;
+  for (int i = 0; i < mk::kInstruments; ++i) shown += listed(i) ? 1 : 0;
+
+  // Anything that is not in the list: by its ticker or by its name.
+  int top = toybox::kChromeHeight + 10;
+  fui::ButtonProps find;
+  find.label = "SEARCH TICKER OR NAME";
+  find.action = ActionSearch;
+  find.styles = toybox::rowStyles();
+  find.text = toybox::buttonText(screen.theme());
+  find.radius = kRadius;
+  find.state = fui::StateSelected;
+  screen.button(find, rect(toybox::kMargin, top, inner, 44));
+  top += 44 + 10;
+
   const int rows = (shown + 1) / 2;
-  const int top = toybox::kChromeHeight + 12;
   int rowH = rows > 0 ? (bottom - top - gap * (rows - 1)) / rows : 56;
   if (rowH > 60) rowH = 60;
   int at = 0;
   for (int i = 0; i < mk::kInstruments; ++i) {
-    const mk::AssetInfo& info = mk::instrumentAt(i);
-    if (model.ownableOnly && (!info.ownable || (model.held && mk::positionOf(*model.held, i) >= 0))) continue;
+    if (!listed(i)) continue;
     fui::ButtonProps b;
-    b.label = info.name;
+    b.label = mk::instrumentAt(i).name;
     b.action = ActionPick;
     b.value = static_cast<int16_t>(i);
     b.styles = toybox::rowStyles();
     b.text = toybox::buttonText(screen.theme());
     b.radius = kRadius;
+    b.minTouchSize = 0;
     b.state = i == model.current ? fui::StateSelected : fui::StateNormal;
     screen.button(b, rect(toybox::kMargin + (at % 2) * (colW + gap), top + (at / 2) * (rowH + gap), colW, rowH));
     ++at;
+  }
+}
+
+void buildResults(toybox::Screen& screen, const ResultsModel& model) {
+  chrome(screen, "SEARCH");
+  const fui::DeviceContext device = screen.device();
+  const int inner = device.width - toybox::kMargin * 2;
+  const int x = toybox::kMargin;
+  const int bottom = device.height - kBottomReserve - 6;
+  int y = toybox::kChromeHeight + 14;
+  label(screen, rect(x, y, inner, toybox::kUiCut.inkHeight), model.query, toybox::kUiFont, toybox::kUiCut,
+        fui::TextAlign::Left);
+  y += toybox::kUiCut.inkHeight + 10;
+  const char* said = "TAP ONE TO USE IT.";
+  if (model.count < 0) said = "THE SEARCH DID NOT ANSWER.";
+  if (model.count == 0) said = "NOTHING FOUND UNDER THAT.";
+  caption(screen, x, y, inner, said, fui::TextAlign::Left, fui::Color::DarkGray);
+  y += toybox::kTileCut.inkHeight + 12;
+  box(screen, x, y, inner, toybox::kHairline, kInk);
+  y += 8;
+
+  const int footH = model.asTyped ? 48 + 30 : 0;
+  const int rowH = 58;
+  for (int i = 0; i < model.count && y + rowH <= bottom - footH; ++i) {
+    const mk::Found& f = model.found[i];
+    fui::ButtonProps row;
+    row.label = "";
+    row.action = ActionFound;
+    row.value = static_cast<int16_t>(i);
+    row.styles = toybox::rowStyles();
+    row.styles.normal.borderWidth = 0;
+    row.minTouchSize = 0;
+    screen.button(row, rect(x, y, inner, rowH));
+    label(screen, rect(x, y + 7, inner * 2 / 3, toybox::kUiCut.inkHeight), f.symbol, toybox::kUiFont, toybox::kUiCut,
+          fui::TextAlign::Left);
+    caption(screen, x + inner / 2, y + 13, inner / 2, f.exchange, fui::TextAlign::Right, fui::Color::DarkGray);
+    caption(screen, x, y + 7 + toybox::kUiCut.inkHeight + 7, inner, f.company);
+    y += rowH;
+    box(screen, x, y - 1, inner, 1, fui::Paint::dither(fui::Color::DarkGray));
+  }
+
+  if (model.asTyped) {
+    // For when the lookup is no help: a symbol CNBC quotes, exactly as typed.
+    caption(screen, x, bottom - 48 - 22, inner, "CNBC SYMBOLS: MADRID SAN-ES, XETRA SAP-DE.", fui::TextAlign::Left,
+            fui::Color::DarkGray);
+    char use[40];
+    std::snprintf(use, sizeof(use), "USE %s AS TYPED", model.query);
+    fui::ButtonProps typed;
+    typed.label = use;
+    typed.action = ActionFound;
+    typed.value = -1;
+    typed.styles = toybox::rowStyles();
+    typed.text = toybox::buttonText(screen.theme());
+    typed.radius = kRadius;
+    screen.button(typed, rect(x, bottom - 48, inner, 48));
   }
 }
 

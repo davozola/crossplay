@@ -26,7 +26,19 @@ class MarketsActivity final : public Activity {
   bool preventAutoSleep() override { return autoMinutes_ > 0; }
 
  private:
-  enum class View : uint8_t { Dashboard, Detail, AutoPicker, Status, Portfolio, CardPicker, HoldingPicker, Amount };
+  enum class View : uint8_t {
+    Dashboard,
+    Detail,
+    AutoPicker,
+    Status,
+    Portfolio,
+    CardPicker,
+    HoldingPicker,
+    Amount,
+    Results
+  };
+  // What the network is being joined for.
+  enum class Job : uint8_t { Refresh, Search };
   // Joined Wi-Fi -> Ready -> the status frame is painted -> Running.
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
 
@@ -39,6 +51,10 @@ class MarketsActivity final : public Activity {
   void route(const freeink::ui::ActionEvent& event);
   void reprice();
   void openAmount(int instrument);
+  void askSearch();
+  void runSearch();
+  void pick(int instrument, bool fresh);
+  int adopt(const char* symbol, const char* company);
 
   View view_ = View::Dashboard;
   View statusBack_ = View::Dashboard;
@@ -65,6 +81,16 @@ class MarketsActivity final : public Activity {
   double euro_ = 0;
   int amountInstrument_ = 0;
   markets::AmountEntry entry_;
+  markets::Period period_ = markets::Period::Day;
+
+  // A search by ticker or name: what was typed, what came back, and which
+  // picker it was started from.
+  static constexpr int kMaxFound = 8;
+  Job job_ = Job::Refresh;
+  View searchFrom_ = View::CardPicker;
+  char query_[24] = "";
+  markets::Found found_[kMaxFound];
+  int foundCount_ = 0;
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;

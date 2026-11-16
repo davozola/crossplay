@@ -151,16 +151,16 @@ int main() {
   // --- more bars than the buffer keeps the newest ---
   {
     std::string json = "{\"barData\":{\"priceBars\":[";
-    for (int i = 0; i < 200; ++i) {
+    for (int i = 0; i < 400; ++i) {
       char bar[96];
       std::snprintf(bar, sizeof(bar),
-                    "%s{\"close\":\"%d.5\",\"high\":\"1\",\"low\":\"1\",\"tradeTime\":\"2026%02d%02d000000\"}",
-                    i ? "," : "", 100 + i, 1 + i / 28, 1 + i % 28);
+                    "%s{\"close\":\"%d.5\",\"high\":\"1\",\"low\":\"1\",\"tradeTime\":\"20%02d%02d%02d000000\"}",
+                    i ? "," : "", 100 + i, 25 + i / 336, 1 + (i / 28) % 12, 1 + i % 28);
       json += bar;
     }
     json += "]}}";
     Quote q;
-    check(parseCnbcBars(json.data(), json.size(), q) && q.count == kMaxCloses && near(q.price, 299.5),
+    check(parseCnbcBars(json.data(), json.size(), q) && q.count == kMaxCloses && near(q.price, 499.5),
           "long history keeps the newest");
   }
 
@@ -219,8 +219,8 @@ int main() {
   }
 
   {  // the catalogue: stems and symbols are all different, and the first three are the cards' defaults
-    for (int a = 0; a < kInstruments; ++a) {
-      for (int b = a + 1; b < kInstruments; ++b) {
+    for (int a = 0; a < kBuiltIn; ++a) {
+      for (int b = a + 1; b < kBuiltIn; ++b) {
         check(std::strcmp(instrumentAt(a).file, instrumentAt(b).file) != 0, "cache stems differ");
         check(std::strcmp(instrumentAt(a).symbol, instrumentAt(b).symbol) != 0, "symbols differ");
       }
@@ -251,7 +251,8 @@ int main() {
   }
   {  // the portfolio
     Portfolio pf;
-    check(!setPosition(pf, 1, 5) && pf.count == 0, "an index cannot be held");
+    check(!setPosition(pf, euroInstrument(), 5) && pf.count == 0, "the euro rate cannot be held");
+    check(setPosition(pf, 1, 2) && setPosition(pf, 1, 0) && pf.count == 0, "an index can");
     check(setPosition(pf, 0, 0.25) && setPosition(pf, 9, 10) && pf.count == 2, "two holdings");
     check(setPosition(pf, 0, 0.5) && pf.count == 2 && near(pf.positions[0].amount, 0.5), "an amount changes in place");
     check(positionOf(pf, 9) == 1 && positionOf(pf, 10) == -1, "found by instrument");
@@ -270,8 +271,8 @@ int main() {
     check(unpackPortfolio(bytes, sizeof(bytes), back) && back.count == 2 && back.positions[1].instrument == 9 &&
               near(back.positions[1].amount, 10),
           "round trip");
-    bytes[2] = 1;  // an index
-    check(!unpackPortfolio(bytes, sizeof(bytes), back) && back.count == 0, "a file holding an index is not ours");
+    bytes[2] = static_cast<uint8_t>(euroInstrument());
+    check(!unpackPortfolio(bytes, sizeof(bytes), back) && back.count == 0, "a file holding the euro rate is not ours");
     check(setPosition(pf, 9, 0) && pf.count == 1 && pf.positions[0].instrument == 0, "zero removes");
     for (int k = 0; k < kInstruments; ++k) setPosition(pf, k, 1);
     check(pf.count == kMaxPositions, "full at six");
@@ -303,5 +304,110 @@ int main() {
   }
 
   if (failures == 0) std::printf("markets: all tests passed\n");
+  {  // what a period is measured from
+    Quote q;
+    q.valid = true;
+    // A close a day from 1 January 2025 to 10 March 2026.
+    const int32_t first = daysFromCivil(2025, 12, 1);
+    q.count = 100;
+    for (int i = 0; i < q.count; ++i) {
+      q.days[i] = first + i;
+      q.closes[i] = static_cast<float>(1000 + i);
+    }
+    q.price = q.closes[q.count - 1];
+    check(near(closeBefore(q, Period::Day), 1098), "yesterday's");
+    check(near(closeBefore(q, Period::Week), 1092) && near(closeBefore(q, Period::Month), 1069), "a week, a month");
+    check(near(closeBefore(q, Period::Ytd), 1030), "the last close of the year before");
+    check(near(closeBefore(q, Period::Year), 1000), "the oldest held when a year is not");
+    q.count = 1;
+    check(near(closeBefore(q, Period::Week), q.price), "nothing to compare with");
+  }
+
+  {  // instruments added by ticker or name
+    clearCustoms();
+    check(!present(kBuiltIn) && present(kBuiltIn - 1) && !present(kInstruments), "the slots begin empty");
+    bool recycled = true;
+    const int san = addCustom("SAN-ES", "Banco Santander, S.A.", nullptr, &recycled);
+    check(san == kBuiltIn && !recycled && present(san), "the first one takes the first slot");
+    check(std::strcmp(instrumentAt(san).name, "SAN-ES") == 0 && std::strcmp(instrumentAt(san).symbol, "SAN-ES") == 0,
+          "named by its symbol");
+    check(std::strcmp(instrumentAt(san).caption, "BANCO SANTANDER S.A.") == 0, instrumentAt(san).caption);
+    check(!instrumentAt(san).always && instrumentAt(san).ownable, "CNBC's, and in dollars until it says otherwise");
+    check(addCustom("SAN-ES", "", nullptr, nullptr) == san, "adding it again finds it");
+    check(addCustom("AAPL", "", nullptr, nullptr) == 9, "a catalogue symbol is the catalogue's");
+    check(addCustom("", "", nullptr, nullptr) == -1 && addCustom("TOO-LONG-SYMBOL", "", nullptr, nullptr) == -1 &&
+              addCustom("a b", "", nullptr, nullptr) == -1,
+          "what cannot be a symbol is refused");
+    check(setCustomCurrency(san, "EUR") && !setCustomCurrency(san, "EUR") && !setCustomCurrency(3, "EUR"),
+          "its currency is learnt once");
+    check(std::strcmp(currencyOf(san), "EUR") == 0 && instrumentAt(san).ownable, "euros can be counted");
+    check(setCustomCurrency(san, "GBP") && !instrumentAt(san).ownable && setCustomCurrency(san, "EUR"),
+          "other currencies cannot");
+    Picks p = defaultPicks();
+    p.slot[0] = static_cast<uint8_t>(san);
+    p.slot[1] = static_cast<uint8_t>(san + 1);
+    setPicks(p);
+    check(instrumentOf(Asset::Bitcoin) == san && instrumentOf(Asset::Sp500) == 1, "an empty slot is not a pick");
+    setPicks(defaultPicks());
+
+    char packed[kCustomsBytes];
+    const size_t size = packCustoms(packed, sizeof(packed));
+    check(size > 0, "packs");
+    clearCustoms();
+    check(!present(san), "cleared");
+    unpackCustoms(packed, size);
+    check(present(san) && std::strcmp(instrumentAt(san).symbol, "SAN-ES") == 0 &&
+              std::strcmp(currencyOf(san), "EUR") == 0 &&
+              std::strcmp(instrumentAt(san).caption, "BANCO SANTANDER S.A.") == 0,
+          "and comes back in its slot");
+
+    char name[kSymbolChars];
+    for (int i = 1; i < kCustom; ++i) {
+      std::snprintf(name, sizeof(name), "T%d", i);
+      check(addCustom(name, "", nullptr, nullptr) == kBuiltIn + i, "fills the slots in order");
+    }
+    bool used[kCustom];
+    for (int i = 0; i < kCustom; ++i) used[i] = true;
+    check(addCustom("FULL", "", used, &recycled) == -1, "full, with every slot in use");
+    used[4] = false;
+    check(addCustom("FULL", "", used, &recycled) == kBuiltIn + 4 && recycled, "the spare slot is taken over");
+    check(findSymbol("T4") == -1 && findSymbol("FULL") == kBuiltIn + 4, "and what it held is gone");
+    clearCustoms();
+  }
+
+  {  // searching
+    char query[24];
+    tidyQuery("  banco   santander ", query, sizeof(query));
+    check(std::strcmp(query, "BANCO SANTANDER") == 0, query);
+    check(!tickerLike(query) && tickerLike("SAN-ES") && tickerLike("BRK.B") && !tickerLike(""),
+          "what could be a symbol");
+    char url[200];
+    lookupUrl(query, url, sizeof(url));
+    check(std::strcmp(url,
+                      "https://symlookup.cnbc.com/symservice/symlookup.do?prefix=BANCO%20SANTANDER"
+                      "&partnerid=20064&pgok=1&pgsize=12") == 0,
+          url);
+    const char* answer =
+        "[{\"prefix\":\"SAN\",\"count\":\"3\"},"
+        "{\"symbolName\":\"SAN-ES\",\"companyName\":\"Banco Santander SA\",\"exchangeName\":\"Madrid\"},"
+        "{\"companyName\":\"Sanofi\",\"exchangeName\":\"NASDAQ\",\"symbolName\":\"SNY\"},"
+        "{\"symbolName\":\"SAN-ES\",\"companyName\":\"again\"},"
+        "{\"symbolName\":\"A SYMBOL TOO LONG\",\"companyName\":\"x\"},"
+        "{\"symbolName\":\"SAN\",\"companyName\":\"Banco Santander \\\"ADR\\\"\"}]";
+    Found found[4];
+    const int n = parseLookup(answer, std::strlen(answer), found, 4);
+    check(n == 3, "three usable results");
+    check(std::strcmp(found[0].symbol, "SAN-ES") == 0 && std::strcmp(found[0].company, "BANCO SANTANDER SA") == 0 &&
+              std::strcmp(found[0].exchange, "MADRID") == 0,
+          "the first, with its exchange");
+    check(std::strcmp(found[1].symbol, "SNY") == 0 && std::strcmp(found[1].company, "SANOFI") == 0,
+          "whatever order the keys come in");
+    check(std::strcmp(found[2].symbol, "SAN") == 0 && std::strcmp(found[2].company, "BANCO SANTANDER ADR") == 0,
+          found[2].company);
+    check(parseLookup("<html>no</html>", 15, found, 4) == 0 && parseLookup("", 0, found, 4) == 0,
+          "nothing in an error page");
+    check(parseLookup(answer, std::strlen(answer), found, 1) == 1, "no more than asked for");
+  }
+
   return failures == 0 ? 0 : 1;
 }
