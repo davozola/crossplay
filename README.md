@@ -43,7 +43,7 @@ Sticky**. Conserva todo lo del original y añade veintiséis cosas:
 | **Hive**        | Estrategia con insectos y sin tablero, contra el dispositivo (tres niveles) o a dos. |
 | **Triples**     | Deslizar fichas en un 4x4: 1 y 2 hacen 3 y las parejas se doblan. |
 | **Misterios** | Seis casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
-| **Ilya**        | Cinco minijuegos en catalán para un niño de tres años: dibujos, parejas, letras y números. |
+| **Ilya**        | Seis minijuegos en catalán para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas con cuatro animales. |
 | **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
 | **Slitherlink, Shikaku, Akari, Hashi** | Cuatro puzles de lógica japoneses, 90 tableros cada uno, todos con solución única. |
 
@@ -142,7 +142,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Hive**         | Surround the other queen with insects on no board at all. Device or a friend. |
 | **Triples**      | Slide the board a step: 1 and 2 make 3, pairs double. One new tile a move.   |
 | **Misterios**   | Six short detective cases, in Spanish: question, look, accuse.            |
-| **Ilya**         | Five games for a three-year-old, in Catalan: pictures, letters, numbers.     |
+| **Ilya**         | Six games for a three-year-old, in Catalan: pictures, letters, numbers, a mole. |
 | **Pinta**        | A sheet to draw on with a finger: two pens, stamps, a rubber.                |
 | **Slitherlink**  | Draw one closed loop along the dots from the numbers. 90 boards, one answer. |
 | **Shikaku**      | Cut the grid into rectangles, each holding its own area. 90 boards.          |

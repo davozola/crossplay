@@ -1,6 +1,6 @@
 #pragma once
 
-// ILYA: five small games for a three-year-old. Freestanding: the word list, the
+// ILYA: six small games for a three-year-old. Freestanding: the word list, the
 // alphabet that has pictures, and how a round is dealt, so host-tests/kids can
 // check that no round is ever unanswerable.
 //
@@ -14,10 +14,10 @@ namespace kids {
 constexpr int kPictures = 45;
 const char* wordOf(int picture);
 
-enum class Game : uint8_t { Cards = 0, Find = 1, Match = 2, Letters = 3, Count = 4 };
-constexpr int kGames = 5;
+enum class Game : uint8_t { Cards = 0, Find = 1, Match = 2, Letters = 3, Count = 4, Mole = 5 };
+constexpr int kGames = 6;
 const char* gameName(Game game);
-// The picture that stands for a game on the menu.
+// The picture that stands for a game on the menu; -1 for one that draws its own.
 int gamePicture(Game game);
 
 struct Rng {

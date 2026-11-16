@@ -37,6 +37,8 @@ const char* gameName(const Game game) {
       return "LLETRES";
     case Game::Count:
       return "NOMBRES";
+    case Game::Mole:
+      return "EL TALP";
     case Game::Cards:
     default:
       return "DIBUIXOS";
@@ -53,6 +55,8 @@ int gamePicture(const Game game) {
       return 29;  // LLIBRE
     case Game::Count:
       return 40;  // DAU
+    case Game::Mole:
+      return -1;  // its own mole, from MoleArt
     case Game::Cards:
     default:
       return 0;  // GAT

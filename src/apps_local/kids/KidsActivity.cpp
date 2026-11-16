@@ -1,5 +1,7 @@
 #include "KidsActivity.h"
 
+#include <HalDisplay.h>
+#include <HalStorage.h>
 #include <Memory.h>
 
 #include "../../HapticFeedback.h"
@@ -7,6 +9,7 @@
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
+#include "MoleScreens.h"
 
 // The Buzzer library is in the device builds' lib_deps; the browser build does
 // not have it, and a board without a buzzer links stubs whose begin() is false.
@@ -22,6 +25,11 @@ namespace fui = freeink::ui;
 namespace {
 // Long enough to see the tile turn black and hear the chirp.
 constexpr uint32_t kAdvanceAfterMs = 1600;
+constexpr char kMoleConfigPath[] = "/.crosspoint/talp.cfg";
+constexpr uint32_t kPartyMs = 6000;
+// Fast paints leave a little of the last picture behind; after this many the
+// next one is a clean one.
+constexpr uint8_t kCleanAfterPaints = 12;
 }  // namespace
 
 std::unique_ptr<Activity> KidsActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput) {
@@ -41,7 +49,11 @@ void KidsActivity::open(const kids::Game game) {
   game_ = game;
   stars_ = 0;
   advanceAtMs_ = 0;
-  if (game == kids::Game::Cards || game == kids::Game::Letters) {
+  if (game == kids::Game::Mole) {
+    loadMoleConfig();
+    view_ = View::MoleSetup;
+    cleanNext_ = true;
+  } else if (game == kids::Game::Cards || game == kids::Game::Letters) {
     card_ = 0;
     view_ = View::Card;
   } else {
@@ -77,10 +89,112 @@ void KidsActivity::cheer() {
 #endif
 }
 
+void KidsActivity::loadMoleConfig() {
+  moleConfig_ = mole::Config{};
+  if (!Storage.exists(kMoleConfigPath)) return;
+  HalFile file;
+  uint8_t bytes[mole::kConfigBytes];
+  if (!Storage.openFileForRead("ILYA", kMoleConfigPath, file)) return;
+  const int got = file.read(bytes, sizeof(bytes));
+  mole::unpack(bytes, got, moleConfig_);
+}
+
+void KidsActivity::saveMoleConfig() {
+  HalFile file;
+  if (!Storage.openFileForWrite("ILYA", kMoleConfigPath, file)) return;
+  uint8_t bytes[mole::kConfigBytes];
+  mole::pack(moleConfig_, bytes);
+  file.write(bytes, sizeof(bytes));
+  file.flush();
+}
+
+void KidsActivity::bopSound() {
+  haptic_feedback::touchAction(true);
+  if (!moleConfig_.sound) return;
+#if KIDS_HAS_BUZZER
+  Buzzer buzzer;
+  if (buzzer.begin()) {
+    // A bonk and the spring after it.
+    buzzer.tone(330, 60);
+    delay(20);
+    buzzer.tone(988, 50);
+    buzzer.tone(1319, 70);
+    buzzer.end();
+  }
+#endif
+}
+
+void KidsActivity::partySound() {
+  if (!moleConfig_.sound) return;
+#if KIDS_HAS_BUZZER
+  Buzzer buzzer;
+  if (buzzer.begin()) {
+    constexpr int kNotes[] = {1047, 1319, 1568, 2093};
+    for (const int note : kNotes) {
+      buzzer.tone(note, 110);
+      delay(25);
+    }
+    buzzer.tone(2093, 220);
+    buzzer.end();
+  }
+#endif
+}
+
+void KidsActivity::loopMole() {
+  const uint32_t now = static_cast<uint32_t>(millis());
+  int tapX = 0;
+  int tapY = 0;
+  const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
+
+  if (partyUntilMs_ != 0) {
+    // The celebration goes when it is touched or has been admired enough.
+    if (tapped || now - partyUntilMs_ < 0x80000000u) {
+      partyUntilMs_ = 0;
+      cleanNext_ = true;
+      // Nobody was counting while the page was up.
+      for (mole::Hole& hole : mole_.holes) hole.since = now;
+      requestUpdate();
+    }
+    return;
+  }
+
+  if (tapped) {
+    const moleui::Meadow meadow =
+        moleui::meadowFor(mole_.config, renderer.getScreenWidth(), renderer.getScreenHeight());
+    if (mole::tap(mole_, moleui::holeAt(meadow, tapX, tapY), now)) {
+      // The stars first, then the noise: the panel is the slow one.
+      requestUpdateAndWait();
+      bopSound();
+    }
+    return;
+  }
+
+  if (mole::tick(mole_, now)) {
+    if (mole_.party) {
+      mole_.party = false;
+      partyUntilMs_ = now + kPartyMs;
+      if (partyUntilMs_ == 0) partyUntilMs_ = 1;
+      cleanNext_ = true;
+      requestUpdateAndWait();
+      partySound();
+      return;
+    }
+    requestUpdate();
+  }
+}
+
 void KidsActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     if (view_ == View::Menu) {
       shelf::leave(renderer, mappedInput);
+      return;
+    }
+    if (view_ == View::MolePlay) {
+      // Back to the page with the choices, not all the way out.
+      view_ = View::MoleSetup;
+      partyUntilMs_ = 0;
+      cleanNext_ = true;
+      requestUpdate();
       return;
     }
     view_ = View::Menu;
@@ -92,6 +206,11 @@ void KidsActivity::loop() {
   if (view_ == View::Round && advanceAtMs_ != 0 && static_cast<uint32_t>(millis()) - advanceAtMs_ < 0x80000000u) {
     deal();
     requestUpdate();
+    return;
+  }
+
+  if (view_ == View::MolePlay) {
+    loopMole();
     return;
   }
 
@@ -118,6 +237,28 @@ void KidsActivity::route(const fui::ActionEvent& event) {
     case ui::ActionGame:
       if (event.value < 0 || event.value >= kids::kGames) return;
       open(static_cast<kids::Game>(event.value));
+      break;
+    case moleui::ActionHoles:
+      moleConfig_.holes = static_cast<uint8_t>((moleConfig_.holes + 1) % mole::kHoleChoices);
+      saveMoleConfig();
+      break;
+    case moleui::ActionWho:
+      moleConfig_.who = static_cast<uint8_t>((moleConfig_.who + 1) % mole::kWhoChoices);
+      saveMoleConfig();
+      break;
+    case moleui::ActionHides:
+      moleConfig_.hides = static_cast<uint8_t>((moleConfig_.hides + 1) % mole::kHideChoices);
+      saveMoleConfig();
+      break;
+    case moleui::ActionSound:
+      moleConfig_.sound = moleConfig_.sound ? 0 : 1;
+      saveMoleConfig();
+      break;
+    case moleui::ActionPlay:
+      mole::start(mole_, moleConfig_, rng_.next() | 1u, static_cast<uint32_t>(millis()));
+      partyUntilMs_ = 0;
+      cleanNext_ = true;
+      view_ = View::MolePlay;
       break;
     case ui::ActionNext:
       card_ = kids::step(card_, 1, deck);
@@ -162,8 +303,21 @@ void KidsActivity::render(RenderLock&&) {
   };
 
   switch (view_) {
-    case View::Menu:
-      kidsui::buildMenu(surface);
+    case View::Menu: {
+      kidsui::MenuModel m;
+      m.renderer = &renderer;
+      kidsui::buildMenu(surface, m);
+      break;
+    }
+    case View::MoleSetup:
+      moleui::buildSetup(surface, renderer, moleConfig_);
+      break;
+    case View::MolePlay:
+      if (partyUntilMs_ != 0) {
+        moleui::drawParty(surface, renderer, mole_);
+      } else {
+        moleui::drawMeadow(surface, renderer, mole_);
+      }
       break;
     case View::Card: {
       kidsui::CardModel m;
@@ -191,5 +345,8 @@ void KidsActivity::render(RenderLock&&) {
   toybox::reportOverflow(interactions_, "Ilya");
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
+  if (view_ == View::MolePlay && !cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) cleanNext_ = true;
+  if (cleanNext_) fastPaints_ = 0;
+  renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
+  cleanNext_ = false;
 }
