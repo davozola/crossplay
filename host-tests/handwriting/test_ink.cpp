@@ -95,7 +95,74 @@ static void assignGuards() {
   CHECK(page.strokes() == 1);
 }
 
+static uint8_t stepped[640 * 60];
+
+// Drawing a page a few points at a time must leave the same bits as drawing it
+// at once: the device only ever adds the new piece of a stroke to its buffer.
+static void incrementalMatchesFull() {
+  page.clear();
+  const Tool tools[5] = {Tool::Pen, Tool::Marker, Tool::Pencil, Tool::Eraser, Tool::Fine};
+  for (int s = 0; s < 5; ++s) {
+    page.begin(tools[s], static_cast<int16_t>(40 + s * 30), static_cast<int16_t>(100 + s * 50));
+    for (int k = 1; k < 12; ++k) {
+      page.extend(static_cast<int16_t>(40 + s * 30 + k * 25), static_cast<int16_t>(100 + s * 50 + (k % 3) * 40));
+    }
+  }
+  page.begin(Tool::Pen, 300, 600);  // a lone tap
+  rasterise(page, bits, 60);
+  std::memset(stepped, 0, sizeof(stepped));
+  int done = 0;
+  for (int upTo = 3; done < page.count(); upTo += 5) {
+    const int to = upTo < page.count() ? upTo : page.count();
+    rasteriseMore(page, stepped, 60, done, to);
+    done = to;
+  }
+  CHECK(std::memcmp(bits, stepped, sizeof(stepped)) == 0);
+  CHECK(inkAt(300, 600));
+}
+
+static void nibs() {
+  page.clear();
+  page.begin(Tool::Fine, 100, 100);
+  page.extend(200, 100);
+  page.begin(Tool::Marker, 100, 200);
+  page.extend(200, 200);
+  page.begin(Tool::Pencil, 100, 300);
+  page.extend(200, 300);
+  rasterise(page, bits, 60);
+  // Fine is two pixels tall, the marker about ten.
+  CHECK(inkAt(150, 100) && inkAt(150, 101) && !inkAt(150, 99) && !inkAt(150, 102));
+  CHECK(inkAt(150, 196) && inkAt(150, 204) && !inkAt(150, 206));
+  // The pencil is a half-tone: every other pixel along its middle row.
+  int on = 0;
+  for (int x = 120; x < 180; ++x) on += inkAt(x, 300) ? 1 : 0;
+  CHECK(on == 30);
+  CHECK(std::strcmp(toolName(Tool::Marker), "MARKER") == 0);
+  // An unknown tool id in a file reads as the pen rather than as nothing.
+  Point odd[3] = {{kStrokeMark, 77}, {50, 50}, {60, 50}};
+  CHECK(page.assign(odd, 3));
+  rasterise(page, bits, 60);
+  CHECK(inkAt(55, 50));
+}
+
+static void thumbnails() {
+  page.clear();
+  page.begin(Tool::Pen, 240, 320);
+  rasterise(page, bits, 60);
+  uint8_t thumb[15 * 160];
+  thumbnail(bits, 60, 480, 640, thumb, 120, 160);
+  int set = 0;
+  for (unsigned i = 0; i < sizeof(thumb); ++i) {
+    for (int b = 0; b < 8; ++b) set += (thumb[i] >> b) & 1;
+  }
+  CHECK(set >= 1 && set <= 4);
+  CHECK((thumb[80 * 15 + 60 / 8] >> (7 - 60 % 8)) & 1);
+}
+
 int main() {
+  incrementalMatchesFull();
+  nibs();
+  thumbnails();
   strokesAndUndo();
   rasterAndEraser();
   bmp();

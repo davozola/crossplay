@@ -5,11 +5,11 @@ namespace pomodoro {
 namespace {
 
 template <int N>
-int nextChoice(const int (&choices)[N], int current) {
+bool offered(const int (&choices)[N], const int minutes) {
   for (int i = 0; i < N; ++i) {
-    if (choices[i] == current) return choices[(i + 1) % N];
+    if (choices[i] == minutes) return true;
   }
-  return choices[0];
+  return false;
 }
 
 }  // namespace
@@ -108,8 +108,17 @@ void Timer::advance(const bool countFocus) {
   }
 }
 
-void Timer::cycleFocus() { focusMinutes = nextChoice(kFocusChoices, focusMinutes); }
-void Timer::cycleBreak() { breakMinutes = nextChoice(kBreakChoices, breakMinutes); }
+bool Timer::setFocus(const int minutes) {
+  if (!offered(kFocusChoices, minutes)) return false;
+  focusMinutes = minutes;
+  return true;
+}
+
+bool Timer::setBreak(const int minutes) {
+  if (!offered(kBreakChoices, minutes)) return false;
+  breakMinutes = minutes;
+  return true;
+}
 
 const char* phaseLabel(const Phase phase) {
   switch (phase) {
