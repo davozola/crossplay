@@ -26,6 +26,7 @@
 #include "handwriting/HandwritingActivity.h"
 #include "hearts/HeartsActivity.h"
 #include "hex/HexActivity.h"
+#include "hive/HiveActivity.h"
 #include "innerclock/InnerClockActivity.h"
 #include "insider/InsiderActivity.h"
 #include "instapaper/InstapaperActivity.h"
@@ -94,6 +95,7 @@ constexpr shelf::Item kGames[] = {
     {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create},
     {"KAKURO", &icon_kakuro_32, &KakuroActivity::create},
     {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create},
+    {"HIVE", &icon_hive_32, &HiveActivity::create},
     {"TRIPLES", &icon_triples_32, &TriplesActivity::create},
     {"ILYA", &icon_kids_32, &KidsActivity::create},
     {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither},
