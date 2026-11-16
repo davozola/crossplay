@@ -240,8 +240,8 @@ void buildPicker(toybox::Screen& screen, const PickerModel& model) {
   const int count = model.focus ? pd::kFocusChoiceCount : pd::kBreakChoiceCount;
 
   int y = toybox::kBodyTop - 12;
-  caption(screen, toybox::kMargin, y, inner, model.focus ? "HOW LONG IS A FOCUS SESSION?" : "HOW LONG IS A SHORT BREAK?",
-          fui::TextAlign::Left);
+  caption(screen, toybox::kMargin, y, inner,
+          model.focus ? "HOW LONG IS A FOCUS SESSION?" : "HOW LONG IS A SHORT BREAK?", fui::TextAlign::Left);
   y += toybox::kTileCut.inkHeight + 16;
 
   const int cols = model.focus ? 3 : 2;

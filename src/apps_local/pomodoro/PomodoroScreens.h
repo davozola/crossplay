@@ -29,7 +29,7 @@ struct FaceSwap {
 struct TimerModel {
   pomodoro::Phase phase = pomodoro::Phase::Focus;
   pomodoro::State state = pomodoro::State::Ready;
-  int minutes = 25;        // left, or the phase's length while ready
+  int minutes = 25;  // left, or the phase's length while ready
   int progressPermille = 0;
   int doneInCycle = 0;
   uint32_t totalDone = 0;
