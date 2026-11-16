@@ -7,6 +7,7 @@
 #include <esp_wifi.h>
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <string>
 #include <vector>
@@ -38,7 +39,10 @@ void MarketsActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadState();
+  marketsstore::loadPicks();
   for (int i = 0; i < mk::kAssets; ++i) loadCached(static_cast<mk::Asset>(i));
+  marketsstore::loadPortfolio(portfolio_);
+  reprice();
   view_ = View::Dashboard;
   lastFetchMs_ = static_cast<uint32_t>(millis());
   requestUpdate();
@@ -83,7 +87,17 @@ bool MarketsActivity::loadCached(const mk::Asset asset) {
 int MarketsActivity::fetchAll() {
   const int ok = marketsstore::fetchAll(quotes_, report_, sizeof(report_));
   lastFetchMs_ = static_cast<uint32_t>(millis());
+  reprice();
   return ok;
+}
+
+void MarketsActivity::reprice() { marketsstore::pricePortfolio(portfolio_, priced_, euro_); }
+
+void MarketsActivity::openAmount(const int instrument) {
+  amountInstrument_ = instrument;
+  const int at = mk::positionOf(portfolio_, instrument);
+  mk::entryFrom(at >= 0 ? portfolio_.positions[at].amount : 0, entry_);
+  view_ = View::Amount;
 }
 
 void MarketsActivity::startRefresh() {
@@ -118,7 +132,10 @@ void MarketsActivity::loop() {
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = "FETCHING";
-    statusDetail_ = "BITCOIN, S&P 500, NASDAQ";
+    std::snprintf(fetching_, sizeof(fetching_), "%s, %s, %s%s", mk::infoOf(mk::Asset::Bitcoin).name,
+                  mk::infoOf(mk::Asset::Sp500).name, mk::infoOf(mk::Asset::Nasdaq).name,
+                  portfolio_.count > 0 ? " AND THE PORTFOLIO" : "");
+    statusDetail_ = fetching_;
     // The status frame must be on the panel before the fetch blocks.
     requestUpdateAndWait();
     return;
@@ -126,7 +143,7 @@ void MarketsActivity::loop() {
   if (step_ == Step::Running) {
     step_ = Step::Idle;
     const int ok = fetchAll();
-    if (ok == mk::kAssets) {
+    if (ok == mk::kAssets && std::strncmp(report_, "ALL", 3) == 0) {
       view_ = statusBack_;
     } else {
       // Say which source it was; what did arrive is on the dashboard behind this.
@@ -140,7 +157,8 @@ void MarketsActivity::loop() {
   // Auto-refresh: quietly, with no status page, and only when already online.
   // The radio reconnects by itself after a drop; a round that finds it down
   // is skipped and the next one tries again.
-  if (autoMinutes_ > 0 && step_ == Step::Idle && view_ != View::Status && view_ != View::AutoPicker) {
+  if (autoMinutes_ > 0 && step_ == Step::Idle &&
+      (view_ == View::Dashboard || view_ == View::Detail || view_ == View::Portfolio)) {
     const uint32_t now = static_cast<uint32_t>(millis());
     if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
       lastFetchMs_ = now;
@@ -155,7 +173,16 @@ void MarketsActivity::loop() {
       shelf::leave(renderer, mappedInput);
       return;
     }
-    view_ = view_ == View::Status ? statusBack_ : View::Dashboard;
+    // Each page goes back to the one it was opened from.
+    if (view_ == View::Status) {
+      view_ = statusBack_;
+    } else if (view_ == View::CardPicker) {
+      view_ = View::Detail;
+    } else if (view_ == View::HoldingPicker || view_ == View::Amount) {
+      view_ = View::Portfolio;
+    } else {
+      view_ = View::Dashboard;
+    }
     requestUpdate();
     return;
   }
@@ -206,6 +233,51 @@ void MarketsActivity::route(const fui::ActionEvent& event) {
     case ui::ActionDismiss:
       view_ = statusBack_;
       break;
+    case ui::ActionPortfolio:
+      reprice();
+      view_ = View::Portfolio;
+      break;
+    case ui::ActionChange:
+      view_ = View::CardPicker;
+      break;
+    case ui::ActionAddPosition:
+      if (portfolio_.count >= mk::kMaxPositions) return;
+      view_ = View::HoldingPicker;
+      break;
+    case ui::ActionPick:
+      if (event.value < 0 || event.value >= mk::kInstruments) return;
+      if (view_ == View::CardPicker) {
+        mk::Picks picks = mk::picks();
+        picks.slot[static_cast<int>(open_)] = static_cast<uint8_t>(event.value);
+        marketsstore::savePicks(picks);
+        // The quote kept for it, if it was ever fetched; otherwise the card
+        // says to refresh.
+        quotes_[static_cast<int>(open_)] = mk::Quote{};
+        loadCached(open_);
+        view_ = View::Dashboard;
+      } else if (view_ == View::HoldingPicker) {
+        openAmount(event.value);
+      } else {
+        return;
+      }
+      break;
+    case ui::ActionPosition:
+      if (event.value < 0 || event.value >= portfolio_.count) return;
+      openAmount(portfolio_.positions[event.value].instrument);
+      break;
+    case ui::ActionKey:
+      if (view_ != View::Amount || !mk::entryKey(entry_, static_cast<char>(event.value))) return;
+      break;
+    case ui::ActionSaveAmount:
+    case ui::ActionRemovePosition:
+      if (view_ != View::Amount) return;
+      // Saving nothing, or zero, is taking it out.
+      mk::setPosition(portfolio_, amountInstrument_,
+                      event.action == ui::ActionRemovePosition ? 0 : mk::entryValue(entry_));
+      marketsstore::savePortfolio(portfolio_);
+      reprice();
+      view_ = View::Portfolio;
+      break;
     default:
       return;
   }
@@ -251,6 +323,39 @@ void MarketsActivity::render(RenderLock&&) {
     case View::AutoPicker:
       marketsui::buildAutoPicker(surface, autoMinutes_);
       break;
+    case View::Portfolio: {
+      marketsui::PortfolioModel m;
+      m.portfolio = &portfolio_;
+      m.priced = priced_;
+      m.euro = euro_;
+      m.faces = faces;
+      marketsui::buildPortfolio(surface, m);
+      break;
+    }
+    case View::CardPicker: {
+      marketsui::PickerModel m;
+      m.title = "SHOW HERE";
+      m.current = mk::instrumentOf(open_);
+      marketsui::buildPicker(surface, m);
+      break;
+    }
+    case View::HoldingPicker: {
+      marketsui::PickerModel m;
+      m.title = "ADD";
+      m.ownableOnly = true;
+      m.held = &portfolio_;
+      marketsui::buildPicker(surface, m);
+      break;
+    }
+    case View::Amount: {
+      marketsui::AmountModel m;
+      m.instrument = amountInstrument_;
+      m.text = entry_.text;
+      m.held = mk::positionOf(portfolio_, amountInstrument_) >= 0;
+      m.faces = faces;
+      marketsui::buildAmount(surface, m);
+      break;
+    }
     case View::Status: {
       marketsui::StatusModel m;
       m.headline = statusHeadline_;

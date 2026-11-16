@@ -5,6 +5,7 @@
 #include <Memory.h>
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <memory>
 #include <vector>
@@ -24,8 +25,12 @@ constexpr size_t kMaxBody = 64 * 1024;  // 300 daily candles are ~22 KB
 constexpr char kBrowserAgent[] =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
-void cachePath(const mk::Asset asset, const char* ext, char* out, const size_t cap) {
-  std::snprintf(out, cap, "%s/%s.%s", kCacheDir, mk::infoOf(asset).file, ext);
+constexpr char kPicksPath[] = "/.crosspoint/markets/picks";
+constexpr char kPortfolioPath[] = "/.crosspoint/markets/cartera";
+bool picksLoaded = false;
+
+void cachePath(const int instrument, const char* ext, char* out, const size_t cap) {
+  std::snprintf(out, cap, "%s/%s.%s", kCacheDir, mk::instrumentAt(instrument).file, ext);
 }
 
 // A GET into memory, by way of a file on the card: the downloader that takes
@@ -72,11 +77,9 @@ void outcome(const bool parsed, const int status, char* out, const size_t cap) {
     std::snprintf(out, cap, "HTTP %d", status % 1000);
 }
 
-}  // namespace
-
-bool loadCached(const mk::Asset asset, mk::Quote& out) {
+bool loadInstrument(const int instrument, mk::Quote& out) {
   char path[64];
-  cachePath(asset, "q", path, sizeof(path));
+  cachePath(instrument, "q", path, sizeof(path));
   if (!Storage.exists(path)) return false;
   HalFile file;
   if (!Storage.openFileForRead("MKTS", path, file)) return false;
@@ -95,9 +98,9 @@ bool loadCached(const mk::Asset asset, mk::Quote& out) {
   return true;
 }
 
-void saveCached(const mk::Asset asset, const mk::Quote& quote) {
+void saveInstrument(const int instrument, const mk::Quote& quote) {
   char path[64];
-  cachePath(asset, "q", path, sizeof(path));
+  cachePath(instrument, "q", path, sizeof(path));
   HalFile file;
   if (!Storage.openFileForWrite("MKTS", path, file)) return;
   file.write(&kCacheVersion, 1);
@@ -105,68 +108,190 @@ void saveCached(const mk::Asset asset, const mk::Quote& quote) {
   file.flush();
 }
 
-// Bitcoin from Coinbase's candles, then each index from CNBC's bars, then one
-// CNBC quote laid over both. A quote replaces the one held only once it has
-// parsed, so an error page never costs a good one. Returns how many arrived.
-int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap) {
+}  // namespace
+
+void loadPicks() {
+  if (picksLoaded) return;
+  picksLoaded = true;
+  mk::setPicks(mk::defaultPicks());
+  if (!Storage.exists(kPicksPath)) return;
+  HalFile file;
+  uint8_t data[1 + mk::kAssets] = {};
+  if (!Storage.openFileForRead("MKTS", kPicksPath, file)) return;
+  if (file.read(data, sizeof(data)) != sizeof(data) || data[0] != 1) return;
+  mk::Picks picks;
+  for (int i = 0; i < mk::kAssets; ++i) picks.slot[i] = data[1 + i];
+  mk::setPicks(picks);
+}
+
+void savePicks(const mk::Picks& picks) {
+  mk::setPicks(picks);
+  picksLoaded = true;
   Storage.ensureDirectoryExists(kCacheDir);
-  int ok = 0;
-  char url[256];
+  HalFile file;
+  if (!Storage.openFileForWrite("MKTS", kPicksPath, file)) return;
+  const mk::Picks kept = mk::picks();
+  uint8_t data[1 + mk::kAssets] = {1};
+  for (int i = 0; i < mk::kAssets; ++i) data[1 + i] = kept.slot[i];
+  file.write(data, sizeof(data));
+  file.flush();
+}
+
+void loadPortfolio(mk::Portfolio& out) {
+  out.count = 0;
+  if (!Storage.exists(kPortfolioPath)) return;
+  HalFile file;
+  uint8_t bytes[mk::kPortfolioBytes];
+  if (!Storage.openFileForRead("MKTS", kPortfolioPath, file)) return;
+  const int got = file.read(bytes, sizeof(bytes));
+  if (got > 0) mk::unpackPortfolio(bytes, static_cast<size_t>(got), out);
+}
+
+void savePortfolio(const mk::Portfolio& portfolio) {
+  Storage.ensureDirectoryExists(kCacheDir);
+  HalFile file;
+  uint8_t bytes[mk::kPortfolioBytes];
+  if (mk::packPortfolio(portfolio, bytes, sizeof(bytes)) == 0) return;
+  if (!Storage.openFileForWrite("MKTS", kPortfolioPath, file)) return;
+  file.write(bytes, sizeof(bytes));
+  file.flush();
+}
+
+void pricePortfolio(const mk::Portfolio& portfolio, mk::Priced* priced, double& euro) {
+  euro = 0;
+  auto quote = makeUniqueNoThrow<mk::Quote>();
+  if (!quote) {
+    LOG_ERR("MKTS", "OOM: a quote");
+    for (int i = 0; i < portfolio.count; ++i) priced[i] = mk::Priced{};
+    return;
+  }
+  for (int i = 0; i < portfolio.count; ++i) {
+    priced[i] = mk::Priced{};
+    if (!loadInstrument(portfolio.positions[i].instrument, *quote)) continue;
+    priced[i].valid = true;
+    priced[i].price = quote->price;
+    priced[i].previous = mk::previousClose(*quote);
+  }
+  if (mk::euroInstrument() >= 0 && loadInstrument(mk::euroInstrument(), *quote)) euro = quote->price;
+}
+
+bool loadCached(const mk::Asset asset, mk::Quote& out) {
+  loadPicks();
+  return loadInstrument(mk::instrumentOf(asset), out);
+}
+
+// Everything wanted is fetched one instrument at a time: crypto from Coinbase's
+// candles, the rest from CNBC's bars, and then one CNBC quote laid over all of
+// those. A quote replaces the one held only once it has parsed, so an error
+// page never costs a good one.
+int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap) {
+  loadPicks();
+  Storage.ensureDirectoryExists(kCacheDir);
+
+  // The three cards first, then what the portfolio holds beyond them, then the
+  // euro if there is a portfolio to total.
+  constexpr int kMaxWanted = mk::kAssets + mk::kMaxPositions + 1;
+  int wanted[kMaxWanted];
+  int count = 0;
+  auto want = [&](const int instrument) {
+    for (int i = 0; i < count; ++i) {
+      if (wanted[i] == instrument) return;
+    }
+    if (count < kMaxWanted) wanted[count++] = instrument;
+  };
+  for (int i = 0; i < mk::kAssets; ++i) wanted[count++] = mk::instrumentOf(static_cast<mk::Asset>(i));
+  {
+    mk::Portfolio portfolio;
+    loadPortfolio(portfolio);
+    for (int i = 0; i < portfolio.count; ++i) want(portfolio.positions[i].instrument);
+    if (portfolio.count > 0 && mk::euroInstrument() >= 0) want(mk::euroInstrument());
+  }
+
+  auto fetched = makeUniqueNoThrow<mk::Quote[]>(static_cast<size_t>(count));
+  if (!fetched) {
+    LOG_ERR("MKTS", "OOM: %d quotes", count);
+    std::snprintf(report, reportCap, "OUT OF MEMORY.");
+    return 0;
+  }
+  bool have[kMaxWanted] = {};
+  char url[384];
   std::unique_ptr<char[]> body;
   size_t size = 0;
   int status = 0;
-  char words[3][12];
-  auto fresh = makeUniqueNoThrow<mk::Quote>();
-  if (!fresh) {
-    LOG_ERR("MKTS", "OOM: a quote");
-    return 0;
-  }
+  char word[12];
+  char failed[96] = "";
+  auto fail = [&](const int instrument) {
+    const size_t at = std::strlen(failed);
+    std::snprintf(failed + at, sizeof(failed) - at, "%s%s %s", at ? ", " : "", mk::instrumentAt(instrument).name, word);
+  };
 
-  mk::coinbaseUrl(url, sizeof(url));
-  bool parsed = get(url, body, size, status) && mk::parseCoinbase(body.get(), size, *fresh);
-  outcome(parsed, status, words[0], sizeof(words[0]));
   // Today, for the bars' date range: the device's clock when it has been set,
-  // and otherwise the newest candle's day.
+  // and otherwise the newest candle's day from the first crypto answer.
   const time_t clock = time(nullptr);
   int32_t today = clock > 1700000000 ? static_cast<int32_t>(clock / 86400) : 0;
-  if (parsed) {
-    if (clock > 1700000000) fresh->time = static_cast<int64_t>(clock);
-    if (today == 0) today = fresh->days[fresh->count - 1];
-    quotes[0] = *fresh;
-    saveCached(mk::Asset::Bitcoin, quotes[0]);
-    ++ok;
-  }
-  body.reset();
 
-  bool haveIndex[mk::kAssets] = {};
-  for (int i = 1; i < mk::kAssets; ++i) {
-    const mk::Asset asset = static_cast<mk::Asset>(i);
-    if (today == 0) {
-      std::snprintf(words[i], sizeof(words[i]), "NO DATE");
-      continue;
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = 0; i < count; ++i) {
+      const mk::AssetInfo& info = mk::instrumentAt(wanted[i]);
+      if (info.always != (pass == 0)) continue;
+      bool parsed = false;
+      if (info.always) {
+        mk::coinbaseUrlFor(info.symbol, url, sizeof(url));
+        parsed = get(url, body, size, status) && mk::parseCoinbase(body.get(), size, fetched[i]);
+        if (parsed) {
+          if (clock > 1700000000) fetched[i].time = static_cast<int64_t>(clock);
+          if (today == 0) today = fetched[i].days[fetched[i].count - 1];
+        }
+        outcome(parsed, status, word, sizeof(word));
+      } else if (today == 0) {
+        std::snprintf(word, sizeof(word), "NO DATE");
+      } else {
+        mk::cnbcBarsUrlFor(info.symbol, today, url, sizeof(url));
+        parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
+        outcome(parsed, status, word, sizeof(word));
+      }
+      body.reset();
+      if (parsed) std::snprintf(fetched[i].currency, sizeof(fetched[i].currency), "%s", mk::currencyOf(wanted[i]));
+      have[i] = parsed;
+      if (!parsed) fail(wanted[i]);
     }
-    mk::cnbcBarsUrl(asset, today, url, sizeof(url));
-    parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, *fresh);
-    outcome(parsed, status, words[i], sizeof(words[i]));
-    body.reset();
-    if (!parsed) continue;
-    quotes[i] = *fresh;
-    haveIndex[i] = true;
-    ++ok;
   }
-  if (haveIndex[1] || haveIndex[2]) {
-    mk::cnbcQuoteUrl(url, sizeof(url));
+
+  // One quote answer for every CNBC instrument that has bars.
+  const char* symbols[kMaxWanted];
+  int symbolCount = 0;
+  for (int i = 0; i < count; ++i) {
+    if (have[i] && !mk::instrumentAt(wanted[i]).always) symbols[symbolCount++] = mk::instrumentAt(wanted[i]).symbol;
+  }
+  if (symbolCount > 0) {
+    mk::cnbcQuoteUrlFor(symbols, symbolCount, url, sizeof(url));
     if (get(url, body, size, status)) {
-      for (int i = 1; i < mk::kAssets; ++i) {
-        if (haveIndex[i]) mk::applyCnbcQuote(body.get(), size, static_cast<mk::Asset>(i), quotes[i]);
+      for (int i = 0; i < count; ++i) {
+        if (have[i] && !mk::instrumentAt(wanted[i]).always) {
+          mk::applyCnbcQuoteFor(body.get(), size, mk::instrumentAt(wanted[i]).symbol, fetched[i]);
+        }
       }
     }
-    for (int i = 1; i < mk::kAssets; ++i) {
-      if (haveIndex[i]) saveCached(static_cast<mk::Asset>(i), quotes[i]);
+    body.reset();
+  }
+
+  int arrived = 0;
+  int cards = 0;
+  for (int i = 0; i < count; ++i) {
+    if (!have[i]) continue;
+    ++arrived;
+    saveInstrument(wanted[i], fetched[i]);
+    if (i < mk::kAssets) {
+      quotes[i] = fetched[i];
+      ++cards;
     }
   }
-  std::snprintf(report, reportCap, "COINBASE: %s.  CNBC S&P: %s.  CNBC NASDAQ: %s.", words[0], words[1], words[2]);
-  return ok;
+  if (arrived == count) {
+    std::snprintf(report, reportCap, "ALL %d ANSWERED.", count % 100);
+  } else {
+    std::snprintf(report, reportCap, "%d OF %d ANSWERED. NOT: %s.", arrived % 100, count % 100, failed);
+  }
+  return cards;
 }
 
 }  // namespace marketsstore

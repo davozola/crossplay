@@ -39,36 +39,118 @@ int decimalsFor(const double magnitude) { return magnitude >= 10000 ? 0 : 2; }
 
 }  // namespace
 
-const AssetInfo& infoOf(const Asset asset) {
-  static const AssetInfo kInfo[kAssets] = {
-      {"BITCOIN", "BTC / USD", "BTC-USD", "btc", true},
-      {"S&P 500", "US LARGE CAPS", ".SPX", "sp500", false},
-      {"NASDAQ", "COMPOSITE", ".IXIC", "nasdaq", false},
-  };
+namespace {
+
+constexpr AssetInfo kCatalogue[kInstruments] = {
+    {"BITCOIN", "BTC / USD", "BTC-USD", "btc", true, true},
+    {"S&P 500", "US LARGE CAPS", ".SPX", "sp500", false, false},
+    {"NASDAQ", "COMPOSITE", ".IXIC", "nasdaq", false, false},
+    {"ETHEREUM", "ETH / USD", "ETH-USD", "eth", true, true},
+    {"SOLANA", "SOL / USD", "SOL-USD", "sol", true, true},
+    {"DOW JONES", "INDUSTRIALS", ".DJI", "dji", false, false},
+    {"DAX", "GERMANY 40", ".GDAXI", "dax", false, false},
+    {"IBEX 35", "SPAIN", ".IBEX", "ibex", false, false},
+    {"STOXX 50", "EURO ZONE", ".STOXX50E", "stoxx", false, false},
+    {"APPLE", "AAPL", "AAPL", "aapl", false, true},
+    {"MICROSOFT", "MSFT", "MSFT", "msft", false, true},
+    {"NVIDIA", "NVDA", "NVDA", "nvda", false, true},
+    {"AMAZON", "AMZN", "AMZN", "amzn", false, true},
+    {"ALPHABET", "GOOGL", "GOOGL", "googl", false, true},
+    {"META", "META", "META", "meta", false, true},
+    {"TESLA", "TSLA", "TSLA", "tsla", false, true},
+    {"SPY", "S&P 500 ETF", "SPY", "spy", false, true},
+    {"QQQ", "NASDAQ 100 ETF", "QQQ", "qqq", false, true},
+    {"GLD", "GOLD ETF", "GLD", "gld", false, true},
+    {"GOLD", "USD / OUNCE", "@GC.1", "gold", false, false},
+    {"EUR / USD", "EURO IN DOLLARS", "EUR=", "eurusd", false, false},
+};
+constexpr int kEuro = 20;
+
+Picks current = {{0, 1, 2}};
+
+// A symbol as it goes in a URL: CNBC's use '@', '=' and '&'.
+void escape(const char* symbol, char* out, const size_t cap) {
+  size_t at = 0;
+  for (const char* p = symbol; *p && at + 4 < cap; ++p) {
+    const char c = *p;
+    const bool plain =
+        (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+    if (plain) {
+      out[at++] = c;
+    } else {
+      static const char kHex[] = "0123456789ABCDEF";
+      out[at++] = '%';
+      out[at++] = kHex[(static_cast<unsigned char>(c) >> 4) & 15];
+      out[at++] = kHex[static_cast<unsigned char>(c) & 15];
+    }
+  }
+  out[at] = 0;
+}
+
+}  // namespace
+
+const AssetInfo& instrumentAt(const int instrument) {
+  return kCatalogue[instrument >= 0 && instrument < kInstruments ? instrument : 0];
+}
+
+const char* currencyOf(const int instrument) { return instrument >= 6 && instrument <= 8 ? "EUR" : "USD"; }
+
+int euroInstrument() { return kEuro; }
+
+Picks defaultPicks() { return Picks{{0, 1, 2}}; }
+
+void setPicks(const Picks& picks) {
+  const Picks fallback = defaultPicks();
+  for (int i = 0; i < kAssets; ++i) current.slot[i] = picks.slot[i] < kInstruments ? picks.slot[i] : fallback.slot[i];
+}
+
+Picks picks() { return current; }
+
+int instrumentOf(const Asset asset) {
   const int i = static_cast<int>(asset);
-  return kInfo[i >= 0 && i < kAssets ? i : 0];
+  return current.slot[i >= 0 && i < kAssets ? i : 0];
 }
 
-void coinbaseUrl(char* out, const size_t cap) {
-  std::snprintf(out, cap, "https://api.exchange.coinbase.com/products/%s/candles?granularity=86400",
-                infoOf(Asset::Bitcoin).symbol);
+const AssetInfo& infoOf(const Asset asset) { return instrumentAt(instrumentOf(asset)); }
+
+void coinbaseUrlFor(const char* product, char* out, const size_t cap) {
+  std::snprintf(out, cap, "https://api.exchange.coinbase.com/products/%s/candles?granularity=86400", product);
 }
 
-void cnbcBarsUrl(const Asset asset, const int32_t today, char* out, const size_t cap) {
+void coinbaseUrl(char* out, const size_t cap) { coinbaseUrlFor(kCatalogue[0].symbol, out, cap); }
+
+void cnbcBarsUrlFor(const char* symbol, const int32_t today, char* out, const size_t cap) {
   int y0 = 0, m0 = 0, d0 = 0, y1 = 0, m1 = 0, d1 = 0;
   civilOfDay(today - 125, y0, m0, d0);
   civilOfDay(today + 2, y1, m1, d1);
+  char escaped[40];
+  escape(symbol, escaped, sizeof(escaped));
   std::snprintf(
       out, cap,
       "https://ts-api.cnbc.com/harmony/app/bars/%s/1D/%04d%02d%02d000000/%04d%02d%02d000000/adjusted/EST5EDT.json",
-      infoOf(asset).symbol, y0 % 10000, m0 % 100, d0 % 100, y1 % 10000, m1 % 100, d1 % 100);
+      escaped, y0 % 10000, m0 % 100, d0 % 100, y1 % 10000, m1 % 100, d1 % 100);
+}
+
+void cnbcBarsUrl(const Asset asset, const int32_t today, char* out, const size_t cap) {
+  cnbcBarsUrlFor(infoOf(asset).symbol, today, out, cap);
+}
+
+void cnbcQuoteUrlFor(const char* const* symbols, const int count, char* out, const size_t cap) {
+  int at = std::snprintf(out, cap, "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols=");
+  for (int i = 0; i < count && at > 0 && static_cast<size_t>(at) + 48 < cap; ++i) {
+    char escaped[40];
+    escape(symbols[i], escaped, sizeof(escaped));
+    at += std::snprintf(out + at, cap - static_cast<size_t>(at), "%s%s", i > 0 ? "%7C" : "", escaped);
+  }
+  if (at > 0 && static_cast<size_t>(at) < cap) {
+    std::snprintf(out + at, cap - static_cast<size_t>(at),
+                  "&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json");
+  }
 }
 
 void cnbcQuoteUrl(char* out, const size_t cap) {
-  std::snprintf(out, cap,
-                "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols=%s%%7C%s"
-                "&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json",
-                infoOf(Asset::Sp500).symbol, infoOf(Asset::Nasdaq).symbol);
+  const char* const symbols[2] = {kCatalogue[1].symbol, kCatalogue[2].symbol};
+  cnbcQuoteUrlFor(symbols, 2, out, cap);
 }
 
 int32_t daysFromCivil(int year, const int month, const int day) {
@@ -204,12 +286,15 @@ bool parseCnbcBars(const char* json, const size_t len, Quote& out) {
 }
 
 bool applyCnbcQuote(const char* json, const size_t len, const Asset asset, Quote& q) {
+  return applyCnbcQuoteFor(json, len, infoOf(asset).symbol, q);
+}
+
+bool applyCnbcQuoteFor(const char* json, const size_t len, const char* want, Quote& q) {
   if (!q.valid || q.count < 1) return false;
   const Span list = member(member(flatjson::root(json, len), "FormattedQuoteResult"), "FormattedQuote");
   if (!list.ok()) return false;
   bool found = false;
-  const char* want = infoOf(asset).symbol;
-  forEach(list, 8, [&](int, const Span& quote) {
+  forEach(list, 16, [&](int, const Span& quote) {
     char symbol[12];
     flatjson::string(member(quote, "symbol"), symbol, sizeof(symbol));
     if (found || std::strcmp(symbol, want) != 0) return;
@@ -390,6 +475,154 @@ const char* monthName(const int month) {
   static const char* const kNames[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                                          "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
   return month >= 1 && month <= 12 ? kNames[month - 1] : "";
+}
+
+bool setPosition(Portfolio& portfolio, const int instrument, const double amount) {
+  if (instrument < 0 || instrument >= kInstruments || !kCatalogue[instrument].ownable) return false;
+  const int at = positionOf(portfolio, instrument);
+  if (!(amount > 0)) {
+    if (at < 0) return false;
+    for (int i = at + 1; i < portfolio.count; ++i) portfolio.positions[i - 1] = portfolio.positions[i];
+    --portfolio.count;
+    return true;
+  }
+  if (at >= 0) {
+    portfolio.positions[at].amount = amount;
+    return true;
+  }
+  if (portfolio.count >= kMaxPositions) return false;
+  portfolio.positions[portfolio.count].instrument = static_cast<uint8_t>(instrument);
+  portfolio.positions[portfolio.count].amount = amount;
+  ++portfolio.count;
+  return true;
+}
+
+int positionOf(const Portfolio& portfolio, const int instrument) {
+  for (int i = 0; i < portfolio.count; ++i) {
+    if (portfolio.positions[i].instrument == instrument) return i;
+  }
+  return -1;
+}
+
+Totals totalsOf(const Portfolio& portfolio, const Priced* priced) {
+  Totals t;
+  for (int i = 0; i < portfolio.count; ++i) {
+    if (!priced[i].valid) continue;
+    t.value += portfolio.positions[i].amount * priced[i].price;
+    t.previous += portfolio.positions[i].amount * priced[i].previous;
+    ++t.priced;
+  }
+  return t;
+}
+
+double percentOf(const double now, const double before) { return before > 0 ? (now - before) / before * 100.0 : 0; }
+
+size_t packPortfolio(const Portfolio& portfolio, uint8_t* out, const size_t cap) {
+  if (cap < kPortfolioBytes) return 0;
+  std::memset(out, 0, kPortfolioBytes);
+  out[0] = 1;
+  out[1] = static_cast<uint8_t>(portfolio.count);
+  for (int i = 0; i < portfolio.count; ++i) {
+    uint8_t* o = out + 2 + i * 9;
+    o[0] = portfolio.positions[i].instrument;
+    std::memcpy(o + 1, &portfolio.positions[i].amount, 8);
+  }
+  return kPortfolioBytes;
+}
+
+bool unpackPortfolio(const uint8_t* in, const size_t size, Portfolio& portfolio) {
+  portfolio.count = 0;
+  if (size != kPortfolioBytes || in[0] != 1 || in[1] > kMaxPositions) return false;
+  Portfolio fresh;
+  for (int i = 0; i < in[1]; ++i) {
+    const uint8_t* o = in + 2 + i * 9;
+    double amount = 0;
+    std::memcpy(&amount, o + 1, 8);
+    // Anything that is not a plain positive amount of something holdable is
+    // not a file this wrote.
+    if (!(amount > 0) || amount > 1e12 || !setPosition(fresh, o[0], amount)) return false;
+  }
+  if (fresh.count != in[1]) return false;
+  portfolio = fresh;
+  return true;
+}
+
+bool entryKey(AmountEntry& entry, const char key) {
+  const size_t n = std::strlen(entry.text);
+  if (key == '<') {
+    if (n == 0) return false;
+    entry.text[n - 1] = 0;
+    return true;
+  }
+  const bool hasPoint = std::strchr(entry.text, '.') != nullptr;
+  if (key == '.') {
+    if (hasPoint || n + 2 >= sizeof(entry.text)) return false;
+    if (n == 0) {
+      std::snprintf(entry.text, sizeof(entry.text), "0.");
+      return true;
+    }
+  } else if (key < '0' || key > '9') {
+    return false;
+  } else if (hasPoint && n - static_cast<size_t>(std::strchr(entry.text, '.') - entry.text) > 6) {
+    return false;  // six decimals is as fine as an amount is kept
+  }
+  if (n + 1 >= sizeof(entry.text)) return false;
+  // A leading zero is replaced, not followed.
+  if (n == 1 && entry.text[0] == '0' && key != '.') {
+    entry.text[0] = key;
+    return true;
+  }
+  entry.text[n] = key;
+  entry.text[n + 1] = 0;
+  return true;
+}
+
+double entryValue(const AmountEntry& entry) {
+  double whole = 0;
+  double frac = 0;
+  double scale = 1;
+  bool after = false;
+  for (const char* p = entry.text; *p; ++p) {
+    if (*p == '.') {
+      after = true;
+    } else if (after) {
+      scale /= 10;
+      frac += (*p - '0') * scale;
+    } else {
+      whole = whole * 10 + (*p - '0');
+    }
+  }
+  return whole + frac;
+}
+
+void entryFrom(const double amount, AmountEntry& entry) {
+  char plain[32];
+  std::snprintf(plain, sizeof(plain), "%.6f", amount > 0 ? amount : 0);
+  size_t n = std::strlen(plain);
+  while (n > 0 && plain[n - 1] == '0') plain[--n] = 0;
+  if (n > 0 && plain[n - 1] == '.') plain[--n] = 0;
+  if (n >= sizeof(entry.text) || amount <= 0) {
+    entry.text[0] = 0;
+    return;
+  }
+  std::memcpy(entry.text, plain, n + 1);
+}
+
+void formatAmount(const double amount, char* out, const size_t cap) {
+  char plain[32];
+  std::snprintf(plain, sizeof(plain), "%.6f", amount);
+  size_t n = std::strlen(plain);
+  while (n > 0 && plain[n - 1] == '0') plain[--n] = 0;
+  if (n > 0 && plain[n - 1] == '.') plain[--n] = 0;
+  const char* dot = std::strchr(plain, '.');
+  const int whole = static_cast<int>(dot ? dot - plain : static_cast<long>(n));
+  size_t at = 0;
+  for (int i = 0; i < whole && at + 1 < cap; ++i) {
+    if (i > 0 && (whole - i) % 3 == 0 && at + 2 < cap) out[at++] = ',';
+    out[at++] = plain[i];
+  }
+  for (const char* q = dot; q && *q && at + 1 < cap; ++q) out[at++] = *q;
+  out[at] = 0;
 }
 
 }  // namespace markets

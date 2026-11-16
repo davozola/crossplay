@@ -36,7 +36,7 @@ Sticky**. Conserva todo lo del original y añade veintiséis cosas:
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
 | **Naval Weather** | Parte marítimo de los sitios guardados en Weather: viento en nudos, oleaje, mar de fondo y agua, una semana, consultable sin red. |
 | **Wallpapers** (ampliada) | Galería con swipe entre diapositivas, una o cuatro por diapositiva, y un segundo pack de 16 fondos dibujados para la Sticky que se descarga por Wi-Fi. |
-| **Markets**     | Bitcoin, S&P 500 y Nasdaq en un panel para tenerlo de pie en la mesa, con detalle de cada uno. |
+| **Markets**     | Tres valores a elegir entre veintiuno (Bitcoin, S&P 500 y Nasdaq de serie) en un panel para tenerlo de pie en la mesa, con detalle de cada uno, y una cartera: apuntas cuánto tienes de cada cosa y ves el total y el cambio del día. |
 | **FM Synth Lab** | Chuleta para un sinte FM de seis operadores (M-VAVE FM-1): los 32 algoritmos dibujados, qué hace cada ratio al espectro y la forma de la envolvente. |
 | **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |
 | **RPN 12C** | Calculadora financiera RPN al estilo de la HP-12C: pila de cuatro niveles, n, i, PV, PMT, FV, NPV e IRR. |
@@ -167,7 +167,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Handwriting** | Pages you write and draw on with a finger; each one saved as a picture too. |
 | **Weather**     | Open-Meteo's forecast for up to six cities, kept on the card for offline. |
 | **Naval Weather** | Wind, waves, swell and water for a week, kept for when there is no network. |
-| **Markets**     | Bitcoin, the S&P 500 and the Nasdaq on one screen for a desk stand.       |
+| **Markets**     | Three instruments you pick on one screen for a desk stand, and a portfolio. |
 | **FM Synth Lab** | A crib sheet for a six-operator FM synth: 32 algorithms, ratios, envelopes. |
 | **Music Theory** | Scales, chords and changes in any key, and Euclidean rhythms on a wheel.  |
 | **RPN 12C**     | An RPN financial calculator: time value of money, NPV and IRR.            |
@@ -264,9 +264,11 @@ Most of the shelf never touches the network. Of the parts that do:
 - **Weather asks Open-Meteo, and Markets asks Coinbase and CNBC.** Weather sends
   the city name you type to Open-Meteo's geocoder and a saved city's
   coordinates to its forecast API; Naval Weather sends the same coordinates to
-  its marine and forecast APIs. Markets fetches Bitcoin's daily candles from
-  Coinbase's public API and the two indexes from CNBC's chart and quote
-  endpoints, which are not an official API and can change without notice; with auto-refresh on it does so on a timer and keeps the
+  its marine and forecast APIs. Markets fetches crypto's daily candles from
+  Coinbase's public API and everything else from CNBC's chart and quote
+  endpoints, which are not an official API and can change without notice. It asks
+  for the instruments on its cards and in the portfolio; how much of each you hold
+  stays on the card and is never sent; with auto-refresh on it does so on a timer and keeps the
   device awake and on Wi-Fi to do it.
 - **Opening a Hacker News article sends its URL to a third party.** The story
   list comes from the public [Algolia API](https://hn.algolia.com/api), and
