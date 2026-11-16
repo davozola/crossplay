@@ -20,6 +20,7 @@
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
+#include "fmlab/FmLabActivity.h"
 #include "forehead/ForeheadActivity.h"
 #include "go/GoActivity.h"
 #include "hackernews/HackerNewsActivity.h"
@@ -47,6 +48,7 @@
 #include "solitaire/SolitaireActivity.h"
 #include "sudoku/SudokuActivity.h"
 #include "tak/TakActivity.h"
+#include "theory/TheoryActivity.h"
 #include "toybattle/ToyBattleActivity.h"
 #include "triples/TriplesActivity.h"
 #include "trivia/TriviaActivity.h"
@@ -117,6 +119,8 @@ constexpr shelf::Item kApps[] = {
     {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create},
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
     {"MARKETS", &icon_markets_32, &MarketsActivity::create},
+    {"FM SYNTH LAB", &icon_fmlab_32, &FmLabActivity::create},
+    {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
