@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "../ui/ToyboxFormat.h"
+#include "../ui/ToyboxHowTo.h"
 
 namespace triplesui {
 
@@ -155,7 +156,9 @@ void build(toybox::Screen& screen, const Model& model) {
   fresh.text = toybox::buttonText(screen.theme());
   fresh.radius = toybox::kPillRadius / 2;
   fresh.state = model.newArmed || model.over ? fui::StateSelected : fui::StateNormal;
-  screen.button(fresh, rect(toybox::kMargin, by, inner, toybox::kPillHeight));
+  const int rulesW = 132;
+  screen.button(fresh, rect(toybox::kMargin, by, inner - rulesW - 8, toybox::kPillHeight));
+  toyboxhowto::button(screen, rect(toybox::kMargin + inner - rulesW, by, rulesW, toybox::kPillHeight), "RULES");
 }
 
 }  // namespace triplesui

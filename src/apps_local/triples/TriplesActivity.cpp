@@ -7,6 +7,7 @@
 #include "../../components/UITheme.h"
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
+#include "../ui/ToyboxHowTo.h"
 #include "../ui/ToyboxTheme.h"
 
 namespace tr = triples;
@@ -29,6 +30,17 @@ struct SaveState {
   uint32_t rng;
   uint32_t best;
 } __attribute__((packed));
+
+constexpr const char* kHowToPages[] = {
+    "SWIPE TO SLIDE EVERY TILE ONE SQUARE THAT WAY. A TILE AGAINST THE WALL, OR AGAINST ONE IT CANNOT JOIN, STAYS "
+    "WHERE IT IS.",
+    "A 1 AND A 2 JOIN INTO A 3. FROM THERE ONLY EQUALS JOIN: 3 AND 3 MAKE 6, 6 AND 6 MAKE 12, AND SO ON. A 1 NEVER "
+    "JOINS A 1, NOR A 2 A 2.",
+    "EVERY MOVE BRINGS A NEW TILE IN ON THE SIDE YOU SWIPED AWAY FROM; THE ONE COMING NEXT IS SHOWN ABOVE THE "
+    "BOARD. THE GAME ENDS WHEN NOTHING CAN MOVE. BIG TILES SCORE FAR MORE THAN SMALL ONES, SO KEEP YOUR BIGGEST IN "
+    "A CORNER AND FEED IT.",
+};
+constexpr toyboxhowto::Guide kHowTo{kHowToPages, 3};
 
 }  // namespace
 
@@ -71,6 +83,24 @@ void TriplesActivity::loop() {
   int x = 0;
   int y = 0;
   if (mappedInput.wasScreenTouchPressed(x, y)) pressX_ = x;
+
+  if (howTo_.open) {
+    // The guide takes Back and taps; the board waits behind it.
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      howTo_.back();
+      requestUpdate();
+      return;
+    }
+    int hx = 0;
+    int hy = 0;
+    if (!mappedInput.wasScreenTapped(hx, hy) || !interactionsReady_) return;
+    fui::InputSnapshot tap;
+    tap.touchReleased = true;
+    tap.touchX = static_cast<int16_t>(hx);
+    tap.touchY = static_cast<int16_t>(hy);
+    if (howTo_.tap(interactions_.route(tap), kHowTo)) requestUpdate();
+    return;
+  }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // The firmware reads any rightward swipe from the left quarter as Back.
@@ -124,6 +154,11 @@ void TriplesActivity::loop() {
   input.touchX = static_cast<int16_t>(tapX);
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
+  if (event.action == toyboxhowto::kOpen) {
+    howTo_.start();
+    requestUpdate();
+    return;
+  }
   if (event.action != triplesui::ActionNew) return;
   // A finished game starts over at once; one in progress asks first.
   if (over_ || (newArmedMs_ != 0 && now - newArmedMs_ < kNewArmMs)) {
@@ -158,7 +193,11 @@ void TriplesActivity::render(RenderLock&&) {
     static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
                                                        large ? toybox::kLargeFontId : toybox::kDisplayFontId);
   };
-  triplesui::build(surface, m);
+  if (howTo_.open) {
+    toyboxhowto::build(surface, kHowTo, howTo_);
+  } else {
+    triplesui::build(surface, m);
+  }
 
   interactionsReady_ = true;
   toybox::reportOverflow(interactions_, "Triples");

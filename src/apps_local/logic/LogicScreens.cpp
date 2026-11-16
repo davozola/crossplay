@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "../ui/ToyboxFormat.h"
+#include "../ui/ToyboxHowTo.h"
 
 namespace logicui {
 
@@ -334,6 +335,8 @@ void buildPicker(toybox::Screen& screen, const PickerModel& model) {
   char progress[2 * toybox::kIntChars + 16];
   std::snprintf(progress, sizeof(progress), "%d OF %d SOLVED", done, total);
   caption(screen, toybox::kMargin, y, inner, progress, fui::TextAlign::Center);
+  toyboxhowto::button(screen,
+                      rect(toybox::kMargin, device.height - 40 - 6 - toybox::kPillHeight, inner, toybox::kPillHeight));
 }
 
 void buildBoard(toybox::Screen& screen, const BoardModel& model) {

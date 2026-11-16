@@ -17,6 +17,7 @@
 #include "checkers/CheckersActivity.h"
 #include "chess/ChessActivity.h"
 #include "chessclock/ChessClockActivity.h"
+#include "clock/ClockActivity.h"
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
@@ -118,6 +119,7 @@ constexpr shelf::Item kApps[] = {
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"RELOJ", &icon_clock_32, &ClockActivity::create},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},
     {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create},

@@ -11,6 +11,7 @@
 #include "../../components/UITheme.h"
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
+#include "../ui/ToyboxHowTo.h"
 #include "../ui/ToyboxTheme.h"
 
 namespace lg = logic;
@@ -34,6 +35,44 @@ struct SaveHeader {
   uint32_t solved[lg::kSizes];
   uint16_t blobLength;
 } __attribute__((packed));
+
+constexpr const char* kSlitherPages[] = {
+    "DRAW ONE SINGLE LOOP ALONG THE LINES BETWEEN THE DOTS. IT NEVER CROSSES ITSELF, NEVER BRANCHES, AND HAS NO "
+    "LOOSE ENDS.",
+    "A NUMBER SAYS HOW MANY OF THE FOUR SIDES OF ITS SQUARE THE LOOP USES. A SQUARE WITH NO NUMBER MAY HAVE ANY.",
+    "TAP BETWEEN TWO DOTS TO DRAW A LINE. TAP AGAIN FOR A CROSS, WHICH IS YOUR NOTE THAT NO LINE GOES THERE, AND "
+    "ONCE MORE TO CLEAR IT. BEGIN WITH THE 0S AND THE 3S: A 0 RULES OUT FOUR SIDES AT ONCE, AND A 3 BESIDE A 0 "
+    "HAS ONLY ONE WAY TO GO.",
+};
+constexpr const char* kShikakuPages[] = {
+    "CUT THE WHOLE GRID INTO RECTANGLES. EACH RECTANGLE HOLDS EXACTLY ONE NUMBER, AND THAT NUMBER IS HOW MANY "
+    "SQUARES IT COVERS.",
+    "A 6 CAN BE 1 BY 6, 2 BY 3, 3 BY 2 OR 6 BY 1. A 5 OR A 7 CAN ONLY BE A STRAIGHT STRIP. NO SQUARE IS LEFT OVER "
+    "AND NO TWO RECTANGLES OVERLAP.",
+    "TAP ONE CORNER OF A RECTANGLE, THEN THE OPPOSITE CORNER. TAP A RECTANGLE TO TAKE IT AWAY. BEGIN WITH NUMBERS "
+    "IN CORNERS AND WITH THE BIG ONES: THEY HAVE THE FEWEST PLACES TO FIT.",
+};
+constexpr const char* kAkariPages[] = {
+    "PUT BULBS ON WHITE SQUARES UNTIL EVERY WHITE SQUARE IS LIT. A BULB LIGHTS ITS ROW AND ITS COLUMN, AS FAR AS "
+    "THE NEXT BLACK SQUARE.",
+    "NO BULB MAY SHINE ON ANOTHER BULB. A NUMBER ON A BLACK SQUARE SAYS HOW MANY BULBS TOUCH ITS FOUR SIDES; "
+    "CORNERS DO NOT COUNT.",
+    "TAP A SQUARE FOR A BULB. TAP AGAIN FOR A DOT, YOUR NOTE THAT NO BULB GOES THERE, AND ONCE MORE TO CLEAR IT. "
+    "BEGIN WITH THE 4S AND THE 0S, THEN LOOK FOR A SQUARE ONLY ONE BULB COULD EVER LIGHT.",
+};
+constexpr const char* kHashiPages[] = {
+    "JOIN THE ISLANDS WITH BRIDGES. THE NUMBER ON AN ISLAND IS HOW MANY BRIDGES LEAVE IT.",
+    "BRIDGES RUN STRAIGHT, ACROSS OR UP AND DOWN. THEY NEVER CROSS EACH OTHER OR PASS OVER AN ISLAND, AND AT MOST "
+    "TWO JOIN THE SAME PAIR. AT THE END YOU MUST BE ABLE TO WALK FROM ANY ISLAND TO ANY OTHER.",
+    "TAP BETWEEN TWO ISLANDS: ONE BRIDGE, TWO, THEN NONE. BEGIN WITH ISLANDS THAT HAVE NO CHOICE: AN 8 IN THE "
+    "MIDDLE, A 6 ON AN EDGE OR A 4 IN A CORNER NEEDS TWO BRIDGES EVERY WAY IT CAN GO.",
+};
+constexpr toyboxhowto::Guide kGuides[lg::kGames] = {
+    {kSlitherPages, 3},
+    {kShikakuPages, 3},
+    {kAkariPages, 3},
+    {kHashiPages, 3},
+};
 
 }  // namespace
 
@@ -270,6 +309,11 @@ bool LogicActivity::boardTap(const int x, const int y) {
 void LogicActivity::loop() {
   const uint32_t now = static_cast<uint32_t>(millis());
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (howTo_.open) {
+      howTo_.back();
+      requestUpdate();
+      return;
+    }
     if (view_ == View::Board) {
       saveState();
       view_ = View::Picker;
@@ -293,6 +337,15 @@ void LogicActivity::loop() {
   input.touchX = static_cast<int16_t>(tapX);
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
+  if (howTo_.open) {
+    if (howTo_.tap(event, guide())) requestUpdate();
+    return;
+  }
+  if (event.action == toyboxhowto::kOpen) {
+    howTo_.start();
+    requestUpdate();
+    return;
+  }
   if (event.action != fui::NO_ACTION) {
     route(event);
     return;
@@ -364,7 +417,9 @@ void LogicActivity::render(RenderLock&&) {
   toybox::Frame frame(target, device, noInput, interactions_);
   toybox::Screen surface(frame);
 
-  if (view_ == View::Picker) {
+  if (howTo_.open) {
+    toyboxhowto::build(surface, guide(), howTo_);
+  } else if (view_ == View::Picker) {
     logicui::PickerModel m;
     m.game = game_;
     m.sizeIndex = size_;
@@ -391,3 +446,5 @@ void LogicActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }
+
+const toyboxhowto::Guide& LogicActivity::guide() const { return kGuides[static_cast<int>(game_)]; }

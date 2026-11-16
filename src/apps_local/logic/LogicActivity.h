@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/ToyboxHowToState.h"
 #include "../ui/ToyboxScreen.h"
 #include "LogicCore.h"
 #include "LogicScreens.h"
@@ -27,6 +28,8 @@ class LogicActivity final : public Activity {
 
  private:
   enum class View : uint8_t { Picker, Board };
+  toyboxhowto::State howTo_;
+  const toyboxhowto::Guide& guide() const;
 
   void openBoard(int number, bool resume);
   void loadBoard();

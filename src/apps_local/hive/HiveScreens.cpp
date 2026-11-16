@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include "../ui/ToyboxFormat.h"
+#include "../ui/ToyboxHowTo.h"
 #include "HiveEngine.h"
 
 namespace hiveui {
@@ -175,6 +176,7 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   row("PLAY THE DEVICE: MEDIUM", ActionStart, 1, false);
   row("PLAY THE DEVICE: HARD", ActionStart, 2, false);
   row("TWO PLAYERS", ActionStart, 3, false);
+  toyboxhowto::button(screen, rect(toybox::kMargin, y + 4, inner, toybox::kPillHeight));
 }
 
 void buildPlay(toybox::Screen& screen, const PlayModel& model) {

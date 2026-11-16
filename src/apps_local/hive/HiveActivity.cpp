@@ -10,6 +10,7 @@
 #include "../../components/UITheme.h"
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
+#include "../ui/ToyboxHowTo.h"
 #include "../ui/ToyboxTheme.h"
 
 namespace hv = hive;
@@ -31,6 +32,21 @@ struct SaveState {
 };
 
 const char* sideName(const int color) { return color == 0 ? "WHITE" : "BLACK"; }
+
+constexpr const char* kHowToPages[] = {
+    "EACH SIDE HAS ONE QUEEN, TWO BEETLES, TWO SPIDERS, THREE GRASSHOPPERS AND THREE ANTS. THERE IS NO BOARD: THE "
+    "PIECES MAKE IT. YOU WIN WHEN THE OTHER QUEEN IS SURROUNDED ON ALL SIX SIDES, BY PIECES OF EITHER COLOUR.",
+    "ON YOUR TURN, PLACE A PIECE OR MOVE ONE. TAP IT, THEN TAP A MARKED SPACE. A NEW PIECE MUST TOUCH YOUR OWN "
+    "PIECES AND NONE OF THE OTHER SIDE'S; ONLY THE VERY FIRST PIECES ARE EXCUSED. YOUR QUEEN MUST BE DOWN BY YOUR "
+    "FOURTH TURN, AND NOTHING OF YOURS MOVES UNTIL SHE IS.",
+    "QUEEN: ONE STEP. BEETLE: ONE STEP, AND IT MAY CLIMB ON TOP OF THE HIVE, PINNING WHAT IS UNDER IT. SPIDER: "
+    "EXACTLY THREE STEPS ROUND THE EDGE. GRASSHOPPER: JUMPS IN A STRAIGHT LINE OVER PIECES TO THE FIRST GAP. ANT: "
+    "ANY DISTANCE ROUND THE EDGE.",
+    "TWO LIMITS. THE HIVE MUST STAY IN ONE PIECE, EVEN WHILE A PIECE IS LIFTED: ONE THAT HOLDS TWO PARTS TOGETHER "
+    "CANNOT MOVE. AND PIECES SLIDE, SO THEY CANNOT SQUEEZE THROUGH A GAP NARROWER THAN THEMSELVES. IF YOU CAN "
+    "NEITHER PLACE NOR MOVE, YOUR TURN PASSES.",
+};
+constexpr toyboxhowto::Guide kHowTo{kHowToPages, 4};
 
 }  // namespace
 
@@ -188,6 +204,11 @@ void HiveActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (howTo_.open) {
+      howTo_.back();
+      requestUpdate();
+      return;
+    }
     if (view_ == View::Play) {
       saveState();
       view_ = View::Menu;
@@ -207,7 +228,14 @@ void HiveActivity::loop() {
   input.touchX = static_cast<int16_t>(tapX);
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
+  if (howTo_.open) {
+    if (howTo_.tap(event, kHowTo)) requestUpdate();
+    return;
+  }
   switch (event.action) {
+    case toyboxhowto::kOpen:
+      howTo_.start();
+      break;
     case hiveui::ActionStart:
       if (event.value < 0 || event.value > kTwoPlayers) return;
       startGame(event.value);
@@ -246,7 +274,9 @@ void HiveActivity::render(RenderLock&&) {
   toybox::Frame frame(target, device, noInput, interactions_);
   toybox::Screen surface(frame);
 
-  if (view_ == View::Menu) {
+  if (howTo_.open) {
+    toyboxhowto::build(surface, kHowTo, howTo_);
+  } else if (view_ == View::Menu) {
     hiveui::MenuModel m;
     m.canContinue = inProgress_;
     hiveui::buildMenu(surface, m);
