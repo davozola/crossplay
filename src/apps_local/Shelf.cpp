@@ -42,7 +42,6 @@
 #include "pomodoro/PomodoroActivity.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
-#include "study/StudyActivity.h"
 #include "sudoku/SudokuActivity.h"
 #include "tak/TakActivity.h"
 #include "toybattle/ToyBattleActivity.h"
@@ -55,7 +54,6 @@
 #include "weather/WeatherActivity.h"
 #include "wikipedia/WikipediaActivity.h"
 #include "wordle/WordleActivity.h"
-#include "xkcd/XkcdActivity.h"
 #include "yahtzee/YahtzeeActivity.h"
 
 namespace {
@@ -95,9 +93,7 @@ constexpr shelf::Item kGames[] = {
     {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create},
 };
 constexpr shelf::Item kApps[] = {
-    {"STUDY", &icon_study_32, &StudyActivity::create},
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
-    {"XKCD", &icon_xkcd_32, &XkcdActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},

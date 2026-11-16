@@ -33,6 +33,9 @@ Sticky**. Conserva todo lo del original y añade nueve cosas:
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
 | **Markets**     | Bitcoin, S&P 500 y Nasdaq en un panel para tenerlo de pie en la mesa, con detalle de cada uno. |
 
+Este fork quita además dos apps del original que aquí no se usan: **Study** y
+**xkcd**. Su código sigue en el repositorio, pero no aparecen en el dispositivo.
+
 Lo que sigue es, en su mayoría, el README del proyecto original. Hay tres cosas
 que no aplican a este fork:
 
@@ -69,7 +72,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **29 games and 13 apps**,
+that holds still is good at: **29 games and 11 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -127,9 +130,7 @@ the import lands a real pack instead of failing on an unreachable host.
 
 |                 |                                                                          |
 | --------------- | ------------------------------------------------------------------------ |
-| **Study**       | Anki decks with the FSRS scheduler, offline.                             |
 | **Hacker News** | The front page in a reading serif, articles kept on the card.            |
-| **xkcd**        | The archive, packed for the card and drawn one to one.                   |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
 | **Wallpapers**  | Pick an image on the card as the sleep screen, one tap to set it.        |
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
