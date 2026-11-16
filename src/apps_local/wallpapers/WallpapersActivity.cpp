@@ -25,6 +25,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxText.h"
 #include "../ui/ToyboxTheme.h"
+#include "../wake/WakeJobs.h"
 #include "Bitmap.h"
 #include "WallpapersCore.h"
 
@@ -207,6 +208,7 @@ void WallpapersActivity::onEnter() {
   LOG_INF("WALL", "onEnter %ums: fonts=%u sweep=%u scan=%u active=%u (free-space deferred)", tActive - tEnter,
           tFonts - tEnter, tSweep - tFonts, tScan - tSweep, tActive - tScan);
   single_ = false;
+  frameChoice_ = wakejobs::frameChoice();
   if (Storage.exists(kLayoutPath)) {
     HalFile layout;
     uint8_t value = 0;
@@ -986,6 +988,13 @@ fui::Rect layoutSwitchRect(const fui::Rect& panel, const wallpapersui::GridGeom&
   const int16_t x = static_cast<int16_t>(right - (2 - which) * kSwitchSize - (1 - which) * kSwitchGap);
   return fui::makeRect(x, static_cast<int16_t>(geom.pageDotsY - 4), kSwitchSize, kSwitchSize);
 }
+
+// The photo frame's control, at the other end of the same strip: a small
+// clock face and the interval beside it. Tapping it steps to the next.
+constexpr int16_t kFrameChipW = 72;
+fui::Rect frameChipRect(const wallpapersui::GridGeom& geom) {
+  return fui::makeRect(toybox::kMargin, static_cast<int16_t>(geom.pageDotsY - 4), kFrameChipW, kSwitchSize);
+}
 }  // namespace
 
 void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
@@ -1074,6 +1083,21 @@ void WallpapersActivity::drawGrid(const wallpapersui::GridGeom& geom) {
     const int thumbW = kTrackW / pages < 14 ? 14 : kTrackW / pages;
     const int thumbX = x0 + (kTrackW - thumbW) * page_ / (pages - 1);
     renderer.fillRect(static_cast<int16_t>(thumbX), geom.pageDotsY, static_cast<int16_t>(thumbW), kDotSize, true);
+  }
+
+  // The frame's clock and interval. Solid hands for a frame that is running.
+  {
+    const fui::Rect chip = frameChipRect(geom);
+    const int16_t cy = static_cast<int16_t>(chip.y + chip.height / 2);
+    const int16_t cx = static_cast<int16_t>(chip.x + 9);
+    renderer.fillRoundedRect(static_cast<int16_t>(cx - 9), static_cast<int16_t>(cy - 9), 18, 18, 9, Color::Black);
+    renderer.fillRoundedRect(static_cast<int16_t>(cx - 7), static_cast<int16_t>(cy - 7), 14, 14, 7, Color::White);
+    renderer.drawLine(cx, cy, cx, static_cast<int16_t>(cy - 5), 2, true);
+    renderer.drawLine(cx, cy, static_cast<int16_t>(cx + 4), cy, 2, true);
+    renderer.drawText(toybox::kTileFontId, static_cast<int16_t>(cx + 16),
+                      static_cast<int16_t>(cy - toybox::kTileCut.inkHeight / 2 -
+                                           (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight)),
+                      wakejobs::frameLabel(frameChoice_), true);
   }
 
   // The layout switches: one slab for one-up, four small ones for four-up. The
@@ -2928,6 +2952,17 @@ void WallpapersActivity::loop() {
   const wallpapersui::GridGeom geom = geomNow();
 
   const fui::Rect panel = toybox::makeTarget(renderer).deviceContext().screen();
+  // The photo frame's interval?
+  {
+    const fui::Rect r = frameChipRect(geom);
+    if (tapX >= r.x - 12 && tapX < r.x + r.width + 8 && tapY >= r.y - 18 && tapY < r.y + r.height + 18) {
+      frameChoice_ = (frameChoice_ + 1) % wakejobs::kFrameChoices;
+      wakejobs::setFrameChoice(frameChoice_);
+      requestUpdate();
+      return;
+    }
+  }
+
   // A layout switch? A generous box round each: they are small.
   for (int which = 0; which < 2; ++which) {
     const fui::Rect r = layoutSwitchRect(panel, geom, which);

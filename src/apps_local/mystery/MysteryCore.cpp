@@ -113,12 +113,14 @@ size_t save(const Progress* all, uint8_t* out, const size_t cap) {
 }
 
 bool restore(Progress* all, const uint8_t* in, const size_t size) {
-  if (size != kSaveBytes || in[0] != 1) return false;
-  for (int i = 0; i < kCases; ++i) {
+  if (size < 1 || size > kSaveBytes || (size - 1) % 8 != 0 || in[0] != 1) return false;
+  const int saved = static_cast<int>((size - 1) / 8);
+  for (int i = 0; i < saved; ++i) {
     const uint8_t* o = in + 1 + i * 8;
     if (o[6] > 4 || o[7] > 1 || o[0] >= (1u << kMaxClues) || o[3] >= (1u << kPlaces) || o[2] >= 0x10) return false;
   }
-  for (int i = 0; i < kCases; ++i) {
+  for (int i = 0; i < kCases; ++i) all[i] = Progress{};
+  for (int i = 0; i < saved; ++i) {
     const uint8_t* o = in + 1 + i * 8;
     Progress& p = all[i];
     p.clues = o[0];
