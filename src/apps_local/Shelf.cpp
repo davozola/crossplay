@@ -29,6 +29,7 @@
 #include "insider/InsiderActivity.h"
 #include "instapaper/InstapaperActivity.h"
 #include "jaipur/JaipurActivity.h"
+#include "kakuro/KakuroActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
@@ -86,6 +87,7 @@ constexpr shelf::Item kGames[] = {
     {"WORDLE", &icon_wordle_32, &WordleActivity::create},
     {"TAK", &icon_tak_32, &TakActivity::create},
     {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create},
+    {"KAKURO", &icon_kakuro_32, &KakuroActivity::create},
 };
 constexpr shelf::Item kApps[] = {
     {"STUDY", &icon_study_32, &StudyActivity::create},
