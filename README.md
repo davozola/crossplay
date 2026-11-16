@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade diecinueve cosas:
+Sticky**. Conserva todo lo del original y añade veinte cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -31,6 +31,7 @@ Sticky**. Conserva todo lo del original y añade diecinueve cosas:
 | **Mastermind**  | Descifra el código de formas, solo contra el dispositivo.               |
 | **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
+| **Naval Weather** | Parte marítimo de los sitios guardados en Weather: viento en nudos, oleaje, mar de fondo y agua, una semana, consultable sin red. |
 | **Markets**     | Bitcoin, S&P 500 y Nasdaq en un panel para tenerlo de pie en la mesa, con detalle de cada uno. |
 | **FM Synth Lab** | Chuleta para un sinte FM de seis operadores (M-VAVE FM-1): los 32 algoritmos dibujados, qué hace cada ratio al espectro y la forma de la envolvente. |
 | **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |
@@ -79,7 +80,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **36 games and 14 apps**,
+that holds still is good at: **36 games and 15 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -154,6 +155,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |
 | **Handwriting** | Pages you write and draw on with a finger; each one saved as a picture too. |
 | **Weather**     | Open-Meteo's forecast for up to six cities, kept on the card for offline. |
+| **Naval Weather** | Wind, waves, swell and water for a week, kept for when there is no network. |
 | **Markets**     | Bitcoin, the S&P 500 and the Nasdaq on one screen for a desk stand.       |
 | **FM Synth Lab** | A crib sheet for a six-operator FM synth: 32 algorithms, ratios, envelopes. |
 | **Music Theory** | Scales, chords and changes in any key, and Euclidean rhythms on a wheel.  |
@@ -250,7 +252,8 @@ Most of the shelf never touches the network. Of the parts that do:
   the card.
 - **Weather asks Open-Meteo, and Markets asks Yahoo Finance.** Weather sends
   the city name you type to Open-Meteo's geocoder and a saved city's
-  coordinates to its forecast API. Markets fetches three public quotes from
+  coordinates to its forecast API; Naval Weather sends the same coordinates to
+  its marine and forecast APIs. Markets fetches three public quotes from
   Yahoo Finance's chart endpoint, which is not an official API and can change
   without notice; with auto-refresh on it does so on a timer and keeps the
   device awake and on Wi-Fi to do it.

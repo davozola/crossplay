@@ -40,6 +40,7 @@
 #include "mastermind/MastermindActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
+#include "naval/NavalActivity.h"
 #include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
@@ -119,6 +120,7 @@ constexpr shelf::Item kApps[] = {
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},
     {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create},
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
+    {"NAVAL WEATHER", &icon_naval_32, &NavalActivity::create},
     {"MARKETS", &icon_markets_32, &MarketsActivity::create},
     {"FM SYNTH LAB", &icon_fmlab_32, &FmLabActivity::create},
     {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create},

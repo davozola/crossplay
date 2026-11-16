@@ -19,24 +19,20 @@
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
+#include "WeatherSave.h"
 
 namespace wx = weather;
 namespace fui = freeink::ui;
 
 namespace {
 
-constexpr char kSavePath[] = "/.crosspoint/weather.sav";
 constexpr char kCacheDir[] = "/.crosspoint/weather";
-constexpr uint8_t kSaveVersion = 1;
 constexpr size_t kMaxBody = 48 * 1024;  // seven days of hours is ~10 KB
 constexpr size_t kQueryMax = 40;
 
-struct SaveState {
-  uint8_t count;
-  uint8_t selected;
-  uint8_t fahrenheit;
-  wx::Place places[wx::kMaxPlaces];
-};
+using weather::kSavePath;
+using weather::kSaveVersion;
+using weather::SaveState;
 
 }  // namespace
 
