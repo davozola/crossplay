@@ -218,6 +218,90 @@ int main() {
     check(infoOf(Asset::Bitcoin).always && !infoOf(Asset::Nasdaq).always, "only bitcoin trades around the clock");
   }
 
+  {  // the catalogue: stems and symbols are all different, and the first three are the cards' defaults
+    for (int a = 0; a < kInstruments; ++a) {
+      for (int b = a + 1; b < kInstruments; ++b) {
+        check(std::strcmp(instrumentAt(a).file, instrumentAt(b).file) != 0, "cache stems differ");
+        check(std::strcmp(instrumentAt(a).symbol, instrumentAt(b).symbol) != 0, "symbols differ");
+      }
+      check(std::strlen(instrumentAt(a).name) <= 9, instrumentAt(a).name);
+      // Around the clock means Coinbase, whose products all end in -USD.
+      check(instrumentAt(a).always == (std::strstr(instrumentAt(a).symbol, "-USD") != nullptr), "crypto is Coinbase's");
+    }
+    check(std::strcmp(instrumentAt(euroInstrument()).symbol, "EUR=") == 0, "the euro is where it says");
+    check(std::strcmp(currencyOf(6), "EUR") == 0 && std::strcmp(instrumentAt(6).name, "DAX") == 0 &&
+              std::strcmp(instrumentAt(8).name, "STOXX 50") == 0 && std::strcmp(currencyOf(9), "USD") == 0,
+          "the European indexes are in euros");
+    check(std::strcmp(infoOf(Asset::Sp500).symbol, ".SPX") == 0, "default picks");
+    Picks p = defaultPicks();
+    p.slot[1] = 9;
+    p.slot[2] = 200;
+    setPicks(p);
+    check(std::strcmp(infoOf(Asset::Sp500).symbol, "AAPL") == 0 && instrumentOf(Asset::Nasdaq) == 2,
+          "a pick takes; a bad one falls back");
+    setPicks(defaultPicks());
+    char url[320];
+    cnbcBarsUrlFor("@GC.1", daysFromCivil(2026, 11, 16), url, sizeof(url));
+    check(std::strstr(url, "/bars/%40GC.1/1D/") != nullptr, "symbols are escaped in the bars url");
+    const char* const symbols[3] = {".SPX", "EUR=", "AAPL"};
+    cnbcQuoteUrlFor(symbols, 3, url, sizeof(url));
+    check(std::strstr(url, "symbols=.SPX%7CEUR%3D%7CAAPL&requestMethod") != nullptr, "several symbols, escaped");
+    coinbaseUrlFor("ETH-USD", url, sizeof(url));
+    check(std::strstr(url, "/products/ETH-USD/candles") != nullptr, "any product");
+  }
+  {  // the portfolio
+    Portfolio pf;
+    check(!setPosition(pf, 1, 5) && pf.count == 0, "an index cannot be held");
+    check(setPosition(pf, 0, 0.25) && setPosition(pf, 9, 10) && pf.count == 2, "two holdings");
+    check(setPosition(pf, 0, 0.5) && pf.count == 2 && near(pf.positions[0].amount, 0.5), "an amount changes in place");
+    check(positionOf(pf, 9) == 1 && positionOf(pf, 10) == -1, "found by instrument");
+    Priced priced[kMaxPositions];
+    priced[0] = {true, 100000, 98000};
+    priced[1] = {true, 200, 210};
+    Totals t = totalsOf(pf, priced);
+    check(near(t.value, 52000) && near(t.previous, 51100) && t.priced == 2, "totals");
+    check(near(percentOf(t.value, t.previous), 900.0 / 51100.0 * 100.0) && near(percentOf(5, 0), 0), "percent");
+    priced[1].valid = false;
+    t = totalsOf(pf, priced);
+    check(near(t.value, 50000) && t.priced == 1, "an unpriced holding is left out, not counted as nothing");
+    uint8_t bytes[kPortfolioBytes];
+    check(packPortfolio(pf, bytes, sizeof(bytes)) == kPortfolioBytes && packPortfolio(pf, bytes, 5) == 0, "pack size");
+    Portfolio back;
+    check(unpackPortfolio(bytes, sizeof(bytes), back) && back.count == 2 && back.positions[1].instrument == 9 &&
+              near(back.positions[1].amount, 10),
+          "round trip");
+    bytes[2] = 1;  // an index
+    check(!unpackPortfolio(bytes, sizeof(bytes), back) && back.count == 0, "a file holding an index is not ours");
+    check(setPosition(pf, 9, 0) && pf.count == 1 && pf.positions[0].instrument == 0, "zero removes");
+    for (int k = 0; k < kInstruments; ++k) setPosition(pf, k, 1);
+    check(pf.count == kMaxPositions, "full at six");
+  }
+  {  // typing an amount
+    AmountEntry e;
+    for (const char c : {'0', '0', '1', '2', '.', '5', '.', '0', '7'}) entryKey(e, c);
+    check(std::strcmp(e.text, "12.507") == 0 && near(entryValue(e), 12.507), "digits and one point");
+    check(entryKey(e, '<') && std::strcmp(e.text, "12.50") == 0, "rubbing out");
+    AmountEntry dot;
+    entryKey(dot, '.');
+    check(std::strcmp(dot.text, "0.") == 0 && !entryKey(dot, 'x'), "a leading point");
+    for (int k = 0; k < 12; ++k) entryKey(dot, '3');
+    check(std::strcmp(dot.text, "0.333333") == 0, "six decimals");
+    AmountEntry empty;
+    check(!entryKey(empty, '<') && near(entryValue(empty), 0), "nothing to rub out");
+    AmountEntry from;
+    entryFrom(0.25, from);
+    check(std::strcmp(from.text, "0.25") == 0, "from an amount");
+    entryFrom(1500, from);
+    check(std::strcmp(from.text, "1500") == 0, "from a whole amount");
+    char text[24];
+    formatAmount(1250.5, text, sizeof(text));
+    check(std::strcmp(text, "1,250.5") == 0, "amount grouped");
+    formatAmount(0.034567, text, sizeof(text));
+    check(std::strcmp(text, "0.034567") == 0, "small amount");
+    formatAmount(12, text, sizeof(text));
+    check(std::strcmp(text, "12") == 0, "whole amount");
+  }
+
   if (failures == 0) std::printf("markets: all tests passed\n");
   return failures == 0 ? 0 : 1;
 }

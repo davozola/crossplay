@@ -1,7 +1,8 @@
 #pragma once
 
 // MARKETS on screen: the three-card dashboard, one instrument in detail, the
-// auto-refresh picker and a status page, as freestanding builders.
+// portfolio with its picker and keypad, the auto-refresh picker and a status
+// page, as freestanding builders.
 
 #include "../ui/ToyboxScreen.h"
 #include "MarketsCore.h"
@@ -17,6 +18,14 @@ enum : fui::ActionId {
   ActionChooseAuto,  // value: minutes, 0 for off
   ActionSpan,        // value: Span
   ActionDismiss,
+  ActionPortfolio,
+  ActionChange,    // the open card shows something else
+  ActionPick,      // value: an instrument from the catalogue
+  ActionPosition,  // value: a holding's index, to change its amount
+  ActionAddPosition,
+  ActionKey,  // value: the character on the key
+  ActionSaveAmount,
+  ActionRemovePosition,
 };
 
 // The slice of history the detail chart shows.
@@ -53,6 +62,33 @@ struct StatusModel {
   const char* detail = "";
   bool dismissable = false;
 };
+
+struct PortfolioModel {
+  const markets::Portfolio* portfolio = nullptr;
+  const markets::Priced* priced = nullptr;  // one for each holding
+  double euro = 0;                          // a euro in dollars; 0 when unknown
+  FaceSwap faces;
+};
+
+// The catalogue as a page of buttons: every instrument for a card, only what
+// can be held for the portfolio.
+struct PickerModel {
+  const char* title = "";
+  bool ownableOnly = false;
+  int current = -1;                          // drawn selected
+  const markets::Portfolio* held = nullptr;  // these are left out
+};
+
+struct AmountModel {
+  int instrument = 0;
+  const char* text = "";  // what has been typed
+  bool held = false;      // already in the portfolio: REMOVE is offered
+  FaceSwap faces;
+};
+
+void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model);
+void buildPicker(toybox::Screen& screen, const PickerModel& model);
+void buildAmount(toybox::Screen& screen, const AmountModel& model);
 
 void buildDashboard(toybox::Screen& screen, const DashboardModel& model);
 void buildDetail(toybox::Screen& screen, const DetailModel& model);
