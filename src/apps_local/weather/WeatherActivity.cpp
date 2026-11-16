@@ -26,7 +26,7 @@ namespace fui = freeink::ui;
 
 namespace {
 
-constexpr char kCacheDir[] = "/.crosspoint/weather";
+using weather::kCacheDir;
 constexpr size_t kMaxBody = 48 * 1024;  // seven days of hours is ~10 KB
 constexpr size_t kQueryMax = 40;
 
@@ -99,8 +99,7 @@ void WeatherActivity::saveState() {
 }
 
 void WeatherActivity::cachePath(const wx::Place& place, char* out, const size_t cap) const {
-  std::snprintf(out, cap, "%s/%d_%d.json", kCacheDir, static_cast<int>(place.lat * 100),
-                static_cast<int>(place.lon * 100));
+  weather::cachePathOf(place, out, cap);
 }
 
 bool WeatherActivity::loadCache() {

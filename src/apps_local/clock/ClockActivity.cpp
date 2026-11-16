@@ -6,6 +6,7 @@
 #include <ctime>
 
 #include "../Shelf.h"
+#include "../power/LightNap.h"
 #include "../ui/ToyboxFonts.h"
 
 namespace {
@@ -14,6 +15,9 @@ constexpr char kSavePath[] = "/.crosspoint/clock.sav";
 constexpr uint8_t kSaveVersion = 1;
 constexpr uint32_t kHintMs = 12000;
 constexpr int kBackSwipeEdge = 28;
+// How long after the last touch the clock stays fully awake, so a run of
+// swipes through the faces is not interrupted by naps.
+constexpr uint32_t kAwakeAfterInputMs = 20000;
 // Before this the device's clock has plainly never been set.
 constexpr time_t kClockSetAfter = 1704067200;  // 2024-01-01
 
@@ -31,7 +35,8 @@ void ClockActivity::onEnter() {
   shownMinute_ = -1;
   cleanNext_ = true;
   hintUntilMs_ = static_cast<uint32_t>(millis()) + kHintMs;
-  requestUpdate();
+  lastInputMs_ = static_cast<uint32_t>(millis());
+  ask();
 }
 
 void ClockActivity::onExit() {
@@ -39,6 +44,11 @@ void ClockActivity::onExit() {
   // The orientation is the renderer's, not this app's: hand it back upright.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   Activity::onExit();
+}
+
+void ClockActivity::ask() {
+  paintPending_ = true;
+  requestUpdate();
 }
 
 void ClockActivity::applyOrientation() {
@@ -65,13 +75,16 @@ void ClockActivity::changeFace(const int by) {
   face_ = ((face_ + by) % clockcore::kFaces + clockcore::kFaces) % clockcore::kFaces;
   cleanNext_ = true;
   saveState();
-  requestUpdate();
+  ask();
 }
 
 void ClockActivity::loop() {
   int px = 0;
   int py = 0;
-  if (mappedInput.wasScreenTouchPressed(px, py)) pressX_ = px;
+  if (mappedInput.wasScreenTouchPressed(px, py)) {
+    pressX_ = px;
+    lastInputMs_ = static_cast<uint32_t>(millis());
+  }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // A swipe to the right from the left quarter is the system's Back. Here it
@@ -99,7 +112,7 @@ void ClockActivity::loop() {
       applyOrientation();
       cleanNext_ = true;
       saveState();
-      requestUpdate();
+      ask();
       return;
     case MappedInputManager::SwipeDir::None:
       break;
@@ -119,7 +132,7 @@ void ClockActivity::loop() {
     dark_ = !dark_;
     cleanNext_ = true;
     saveState();
-    requestUpdate();
+    ask();
     return;
   }
 
@@ -129,11 +142,25 @@ void ClockActivity::loop() {
   const uint32_t nowMs = static_cast<uint32_t>(millis());
   if (minute != shownMinute_) {
     if (m.valid && m.minute == 0) cleanNext_ = true;  // once an hour, wipe the ghosts
-    requestUpdate();
-  } else if (hintUntilMs_ != 0 && static_cast<int32_t>(nowMs - hintUntilMs_) >= 0) {
-    hintUntilMs_ = 0;
-    requestUpdate();
+    ask();
+    return;
   }
+  if (hintUntilMs_ != 0) {
+    if (static_cast<int32_t>(nowMs - hintUntilMs_) >= 0) {
+      hintUntilMs_ = 0;
+      ask();
+    }
+    return;
+  }
+
+  // Nothing to paint and nobody here: nap until the minute turns. The paint
+  // that put this minute up must have reached the panel first.
+  if (!m.valid || paintPending_ || nowMs - lastInputMs_ < kAwakeAfterInputMs) return;
+  const time_t t = time(nullptr);
+  struct tm parts;
+  localtime_r(&t, &parts);
+  const uint64_t micros = static_cast<uint64_t>(60 - parts.tm_sec) * 1000000ULL + 250000ULL;
+  if (lightnap::nap(micros) == lightnap::Woke::Input) lastInputMs_ = static_cast<uint32_t>(millis());
 }
 
 void ClockActivity::render(RenderLock&&) {
@@ -153,6 +180,7 @@ void ClockActivity::render(RenderLock&&) {
   if (dark_) renderer.invertScreen();
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
+  paintPending_ = false;
 }
 
 void ClockActivity::saveState() {

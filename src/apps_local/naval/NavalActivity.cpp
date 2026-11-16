@@ -22,6 +22,7 @@
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
 #include "../weather/WeatherSave.h"
+#include "NavalPaths.h"
 
 namespace fui = freeink::ui;
 namespace lab = toyboxlab;
@@ -29,7 +30,7 @@ namespace nv = naval;
 
 namespace {
 
-constexpr char kCacheDir[] = "/.crosspoint/naval";
+using naval::kCacheDir;
 constexpr size_t kMaxBody = 48 * 1024;  // the marine answer is ~14 KB
 
 enum : fui::ActionId {
@@ -188,8 +189,7 @@ void NavalActivity::loadPlaces() {
 
 void NavalActivity::cachePath(const char* which, char* out, const size_t cap) const {
   const weather::Place& p = places_[selected_];
-  std::snprintf(out, cap, "%s/%d_%d-%s.json", kCacheDir, static_cast<int>(p.lat * 100), static_cast<int>(p.lon * 100),
-                which);
+  naval::cachePathOf(p.lat, p.lon, which, out, cap);
 }
 
 bool NavalActivity::readFile(const char* path, std::unique_ptr<char[]>& body, size_t& size) const {

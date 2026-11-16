@@ -21,6 +21,11 @@ struct Moment {
 
 void draw(GfxRenderer& renderer, int face, const Moment& now);
 
+// One numeral of the clock's own face, for another app that wants the time in
+// the same hand: drawn with a round pen inside a box `boxW` wide and 1.6 times
+// as tall, whose top-left corner is (x, y).
+void drawNumeral(GfxRenderer& renderer, int digit, float x, float y, float boxW, float pen, bool ink = true);
+
 // A strip along the bottom edge saying how the app is driven.
 void drawHint(GfxRenderer& renderer, const char* text);
 
