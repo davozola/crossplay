@@ -5,6 +5,7 @@
 
 #include "../ui/ToyboxFormat.h"
 #include "KidsPictures.h"
+#include "MoleScreens.h"
 
 namespace kidsui {
 
@@ -170,19 +171,21 @@ void starRow(toybox::Screen& screen, const int stars, const int y, const int wid
 
 }  // namespace
 
-void buildMenu(toybox::Screen& screen) {
+void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   chrome(screen, "ILYA");
   const fui::DeviceContext device = screen.device();
   const int inner = device.width - toybox::kMargin * 2;
   const int top = toybox::kChromeHeight + 12;
   const int bottom = device.height - kBottomReserve - 6;
-  const int gap = 10;
+  const int gap = 8;
   const int rowH = (bottom - top - gap * (kids::kGames - 1)) / kids::kGames;
   for (int i = 0; i < kids::kGames; ++i) {
     const kids::Game game = static_cast<kids::Game>(i);
     const fui::Rect r = rect(toybox::kMargin, top + i * (rowH + gap), inner, rowH);
     tile(screen, r, ActionGame, i, false, true);
     picture(screen, kids::gamePicture(game), r.x + 16 + 48, r.y + rowH / 2, 1, kInk);
+    if (game == kids::Game::Mole && model.renderer)
+      moleui::drawIcon(*model.renderer, r.x + 16 + 48, r.y + rowH / 2 - 2);
     label(screen, rect(r.x + 128, r.y, inner - 144, rowH), kids::gameName(game), toybox::kDisplayFont,
           toybox::kDisplayCut, fui::TextAlign::Left);
   }

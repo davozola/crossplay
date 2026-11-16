@@ -3,6 +3,8 @@
 // ILYA on screen. Everything is big and nothing is small enough to miss: a
 // picture is a whole tile, and a tile is the whole target.
 
+#include <GfxRenderer.h>
+
 #include "../ui/ToyboxScreen.h"
 #include "KidsCore.h"
 
@@ -39,7 +41,12 @@ struct RoundModel {
   FaceSwap faces;
 };
 
-void buildMenu(toybox::Screen& screen);
+// The mole on the menu is a picture of its own, drawn straight to the panel.
+struct MenuModel {
+  GfxRenderer* renderer = nullptr;
+};
+
+void buildMenu(toybox::Screen& screen, const MenuModel& model);
 void buildCard(toybox::Screen& screen, const CardModel& model);
 void buildRound(toybox::Screen& screen, const RoundModel& model);
 
