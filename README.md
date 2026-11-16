@@ -37,7 +37,7 @@ Sticky**. Conserva todo lo del original y añade veintisiete cosas:
 | **Naval Weather** | Parte marítimo de los sitios guardados en Weather: viento en nudos, oleaje, mar de fondo y agua, una semana, consultable sin red. |
 | **Wallpapers** (ampliada) | Galería con swipe entre diapositivas, una o cuatro por diapositiva, y un segundo pack de 16 fondos dibujados para la Sticky que se descarga por Wi-Fi. |
 | **Markets**     | Tres valores a elegir entre veintiuno (Bitcoin, S&P 500 y Nasdaq de serie) en un panel para tenerlo de pie en la mesa, con detalle de cada uno, y una cartera: apuntas cuánto tienes de cada cosa y ves el total y el cambio del día. |
-| **FM Synth Lab** | Chuleta para un sinte FM de seis operadores (M-VAVE FM-1): los 32 algoritmos dibujados, qué hace cada ratio al espectro y la forma de la envolvente. |
+| **FM-1 Guías** | Guías de usuario, por capítulos y con el panel dibujado, de cuatro firmwares de la comunidad para la M-VAVE FM-1 (SLOOP, Felucca, FM-1+VA y X0X), más una de instalación y rescate. Sustituye a FM Synth Lab. |
 | **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |
 | **RPN 12C** | Calculadora financiera RPN al estilo de la HP-12C: pila de cuatro niveles, n, i, PV, PMT, FV, NPV e IRR. |
 | **Hive**        | Estrategia con insectos y sin tablero, contra el dispositivo (tres niveles) o a dos. |
@@ -170,7 +170,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Weather**     | Open-Meteo's forecast for up to six cities, kept on the card for offline. |
 | **Naval Weather** | Wind, waves, swell and water for a week, kept for when there is no network. |
 | **Markets**     | Three instruments you pick on one screen for a desk stand, and a portfolio. |
-| **FM Synth Lab** | A crib sheet for a six-operator FM synth: 32 algorithms, ratios, envelopes. |
+| **FM-1 Guias** | User guides, in Spanish, to four community firmwares of the M-VAVE FM-1. |
 | **Music Theory** | Scales, chords and changes in any key, and Euclidean rhythms on a wheel.  |
 | **RPN 12C**     | An RPN financial calculator: time value of money, NPV and IRR.            |
 
