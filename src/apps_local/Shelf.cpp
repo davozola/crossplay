@@ -38,6 +38,7 @@
 #include "kids/KidsActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
 #include "logic/LogicActivity.h"
+#include "mancala/MancalaActivity.h"
 #include "markets/MarketsActivity.h"
 #include "mastermind/MastermindActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
@@ -106,6 +107,7 @@ constexpr shelf::Item kGames[] = {
     {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create},
     {"HIVE", &icon_hive_32, &HiveActivity::create},
     {"TRIPLES", &icon_triples_32, &TriplesActivity::create},
+    {"MANCALA", &icon_mancala_32, &MancalaActivity::create},
     {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create},
     {"ILYA", &icon_kids_32, &KidsActivity::create},
     {"PINTA", &icon_pinta_32, &PaintActivity::create},
