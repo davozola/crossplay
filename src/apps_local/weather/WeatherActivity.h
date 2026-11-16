@@ -23,7 +23,7 @@ class WeatherActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Forecast, Cities, Results, Status };
+  enum class View : uint8_t { Forecast, Day, Cities, Results, Status };
   // A network job: joined Wi-Fi -> Ready -> the status frame is painted -> Run.
   enum class Job : uint8_t { None, Forecast, Search };
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
@@ -53,8 +53,9 @@ class WeatherActivity final : public Activity {
   int selected_ = 0;
   bool fahrenheit_ = false;
 
-  // ~1.4 KB: on the heap with the activity, not the stack.
+  // ~2 KB: on the heap with the activity, not the stack.
   weather::Forecast forecast_;
+  int dayOpen_ = 0;
   bool haveForecast_ = false;
   weatherui::CityGlance glance_[weather::kMaxPlaces];
 

@@ -200,23 +200,7 @@ bool parseForecast(const char* json, const size_t len, Forecast& out) {
   out.current.isDay = toInt(member(cur, "is_day"), 1) != 0;
   string(member(cur, "time"), out.current.time, sizeof(out.current.time));
 
-  const Span hourly = member(root, "hourly");
-  if (hourly.ok()) {
-    Hour* hours = out.hours;
-    const int n = forEach(member(hourly, "time"), kHours, [hours](const int i, const Span& el) {
-      char iso[20];
-      string(el, iso, sizeof(iso));
-      const char* t = std::strchr(iso, 'T');
-      hours[i].hour = static_cast<int8_t>(t ? digits(t + 1, 2) : 0);
-    });
-    forEach(member(hourly, "temperature_2m"), n, [hours](const int i, const Span& el) { number(el, hours[i].temp); });
-    forEach(member(hourly, "weather_code"), n,
-            [hours](const int i, const Span& el) { hours[i].code = static_cast<int16_t>(toInt(el)); });
-    forEach(member(hourly, "precipitation_probability"), n,
-            [hours](const int i, const Span& el) { hours[i].precip = static_cast<int8_t>(toInt(el)); });
-    out.hourCount = n;
-  }
-
+  // The days first: each hour is filed under the day its date names.
   const Span daily = member(root, "daily");
   if (!daily.ok()) return false;
   Day* days = out.days;
@@ -244,8 +228,71 @@ bool parseForecast(const char* json, const size_t len, Forecast& out) {
     string(el, iso, sizeof(iso));
     clockOf(iso, days[i].sunset, sizeof(days[i].sunset));
   });
+  forEach(member(daily, "precipitation_sum"), n, [days](const int i, const Span& el) { number(el, days[i].rainMm); });
+  forEach(member(daily, "wind_speed_10m_max"), n, [days](const int i, const Span& el) { number(el, days[i].windMax); });
+  forEach(member(daily, "uv_index_max"), n, [days](const int i, const Span& el) { number(el, days[i].uvMax); });
+  forEach(member(daily, "apparent_temperature_max"), n,
+          [days](const int i, const Span& el) { days[i].hasFeels = number(el, days[i].feelsMax); });
+  forEach(member(daily, "apparent_temperature_min"), n, [days](const int i, const Span& el) {
+    if (!number(el, days[i].feelsMin)) days[i].hasFeels = false;
+  });
   out.dayCount = n;
+
+  const Span hourly = member(root, "hourly");
+  if (hourly.ok()) {
+    Hour* hours = out.hours;
+    const int count = forEach(member(hourly, "time"), kHours, [hours, days, n](const int i, const Span& el) {
+      char iso[20];
+      string(el, iso, sizeof(iso));
+      const char* t = std::strchr(iso, 'T');
+      hours[i].hour = static_cast<int8_t>(t ? digits(t + 1, 2) : 0);
+      const int month = digits(iso + 5, 2);
+      const int day = digits(iso + 8, 2);
+      hours[i].day = -1;
+      for (int d = 0; d < n; ++d) {
+        if (days[d].month == month && days[d].day == day) hours[i].day = static_cast<int8_t>(d);
+      }
+    });
+    forEach(member(hourly, "temperature_2m"), count,
+            [hours](const int i, const Span& el) { number(el, hours[i].temp); });
+    forEach(member(hourly, "weather_code"), count,
+            [hours](const int i, const Span& el) { hours[i].code = static_cast<int16_t>(toInt(el)); });
+    forEach(member(hourly, "precipitation_probability"), count,
+            [hours](const int i, const Span& el) { hours[i].precip = static_cast<int8_t>(toInt(el)); });
+    out.hourCount = count;
+  }
   return true;
+}
+
+int nowIndex(const Forecast& f) {
+  if (f.hourCount == 0 || !f.current.time[0]) return 0;
+  const int month = digits(f.current.time + 5, 2);
+  const int day = digits(f.current.time + 8, 2);
+  const int hour = digits(f.current.time + 11, 2);
+  for (int i = 0; i < f.hourCount; ++i) {
+    const Hour& h = f.hours[i];
+    if (h.hour != hour || h.day < 0) continue;
+    if (f.days[h.day].month == month && f.days[h.day].day == day) return i;
+  }
+  return 0;
+}
+
+int hoursOfDay(const Forecast& f, const int d, int& first) {
+  first = 0;
+  int count = 0;
+  for (int i = 0; i < f.hourCount; ++i) {
+    if (f.hours[i].day != d) continue;
+    if (count == 0) first = i;
+    ++count;
+  }
+  return count;
+}
+
+float clockHours(const char* hhmm) {
+  if (!hhmm || !hhmm[0] || !hhmm[1] || !hhmm[2] || !hhmm[3] || !hhmm[4]) return -1;
+  const int h = digits(hhmm, 2);
+  const int m = digits(hhmm + 3, 2);
+  return h < 0 || m < 0 ? -1 : static_cast<float>(h) + static_cast<float>(m) / 60.0f;
 }
 
 int parseGeocode(const char* json, const size_t len, Place* out, const int max) {
@@ -331,8 +378,9 @@ void forecastUrl(const Place& place, char* out, const size_t cap) {
                 "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
                 "&hourly=temperature_2m,weather_code,precipitation_probability"
                 "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset"
-                "&timezone=auto&forecast_days=%d&forecast_hours=%d",
-                static_cast<double>(place.lat), static_cast<double>(place.lon), kDays, kHours);
+                ",precipitation_sum,wind_speed_10m_max,uv_index_max,apparent_temperature_max,apparent_temperature_min"
+                "&timezone=auto&forecast_days=%d",
+                static_cast<double>(place.lat), static_cast<double>(place.lon), kDays);
 }
 
 void geocodeUrl(const char* query, char* out, const size_t cap) {
@@ -363,6 +411,11 @@ int weekday(int year, const int month, const int day) {
 
 const char* weekdayName(const int wd) {
   static const char* const kNames[7] = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
+  return wd >= 0 && wd < 7 ? kNames[wd] : "";
+}
+
+const char* weekdayLong(const int wd) {
+  static const char* const kNames[7] = {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"};
   return wd >= 0 && wd < 7 ? kNames[wd] : "";
 }
 

@@ -10,8 +10,9 @@
 
 namespace weather {
 
-constexpr int kHours = 24;
+// Every hour of every day held: the day sheets draw a whole day each.
 constexpr int kDays = 7;
+constexpr int kHours = kDays * 24;
 constexpr int kMaxPlaces = 6;
 constexpr int kMaxResults = 6;
 constexpr int kNameChars = 28;
@@ -35,8 +36,9 @@ struct Current {
 };
 
 struct Hour {
-  int8_t hour = 0;  // local hour of day
-  int8_t precip = 0;
+  int8_t hour = 0;    // local hour of day
+  int8_t precip = 0;  // chance of it, percent
+  int8_t day = -1;    // index into Forecast::days, or -1 for an hour outside them
   int16_t code = 0;
   float temp = 0;
 };
@@ -51,6 +53,14 @@ struct Day {
   float min = 0;
   char sunrise[6] = "";  // "HH:MM"
   char sunset[6] = "";
+  // The day sheet's extras. Negative when the answer did not carry one (a
+  // forecast cached before they were asked for).
+  float rainMm = -1;
+  float windMax = -1;  // km/h
+  float uvMax = -1;
+  float feelsMax = 0;
+  float feelsMin = 0;
+  bool hasFeels = false;
 };
 
 struct Forecast {
@@ -80,8 +90,18 @@ void foldAscii(const char* utf8, size_t len, char* out, size_t cap);
 void forecastUrl(const Place& place, char* out, size_t cap);
 void geocodeUrl(const char* query, char* out, size_t cap);
 
+// The index in `hours` of the current hour, or of the first hour held when the
+// current one is not among them.
+int nowIndex(const Forecast& f);
+// The first hour of day `d` in `hours` and how many of its hours are held;
+// zero when none are.
+int hoursOfDay(const Forecast& f, int d, int& first);
+// The hour of day (with its minutes as a fraction) a "HH:MM" names, or -1.
+float clockHours(const char* hhmm);
+
 // 0 = Monday.
 int weekday(int year, int month, int day);
+const char* weekdayLong(int wd);   // "MONDAY"
 const char* weekdayName(int wd);   // "MON"
 const char* monthName(int month);  // "JAN", 1-based
 

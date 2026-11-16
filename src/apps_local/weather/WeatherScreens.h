@@ -20,6 +20,7 @@ enum : fui::ActionId {
   ActionPick,  // value: search result index
   ActionSearch,
   ActionDismiss,
+  ActionDay,  // value: day index, to open its sheet
 };
 
 // The builder cannot reach the renderer, and the hero temperature is set in a
@@ -33,6 +34,14 @@ struct FaceSwap {
 struct ForecastModel {
   const weather::Place* place = nullptr;
   const weather::Forecast* forecast = nullptr;  // null: nothing fetched yet
+  bool fahrenheit = false;
+  FaceSwap faces;
+};
+
+struct DayModel {
+  const weather::Place* place = nullptr;
+  const weather::Forecast* forecast = nullptr;
+  int day = 0;
   bool fahrenheit = false;
   FaceSwap faces;
 };
@@ -69,6 +78,7 @@ struct StatusModel {
 };
 
 void buildForecast(toybox::Screen& screen, const ForecastModel& model);
+void buildDay(toybox::Screen& screen, const DayModel& model);
 void buildCities(toybox::Screen& screen, const CitiesModel& model);
 void buildResults(toybox::Screen& screen, const ResultsModel& model);
 void buildStatus(toybox::Screen& screen, const StatusModel& model);

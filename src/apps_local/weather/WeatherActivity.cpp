@@ -28,7 +28,7 @@ namespace {
 constexpr char kSavePath[] = "/.crosspoint/weather.sav";
 constexpr char kCacheDir[] = "/.crosspoint/weather";
 constexpr uint8_t kSaveVersion = 1;
-constexpr size_t kMaxBody = 16 * 1024;  // a 7-day answer is ~4 KB
+constexpr size_t kMaxBody = 48 * 1024;  // seven days of hours is ~10 KB
 constexpr size_t kQueryMax = 40;
 
 struct SaveState {
@@ -183,7 +183,7 @@ void WeatherActivity::runJob() {
   job_ = Job::None;
   char url[512];
   std::string body;
-  body.reserve(job == Job::Forecast ? 6 * 1024 : 2 * 1024);
+  body.reserve(job == Job::Forecast ? 12 * 1024 : 2 * 1024);
   if (job == Job::Search) {
     wx::geocodeUrl(query_, url, sizeof(url));
   } else {
@@ -203,14 +203,14 @@ void WeatherActivity::runJob() {
     requestUpdate();
     return;
   }
-  wx::Forecast fresh;
-  if (!wx::parseForecast(body.data(), body.size(), fresh)) {
+  auto fresh = makeUniqueNoThrow<wx::Forecast>();
+  if (!fresh || !wx::parseForecast(body.data(), body.size(), *fresh)) {
     LOG_ERR("WTHR", "unreadable forecast, %u bytes", static_cast<unsigned>(body.size()));
     showStatus("BAD ANSWER", "THE FORECAST CAME BACK IN A SHAPE THIS APP CANNOT READ.", true, View::Forecast);
     requestUpdate();
     return;
   }
-  forecast_ = fresh;
+  forecast_ = *fresh;
   haveForecast_ = true;
   saveCache(body.data(), body.size());
   view_ = View::Forecast;
@@ -276,6 +276,9 @@ void WeatherActivity::loop() {
       case View::Forecast:
         shelf::leave(renderer, mappedInput);
         return;
+      case View::Day:
+        view_ = View::Forecast;
+        break;
       case View::Cities:
         if (placeCount_ == 0) {
           shelf::leave(renderer, mappedInput);
@@ -367,6 +370,11 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
     case ui::ActionDismiss:
       view_ = statusBack_;
       break;
+    case ui::ActionDay:
+      if (!haveForecast_ || event.value < 0 || event.value >= forecast_.dayCount) return;
+      dayOpen_ = event.value;
+      view_ = View::Day;
+      break;
     default:
       return;
   }
@@ -394,6 +402,20 @@ void WeatherActivity::render(RenderLock&&) {
                                                            huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
       };
       weatherui::buildForecast(surface, m);
+      break;
+    }
+    case View::Day: {
+      weatherui::DayModel m;
+      m.place = placeCount_ ? &places_[selected_] : nullptr;
+      m.forecast = &forecast_;
+      m.day = dayOpen_;
+      m.fahrenheit = fahrenheit_;
+      m.faces.ctx = &target;
+      m.faces.bindTitle = [](void* ctx, const bool huge) {
+        static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
+                                                           huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
+      };
+      weatherui::buildDay(surface, m);
       break;
     }
     case View::Cities: {

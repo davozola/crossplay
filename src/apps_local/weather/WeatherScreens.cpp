@@ -320,7 +320,7 @@ void paragraph(toybox::Screen& screen, const int x, const int y, const int w, co
   screen.target().text(rect(x, y, w, toybox::kTileCut.lineHeight * 4), text, s);
 }
 
-bool daylight(const int hour, const wx::Day& today) {
+bool isDaylight(const int hour, const wx::Day& today) {
   int rise = 7;
   int set = 19;
   if (today.sunrise[0]) rise = (today.sunrise[0] - '0') * 10 + (today.sunrise[1] - '0');
@@ -362,10 +362,10 @@ void hero(toybox::Screen& screen, const ForecastModel& model, const int top, con
   if (huge) model.faces.bindTitle(model.faces.ctx, false);
   degree(screen, x + tw + 6 + ringR, inkTop + ringR, ringR, ringW);
 
-  int y = inkTop + cut.inkHeight + 18;
+  int y = inkTop + cut.inkHeight + 14;
   label(screen, rect(left, y, colW, toybox::kUiCut.inkHeight), wx::labelOf(f.current.code), toybox::kUiFont,
         toybox::kUiCut);
-  y += toybox::kUiCut.inkHeight + 14;
+  y += toybox::kUiCut.inkHeight + 10;
   if (f.dayCount > 0) {
     char hl[2 * toybox::kIntChars + 16];
     std::snprintf(hl, sizeof(hl), "HIGH %d   LOW %d", wx::displayTemp(f.days[0].max, fahr),
@@ -399,11 +399,11 @@ void stats(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const
 
   const char* captions[4] = {"FEELS LIKE", "HUMIDITY", fahr ? "WIND MPH" : "WIND KM/H", sunCaption};
   const char* values[4] = {"", hum, wind, sunValue};
-  const int capY = top + 12;
-  const int valY = capY + toybox::kTileCut.inkHeight + 12;
+  const int capY = top + 9;
+  const int valY = capY + toybox::kTileCut.inkHeight + 9;
   for (int i = 0; i < 4; ++i) {
     const int x = toybox::kMargin + i * cellW;
-    if (i > 0) box(screen, x, top + 10, toybox::kHairline, height - 20, kInk);
+    if (i > 0) box(screen, x, top + 8, toybox::kHairline, height - 16, kInk);
     caption(screen, x, capY, cellW, captions[i], fui::TextAlign::Center);
     if (i == 0) {
       smallTemp(screen, x + cellW / 2, valY + toybox::kUiCut.inkHeight / 2, f.current.feels, fahr);
@@ -413,22 +413,66 @@ void stats(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const
   }
 }
 
-// Eight columns three hours apart from now: hour, sky, temperature, and the
-// chance of rain on a row of its own where it is worth saying.
+// The next day as a curve. Eight columns three hours apart from now: hour,
+// sky, then the temperature riding on a line drawn through every hour between
+// them, and the chance of rain where it is worth saying.
 void hours(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const int top, const int width) {
   const int cols = 8;
   const int inner = width - toybox::kMargin * 2;
   const int colW = inner / cols;
-  const int icon = 40;
+  const int icon = 36;
+  const int first = wx::nowIndex(f);
+  int n = f.hourCount - first;
+  if (n > (cols - 1) * 3 + 1) n = (cols - 1) * 3 + 1;
+  if (n < 1) return;
+
   const int hourY = top;
-  const int iconCy = hourY + toybox::kTileCut.inkHeight + 10 + icon / 2;
-  const int tempCy = iconCy + icon / 2 + 8 + toybox::kUiCut.inkHeight / 2;
-  const int rainY = tempCy + toybox::kUiCut.inkHeight / 2 + 10;
+  const int iconCy = hourY + toybox::kTileCut.inkHeight + 8 + icon / 2;
+  const int zoneTop = iconCy + icon / 2 + 6;
+  const int numberH = toybox::kUiCut.inkHeight;
+  const int curveTop = zoneTop + numberH + 10;  // the highest a point may sit
+  const int curveH = 34;
+  const int zoneBottom = curveTop + curveH + 6;
+  const int rainY = zoneBottom + 8;
+
+  float lo = f.hours[first].temp;
+  float hi = lo;
+  for (int i = 1; i < n; ++i) {
+    const float t = f.hours[first + i].temp;
+    if (t < lo) lo = t;
+    if (t > hi) hi = t;
+  }
+  const float span = hi - lo > 0.5f ? hi - lo : 0.5f;
+  const float x0 = static_cast<float>(toybox::kMargin + colW / 2);
+  const float step = static_cast<float>(colW) / 3.0f;
+  auto px = [&](const int i) { return x0 + step * static_cast<float>(i); };
+  auto py = [&](const int i) {
+    return static_cast<float>(curveTop) + static_cast<float>(curveH) * (hi - f.hours[first + i].temp) / span;
+  };
+
+  // Shade under the line, then the line, then a dot at each labelled hour.
+  const fui::Paint shade = fui::Paint::dither(fui::Color::LightGray);
+  for (int x = static_cast<int>(px(0)); x <= static_cast<int>(px(n - 1)); ++x) {
+    const float t = (static_cast<float>(x) - x0) / step;
+    int i = static_cast<int>(t);
+    if (i >= n - 1) i = n - 2;
+    if (i < 0) break;
+    const float fr = t - static_cast<float>(i);
+    const int y = static_cast<int>(py(i) + (py(i + 1) - py(i)) * fr);
+    box(screen, x, y, 1, zoneBottom - y, shade);
+  }
+  for (int i = 0; i + 1 < n; ++i) {
+    stroke(screen, px(i), py(i), px(i + 1), py(i + 1), 3);
+    disc(screen, static_cast<int>(px(i + 1)), static_cast<int>(py(i + 1)), 1, fui::Color::Black);
+  }
+  box(screen, toybox::kMargin, zoneBottom, inner, toybox::kHairline, kInk);
+
   for (int c = 0; c < cols; ++c) {
     const int i = c * 3;
-    if (i >= f.hourCount) break;
-    const wx::Hour& h = f.hours[i];
+    if (i >= n) break;
+    const wx::Hour& h = f.hours[first + i];
     const int x = toybox::kMargin + c * colW;
+    const int cx = x + colW / 2;
     char hh[toybox::kIntChars + 1];
     if (c == 0) {
       std::snprintf(hh, sizeof(hh), "NOW");
@@ -436,8 +480,13 @@ void hours(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const
       std::snprintf(hh, sizeof(hh), "%02d", h.hour);
     }
     caption(screen, x, hourY, colW, hh, fui::TextAlign::Center);
-    skyIcon(screen, wx::skyOf(h.code), daylight(h.hour, f.days[0]), x + colW / 2, iconCy, icon);
-    smallTemp(screen, x + colW / 2, tempCy, h.temp, fahr);
+    const wx::Day& sunDay = f.days[h.day >= 0 ? h.day : 0];
+    skyIcon(screen, wx::skyOf(h.code), isDaylight(h.hour, sunDay), cx, iconCy, icon);
+    const int y = static_cast<int>(py(i));
+    disc(screen, cx, y, 6, fui::Color::White);
+    disc(screen, cx, y, 5, fui::Color::Black);
+    disc(screen, cx, y, 2, fui::Color::White);
+    smallTemp(screen, cx, y - 10 - numberH / 2, h.temp, fahr);
     if (h.precip >= 20) {
       char p[toybox::kIntChars + 2];
       std::snprintf(p, sizeof(p), "%d%%", h.precip);
@@ -454,9 +503,28 @@ void dayName(char* out, const size_t cap, const wx::Day& d, const int index) {
   }
 }
 
+// A row with nothing drawn but its hit rect: the content is laid over it.
+fui::StyleSet bareStyles() {
+  fui::StyleSet styles = toybox::rowStyles();
+  styles.normal.borderWidth = 0;
+  styles.selected = styles.normal;
+  styles.focused = styles.normal;
+  styles.active = styles.normal;
+  styles.disabled = styles.normal;
+  return styles;
+}
+
+// A small chevron pointing right: "this opens".
+void chevronRight(toybox::Screen& screen, const int cx, const int cy) {
+  for (int i = 0; i <= 5; ++i) {
+    box(screen, cx - 3 + i, cy - 5 + i, 2, 1, kInk);
+    box(screen, cx - 3 + i, cy + 5 - i, 2, 1, kInk);
+  }
+}
+
 // A row per day: name, sky, chance of rain, then the low and high with the
 // day's span drawn against the whole week's. Today's row marks where the
-// temperature is now.
+// temperature is now. Each row opens its day.
 void days(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const int top, const int rowH,
           const int width) {
   float lo = f.days[0].min;
@@ -470,14 +538,15 @@ void days(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const 
   const float span = hi - lo > 1 ? hi - lo : 1;
   const int x0 = toybox::kMargin;
   const int inner = width - toybox::kMargin * 2;
-  const int nameW = 92;
-  const int icon = 32;
+  const int nameW = 84;
+  const int icon = rowH - 4 < 30 ? rowH - 4 : 30;
   const int iconCx = x0 + nameW + icon / 2;
-  const int rainX = x0 + nameW + icon + 10;
-  const int rainW = 48;
-  const int numW = 42;
+  const int rainX = x0 + nameW + icon + 8;
+  const int rainW = 46;
+  const int numW = 40;
+  const int chevronW = 18;
   const int loX = rainX + rainW;
-  const int hiX = x0 + inner - numW;
+  const int hiX = x0 + inner - chevronW - numW;
   const int trackL = loX + numW + 12;
   const int trackR = hiX - 12;
   const int trackW = trackR - trackL;
@@ -485,6 +554,15 @@ void days(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const 
     const wx::Day& d = f.days[i];
     const int y = top + i * rowH;
     const int cy = y + rowH / 2;
+    fui::ButtonProps row;
+    row.label = "";
+    row.action = ActionDay;
+    row.value = static_cast<int16_t>(i);
+    row.styles = bareStyles();
+    // Rows are shorter than a fingertip and stacked: each takes exactly its
+    // own band rather than growing into its neighbours.
+    row.minTouchSize = 0;
+    screen.button(row, rect(x0, y + 1, inner, rowH - 1));
     if (i > 0) hairline(screen, x0, y, inner);
     char name[16];
     dayName(name, sizeof(name), d, i);
@@ -514,6 +592,7 @@ void days(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const 
       disc(screen, nx, cy, 6, fui::Color::Black);
       disc(screen, nx, cy, 3, fui::Color::White);
     }
+    chevronRight(screen, x0 + inner - 6, cy);
   }
 }
 
@@ -529,8 +608,8 @@ void footer(toybox::Screen& screen, const wx::Forecast* f, const int top, const 
                   wx::monthName(m), c.time + 11);
   }
   const int bw = 132;
-  const int bh = 44;
-  const int by = top + (height - bh) / 2;
+  const int bh = height - 8 < 44 ? height - 8 : 44;
+  const int by = top + (height - bh) / 2 + 1;
   caption(screen, toybox::kMargin, top + (height - toybox::kTileCut.inkHeight) / 2,
           width - toybox::kMargin * 2 - bw - toybox::kGutter, when);
   fui::ButtonProps b;
@@ -542,6 +621,132 @@ void footer(toybox::Screen& screen, const wx::Forecast* f, const int top, const 
   screen.button(b, rect(width - toybox::kMargin - bw, by, bw, bh));
 }
 
+// --- one day ---------------------------------------------------------------------
+
+void statCell(toybox::Screen& screen, const int x, const int y, const int w, const char* name, const char* value) {
+  caption(screen, x, y, w, name, fui::TextAlign::Center);
+  label(screen, rect(x, y + toybox::kTileCut.inkHeight + 8, w, toybox::kUiCut.inkHeight), value, toybox::kUiFont,
+        toybox::kUiCut);
+}
+
+// Four captioned cells across, hairlines between.
+void statRow(toybox::Screen& screen, const int top, const int width, const char* const names[4],
+             const char* const values[4]) {
+  const int inner = width - toybox::kMargin * 2;
+  const int cellW = inner / 4;
+  for (int i = 0; i < 4; ++i) {
+    const int x = toybox::kMargin + i * cellW;
+    if (i > 0) box(screen, x, top + 8, toybox::kHairline, 44, kInk);
+    statCell(screen, x, top + 9, cellW, names[i], values[i]);
+  }
+}
+
+// The day's temperature through its hours: night shaded, the line across it,
+// the low and the high marked and named, and where now is when it is today.
+void dayCurve(toybox::Screen& screen, const fui::Rect& plot, const wx::Forecast& f, const int d, const bool fahr) {
+  int first = 0;
+  const int n = wx::hoursOfDay(f, d, first);
+  const wx::Day& day = f.days[d];
+  auto xOfHour = [&](const float hour) {
+    return static_cast<float>(plot.x) + static_cast<float>(plot.width) * hour / 24.0f;
+  };
+
+  // Night: before sunrise and after sunset.
+  const float rise = wx::clockHours(day.sunrise);
+  const float set = wx::clockHours(day.sunset);
+  const fui::Paint night = fui::Paint::dither(fui::Color::LightGray);
+  if (rise > 0 && set > rise) {
+    box(screen, plot.x, plot.y, static_cast<int>(xOfHour(rise)) - plot.x, plot.height, night);
+    const int sx = static_cast<int>(xOfHour(set));
+    box(screen, sx, plot.y, plot.x + plot.width - sx, plot.height, night);
+  }
+  box(screen, plot.x, plot.y + plot.height, plot.width, toybox::kHairline, kInk);
+  if (n < 2) {
+    label(screen, rect(plot.x, plot.y + plot.height / 2 - 10, plot.width, toybox::kTileCut.inkHeight),
+          "NO HOURLY DATA FOR THIS DAY. REFRESH TO GET IT.", toybox::kTileFont, toybox::kTileCut);
+    return;
+  }
+
+  int loAt = 0;
+  int hiAt = 0;
+  for (int i = 1; i < n; ++i) {
+    if (f.hours[first + i].temp < f.hours[first + loAt].temp) loAt = i;
+    if (f.hours[first + i].temp > f.hours[first + hiAt].temp) hiAt = i;
+  }
+  const float lo = f.hours[first + loAt].temp;
+  const float hi = f.hours[first + hiAt].temp;
+  const float span = hi - lo > 0.5f ? hi - lo : 0.5f;
+  const int padTop = toybox::kUiCut.inkHeight + 16;  // room for the high's label
+  const int padBottom = 14;
+  auto px = [&](const int i) { return xOfHour(static_cast<float>(f.hours[first + i].hour) + 0.5f); };
+  auto py = [&](const int i) {
+    return static_cast<float>(plot.y + padTop) +
+           static_cast<float>(plot.height - padTop - padBottom) * (hi - f.hours[first + i].temp) / span;
+  };
+  for (int i = 0; i + 1 < n; ++i) {
+    stroke(screen, px(i), py(i), px(i + 1), py(i + 1), 4);
+    disc(screen, static_cast<int>(px(i + 1)), static_cast<int>(py(i + 1)), 2, fui::Color::Black);
+  }
+
+  // The extremes, each with its figure: the high above its point, the low
+  // above too (below would run off the plot), nudged in from the edges.
+  auto mark = [&](const int i) {
+    const int cx = static_cast<int>(px(i));
+    const int cy = static_cast<int>(py(i));
+    disc(screen, cx, cy, 8, fui::Color::White);
+    disc(screen, cx, cy, 7, fui::Color::Black);
+    disc(screen, cx, cy, 3, fui::Color::White);
+    int lx = cx;
+    if (lx < plot.x + 24) lx = plot.x + 24;
+    if (lx > plot.x + plot.width - 24) lx = plot.x + plot.width - 24;
+    const int ly = cy - 12 - toybox::kUiCut.inkHeight / 2;
+    // A paper plate under the figure so it reads over the night shading.
+    box(screen, lx - 22, ly - toybox::kUiCut.inkHeight / 2 - 3, 44, toybox::kUiCut.inkHeight + 6, kPaper, 6);
+    smallTemp(screen, lx, ly, f.hours[first + i].temp, fahr);
+  };
+  mark(hiAt);
+  if (loAt != hiAt) mark(loAt);
+
+  // Now, on today's sheet: a tick down from the line to the axis.
+  if (d == 0) {
+    const int now = wx::nowIndex(f) - first;
+    if (now >= 0 && now < n) {
+      const int cx = static_cast<int>(px(now));
+      const int cy = static_cast<int>(py(now));
+      for (int y = cy + 8; y < plot.y + plot.height; y += 5) box(screen, cx - 1, y, 2, 3, kInk);
+      disc(screen, cx, cy, 5, fui::Color::Black);
+    }
+  }
+}
+
+// The chance of rain through the day, a bar an hour.
+void rainBars(toybox::Screen& screen, const fui::Rect& plot, const wx::Forecast& f, const int d) {
+  int first = 0;
+  const int n = wx::hoursOfDay(f, d, first);
+  box(screen, plot.x, plot.y + plot.height, plot.width, toybox::kHairline, kInk);
+  int peak = 0;
+  for (int i = 0; i < n; ++i) {
+    if (f.hours[first + i].precip > peak) peak = f.hours[first + i].precip;
+  }
+  if (n == 0 || peak < 5) {
+    label(screen, rect(plot.x, plot.y + plot.height / 2 - 8, plot.width, toybox::kTileCut.inkHeight),
+          n == 0 ? "NO HOURLY DATA" : "NO RAIN EXPECTED", toybox::kTileFont, toybox::kTileCut);
+    return;
+  }
+  // The scale is always 0 to 100, so two days can be compared at a glance; a
+  // dotted line marks the half.
+  for (int x = plot.x; x < plot.x + plot.width; x += 6) box(screen, x, plot.y + plot.height / 2, 3, 1, kInk);
+  const float slot = static_cast<float>(plot.width) / 24.0f;
+  const int barW = static_cast<int>(slot) - 4;
+  for (int i = 0; i < n; ++i) {
+    const wx::Hour& h = f.hours[first + i];
+    if (h.precip <= 0) continue;
+    const int bh = plot.height * h.precip / 100;
+    const int x = plot.x + static_cast<int>(slot * static_cast<float>(h.hour)) + 2;
+    box(screen, x, plot.y + plot.height - (bh > 2 ? bh : 2), barW, bh > 2 ? bh : 2, kInk, 2);
+  }
+}
+
 }  // namespace
 
 void buildForecast(toybox::Screen& screen, const ForecastModel& model) {
@@ -549,7 +754,7 @@ void buildForecast(toybox::Screen& screen, const ForecastModel& model) {
   const fui::DeviceContext device = screen.device();
   const int width = device.width;
   const int inner = width - toybox::kMargin * 2;
-  const int footH = 52;
+  const int footH = 48;
   const int footTop = device.height - kBottomReserve - footH;
 
   if (!model.forecast) {
@@ -566,17 +771,17 @@ void buildForecast(toybox::Screen& screen, const ForecastModel& model) {
   }
 
   const wx::Forecast& f = *model.forecast;
-  int y = toybox::kChromeHeight + 14;
-  const int heroH = 160;
+  int y = toybox::kChromeHeight + 10;
+  const int heroH = 156;
   hero(screen, model, y, heroH, width);
-  y += heroH + 10;
+  y += heroH + 4;
   hairline(screen, toybox::kMargin, y, inner);
-  const int statsH = 66;
+  const int statsH = 62;
   stats(screen, f, model.fahrenheit, y, statsH, width);
   y += statsH;
   hairline(screen, toybox::kMargin, y, inner);
-  y += 14;
-  const int hoursH = 132;
+  y += 12;
+  const int hoursH = 164;
   hours(screen, f, model.fahrenheit, y, width);
   y += hoursH;
   hairline(screen, toybox::kMargin, y, inner);
@@ -584,6 +789,162 @@ void buildForecast(toybox::Screen& screen, const ForecastModel& model) {
   days(screen, f, model.fahrenheit, y, rowH, width);
   hairline(screen, toybox::kMargin, footTop, inner);
   footer(screen, &f, footTop, footH, width);
+}
+
+void buildDay(toybox::Screen& screen, const DayModel& model) {
+  const wx::Forecast& f = *model.forecast;
+  const int d = model.day >= 0 && model.day < f.dayCount ? model.day : 0;
+  const wx::Day& day = f.days[d];
+  const bool fahr = model.fahrenheit;
+  char title[24];
+  std::snprintf(title, sizeof(title), "%s %d", wx::weekdayLong(wx::weekday(day.year, day.month, day.day)), day.day);
+  chrome(screen, title, nullptr, 0);
+  const fui::DeviceContext device = screen.device();
+  const int width = device.width;
+  const int inner = width - toybox::kMargin * 2;
+  const int x = toybox::kMargin;
+
+  int y = toybox::kChromeHeight + 14;
+  char where[64];
+  std::snprintf(where, sizeof(where), "%s, %d %s", model.place ? model.place->name : "", day.day,
+                wx::monthName(day.month));
+  caption(screen, x, y, inner, where);
+  caption(screen, x, y, inner, d == 0 ? "TODAY" : (d == 1 ? "TOMORROW" : ""), fui::TextAlign::Right);
+  y += toybox::kTileCut.inkHeight + 10;
+
+  // The sky, the high in the huge cut, the low beside it, the day in words.
+  const int heroH = 124;
+  const int iconSize = heroH - 4;
+  skyIcon(screen, wx::skyOf(day.code), true, x + iconSize / 2 + 2, y + heroH / 2, iconSize);
+  const int left = x + iconSize + toybox::kGutter;
+  const int colW = x + inner - left;
+  char t[toybox::kIntChars + 1];
+  tempText(t, sizeof(t), day.max, fahr);
+  const bool huge = model.faces.bindTitle != nullptr;
+  const toybox::CutMetrics& cut = huge ? toybox::kHugeCut : toybox::kDisplayCut;
+  if (huge) model.faces.bindTitle(model.faces.ctx, true);
+  const int tw = textWidth(screen, t, toybox::kDisplayFont);
+  const int ringR = cut.inkHeight / 7;
+  const int ringW = ringR * 2 / 5 > 3 ? ringR * 2 / 5 : 3;
+  const int lowW = 86;
+  const int total = tw + ringR * 2 + 6 + 14 + lowW;
+  const int tx = left + (colW - total) / 2;
+  label(screen, rect(tx, y + 2, tw + 4, cut.inkHeight), t, toybox::kDisplayFont, cut, fui::TextAlign::Left);
+  if (huge) model.faces.bindTitle(model.faces.ctx, false);
+  degree(screen, tx + tw + 6 + ringR, y + 2 + ringR, ringR, ringW);
+  const int lowX = tx + tw + ringR * 2 + 6 + 14;
+  caption(screen, lowX, y + 2 + cut.inkHeight - toybox::kUiCut.inkHeight - toybox::kTileCut.inkHeight - 8, lowW, "LOW",
+          fui::TextAlign::Center);
+  smallTemp(screen, lowX + lowW / 2, y + 2 + cut.inkHeight - toybox::kUiCut.inkHeight / 2, day.min, fahr);
+  label(screen, rect(left, y + 2 + cut.inkHeight + 14, colW, toybox::kUiCut.inkHeight), wx::labelOf(day.code),
+        toybox::kUiFont, toybox::kUiCut);
+  y += heroH + 8;
+
+  // Eight figures in two rows.
+  hairline(screen, x, y, inner);
+  char daylight[2 * toybox::kIntChars + 4] = "-";
+  const float rise = wx::clockHours(day.sunrise);
+  const float set = wx::clockHours(day.sunset);
+  if (rise >= 0 && set > rise) {
+    const int minutes = static_cast<int>((set - rise) * 60.0f + 0.5f);
+    std::snprintf(daylight, sizeof(daylight), "%dH %02d", minutes / 60, minutes % 60);
+  }
+  char uv[16] = "-";
+  if (day.uvMax >= 0) std::snprintf(uv, sizeof(uv), "%d", static_cast<int>(day.uvMax + 0.5f));
+  const char* const names1[4] = {"SUNRISE", "SUNSET", "DAYLIGHT", "UV INDEX"};
+  const char* const values1[4] = {day.sunrise[0] ? day.sunrise : "-", day.sunset[0] ? day.sunset : "-", daylight, uv};
+  statRow(screen, y, width, names1, values1);
+  y += 60;
+  hairline(screen, x, y, inner);
+  char rain[16] = "-";
+  if (day.rainMm >= 0) {
+    if (fahr) {
+      std::snprintf(rain, sizeof(rain), "%.2f", static_cast<double>(day.rainMm / 25.4f));
+    } else {
+      std::snprintf(rain, sizeof(rain), "%.1f", static_cast<double>(day.rainMm));
+    }
+  }
+  char chance[toybox::kIntChars + 2];
+  std::snprintf(chance, sizeof(chance), "%d%%", day.precip);
+  char wind[toybox::kIntChars + 1] = "-";
+  if (day.windMax >= 0) std::snprintf(wind, sizeof(wind), "%d", wx::displayWind(day.windMax, fahr));
+  char feels[2 * toybox::kIntChars + 4] = "-";
+  if (day.hasFeels) {
+    std::snprintf(feels, sizeof(feels), "%d / %d", wx::displayTemp(day.feelsMin, fahr),
+                  wx::displayTemp(day.feelsMax, fahr));
+  }
+  const char* const names2[4] = {fahr ? "RAIN IN" : "RAIN MM", "CHANCE", fahr ? "WIND MPH" : "WIND KM/H", "FEELS LIKE"};
+  const char* const values2[4] = {rain, chance, wind, feels};
+  statRow(screen, y, width, names2, values2);
+  y += 60;
+  hairline(screen, x, y, inner);
+  y += 12;
+
+  // Temperature, then the skies under it on the same hours, then rain.
+  const int navH = 46;
+  const int navY = device.height - kBottomReserve - navH - 2;
+  const int rainH = 62;
+  const int axisH = toybox::kTileCut.inkHeight + 8;
+  const int iconsH = 34;
+  const int captionH = toybox::kTileCut.inkHeight + 8;
+  const int rainTop = navY - 12 - axisH - rainH;
+  const int curveTop = y + captionH;
+  const int curveH = rainTop - captionH - 8 - iconsH - 6 - curveTop;
+  caption(screen, x, y, inner, "TEMPERATURE");
+  caption(screen, x, y, inner, "SHADED: NIGHT", fui::TextAlign::Right);
+  dayCurve(screen, rect(x, curveTop, inner, curveH), f, d, fahr);
+  // A sky every three hours, centred on its hours.
+  int first = 0;
+  const int n = wx::hoursOfDay(f, d, first);
+  const int iconCy = curveTop + curveH + 6 + iconsH / 2;
+  for (int i = 0; i < n; ++i) {
+    const wx::Hour& h = f.hours[first + i];
+    if (h.hour % 3 != 1) continue;
+    const int cx = x + inner * (h.hour * 2 + 1) / 48;
+    skyIcon(screen, wx::skyOf(h.code), isDaylight(h.hour, day), cx, iconCy, 30);
+  }
+  caption(screen, x, rainTop - captionH, inner, "CHANCE OF RAIN OR SNOW, BY HOUR");
+  rainBars(screen, rect(x, rainTop, inner, rainH), f, d);
+  // One hour axis under both.
+  const int axisY = rainTop + rainH + 7;
+  static const char* const kTicks[5] = {"00", "06", "12", "18", "24"};
+  for (int i = 0; i < 5; ++i) {
+    const int tx2 = x + inner * i / 4;
+    const fui::TextAlign align =
+        i == 0 ? fui::TextAlign::Left : (i == 4 ? fui::TextAlign::Right : fui::TextAlign::Center);
+    const int lx = i == 0 ? tx2 : (i == 4 ? tx2 - 40 : tx2 - 20);
+    caption(screen, lx, axisY, 40, kTicks[i], align);
+    if (i > 0 && i < 4) box(screen, tx2, rainTop + rainH, 1, 5, kInk);
+  }
+
+  // The days either side.
+  const int gap = 10;
+  const int half = (inner - gap) / 2;
+  char prevText[24] = "";
+  char nextText[24] = "";
+  if (d > 0) {
+    const wx::Day& p = f.days[d - 1];
+    std::snprintf(prevText, sizeof(prevText), "< %s %d", wx::weekdayName(wx::weekday(p.year, p.month, p.day)), p.day);
+  }
+  if (d + 1 < f.dayCount) {
+    const wx::Day& nx = f.days[d + 1];
+    std::snprintf(nextText, sizeof(nextText), "%s %d >", wx::weekdayName(wx::weekday(nx.year, nx.month, nx.day)),
+                  nx.day);
+  }
+  fui::ButtonProps prev;
+  prev.label = prevText;
+  prev.action = ActionDay;
+  prev.value = static_cast<int16_t>(d - 1);
+  prev.enabled = d > 0;
+  prev.styles = toybox::rowStyles();
+  prev.text = toybox::buttonText(screen.theme());
+  prev.radius = toybox::kPillRadius / 2;
+  if (d > 0) screen.button(prev, rect(x, navY, half, navH));
+  fui::ButtonProps next = prev;
+  next.label = nextText;
+  next.value = static_cast<int16_t>(d + 1);
+  next.enabled = true;
+  if (d + 1 < f.dayCount) screen.button(next, rect(x + half + gap, navY, half, navH));
 }
 
 void buildCities(toybox::Screen& screen, const CitiesModel& model) {

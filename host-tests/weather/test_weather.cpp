@@ -48,20 +48,43 @@ int main() {
     check(near(f.current.wind, 14.3f), "wind");
     check(f.current.isDay, "is_day");
     check(std::strcmp(f.current.time, "2026-11-16T08:00") == 0, "current time");
-    check(f.hourCount == 24, "24 hours");
-    check(f.hours[0].hour == 8 && f.hours[16].hour == 0 && f.hours[23].hour == 7, "hour of day wraps midnight");
-    check(f.hours[5].precip == 80 && f.hours[5].code == 63, "hour precip and code");
-    check(f.hours[23].precip == 0, "null precip reads as 0");
+    check(f.hourCount == 168, "seven days of hours");
+    check(f.hours[0].hour == 0 && f.hours[0].day == 0, "first hour is midnight of the first day");
+    check(f.hours[24].hour == 0 && f.hours[24].day == 1, "hours are filed under their day");
+    check(f.hours[167].hour == 23 && f.hours[167].day == 6, "last hour");
+    check(f.hours[13].precip == 80 && f.hours[13].code == 63, "hour precip and code");
+    check(f.hours[167].precip == 0, "null precip reads as 0");
+    check(nowIndex(f) == 8, "now is 08:00 of the first day");
+    int first = -1;
+    check(hoursOfDay(f, 2, first) == 24 && first == 48, "third day's hours");
+    check(hoursOfDay(f, 9, first) == 0, "a day not held has none");
     check(f.dayCount == 7, "7 days");
     check(f.days[0].year == 2026 && f.days[0].month == 11 && f.days[0].day == 16, "day date");
     check(near(f.days[5].max, 8.2f) && near(f.days[5].min, 1.2f), "day max/min");
     check(f.days[4].code == 95 && f.days[4].precip == 90, "day code and precip");
     check(std::strcmp(f.days[0].sunrise, "07:46") == 0 && std::strcmp(f.days[6].sunset, "17:25") == 0, "sun times");
+    check(near(f.days[4].rainMm, 18.2f) && near(f.days[4].windMax, 41.2f) && near(f.days[4].uvMax, 1.1f),
+          "day rain, wind and uv");
+    check(f.days[5].hasFeels && near(f.days[5].feelsMin, -3.2f) && near(f.days[5].feelsMax, 4.9f), "day feels-like");
+    check(near(clockHours("07:46"), 7.7667f) && clockHours("") < 0, "clock to hours");
 
     Forecast bad;
     check(!parseForecast("{\"error\":true,\"reason\":\"x\"}", 30, bad), "error answer rejected");
     check(!parseForecast("", 0, bad), "empty rejected");
     check(!parseForecast(json.data(), json.size() / 2, bad) || bad.dayCount <= 7, "truncated answer safe");
+  }
+
+  // --- a forecast cached before the day sheets: 24 hours from now, no extras ---
+  {
+    const std::string json = slurp("forecast_old.json");
+    Forecast f;
+    check(parseForecast(json.data(), json.size(), f), "old forecast still parses");
+    check(f.hourCount == 24 && nowIndex(f) == 0, "its first hour is now");
+    check(f.hours[0].day == 0 && f.hours[16].day == 1, "its hours still find their days");
+    check(f.days[0].rainMm < 0 && f.days[0].windMax < 0 && f.days[0].uvMax < 0 && !f.days[0].hasFeels,
+          "extras it never carried read as absent");
+    int first = -1;
+    check(hoursOfDay(f, 0, first) == 16 && first == 0, "a part day reports the hours it has");
   }
 
   // --- geocode ---
@@ -111,6 +134,7 @@ int main() {
 
   // --- dates and units ---
   check(weekday(2026, 11, 16) == 0, "16 nov 2026 is a monday");
+  check(std::strcmp(weekdayLong(4), "FRIDAY") == 0 && weekdayLong(7)[0] == 0, "long weekday names");
   check(weekday(2024, 2, 29) == 3, "leap day 2024 thursday");
   check(weekday(2000, 1, 1) == 5, "1 jan 2000 saturday");
   check(std::strcmp(weekdayName(6), "SUN") == 0 && std::strcmp(monthName(11), "NOV") == 0, "names");
@@ -126,7 +150,8 @@ int main() {
     p.lon = -2.159f;
     forecastUrl(p, url, sizeof(url));
     check(std::strstr(url, "latitude=41.3888&longitude=-2.1590") != nullptr, "forecast coords");
-    check(std::strstr(url, "forecast_hours=24") != nullptr && std::strstr(url, "timezone=auto") != nullptr,
+    check(std::strstr(url, "forecast_days=7") != nullptr && std::strstr(url, "timezone=auto") != nullptr &&
+              std::strstr(url, "uv_index_max") != nullptr,
           "forecast params");
     geocodeUrl("New York", url, sizeof(url));
     check(std::strstr(url, "name=New%20York") != nullptr, "query encoded");
