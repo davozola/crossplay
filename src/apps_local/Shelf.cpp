@@ -16,6 +16,7 @@
 #include "calculator/CalculatorActivity.h"
 #include "checkers/CheckersActivity.h"
 #include "chess/ChessActivity.h"
+#include "chessclock/ChessClockActivity.h"
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
@@ -96,6 +97,7 @@ constexpr shelf::Item kApps[] = {
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create},
+    {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
