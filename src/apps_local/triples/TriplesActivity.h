@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/ToyboxHowToState.h"
 #include "../ui/ToyboxScreen.h"
 #include "TriplesCore.h"
 #include "TriplesScreens.h"
@@ -36,6 +37,7 @@ class TriplesActivity final : public Activity {
   int pressX_ = -1;
   uint32_t newArmedMs_ = 0;
 
+  toyboxhowto::State howTo_;
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;
 };

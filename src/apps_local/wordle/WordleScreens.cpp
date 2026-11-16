@@ -16,10 +16,13 @@ const fui::Paint kInk = fui::Paint::solid(fui::Color::Black);
 const fui::Paint kGrey = fui::Paint::dither(fui::Color::LightGray);
 
 constexpr int16_t kMessageH = 22;
-constexpr int16_t kTile = 60;
-constexpr int16_t kTileGap = 8;
-constexpr int16_t kKeyGap = 6;
-constexpr int16_t kKeyH = 74;
+constexpr int16_t kTile = 52;
+constexpr int16_t kTileGap = 6;
+constexpr int16_t kKeyGap = 4;
+// The keyboard runs nearly edge to edge: ten keys across is what limits a
+// key's width, so the page margin is spent on them.
+constexpr int16_t kKeySide = 4;
+constexpr int16_t kKeyH = 92;
 constexpr int16_t kKeysBelowGrid = 16;
 constexpr int16_t kFooterH = 56;
 const char* const kKeyRows[3] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
@@ -123,8 +126,10 @@ fui::Rect eraseRect(const KeyboardLayout& k) {
   return fui::makeRect(static_cast<int16_t>(last.x + last.width + k.gap), last.y, k.wide, k.keyH);
 }
 
+// A key answers for half the gap round it too, so no tap between two keys is lost.
 bool inside(const fui::Rect& r, const int x, const int y) {
-  return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+  const int pad = (kKeyGap + 1) / 2;
+  return x >= r.x - pad && x < r.x + r.width + pad && y >= r.y - pad && y < r.y + r.height + pad;
 }
 
 }  // namespace
@@ -134,7 +139,7 @@ KeyboardLayout keyboardLayout(const fui::Rect& safe, const int16_t top) {
   k.top = top;
   k.gap = kKeyGap;
   k.keyH = kKeyH;
-  const int16_t inner = static_cast<int16_t>(safe.width - 2 * toybox::kMargin);
+  const int16_t inner = static_cast<int16_t>(safe.width - 2 * kKeySide);
   k.keyW = static_cast<int16_t>((inner - 9 * kKeyGap) / 10);
   k.wide = static_cast<int16_t>(k.keyW * 3 / 2 + kKeyGap / 2);
   for (int row = 0; row < 3; ++row) {

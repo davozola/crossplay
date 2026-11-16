@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/ToyboxHowToState.h"
 #include "../ui/ToyboxScreen.h"
 #include "HiveCore.h"
 #include "HiveEngine.h"
@@ -24,6 +25,7 @@ class HiveActivity final : public Activity {
 
  private:
   enum class View : uint8_t { Menu, Play };
+  toyboxhowto::State howTo_;
   static constexpr int kTwoPlayers = 3;
 
   void startGame(int mode);
