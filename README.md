@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade veintisiete cosas:
+Sticky**. Conserva todo lo del original y añade veintiocho cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -43,6 +43,7 @@ Sticky**. Conserva todo lo del original y añade veintisiete cosas:
 | **Hive**        | Estrategia con insectos y sin tablero, contra el dispositivo (tres niveles) o a dos. |
 | **Triples**     | Deslizar fichas en un 4x4: 1 y 2 hacen 3 y las parejas se doblan. |
 | **Mancala** | Kalah contra la máquina (tres niveles) o entre dos, con 3 a 6 semillas por hoyo e instrucciones. |
+| **Tactics** | Problemas de ajedrez de Lichess desde un paquete en la SD: dificultad que sigue tu nivel, pistas, reto diario y estadísticas. |
 | **Misterios** | Seis casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
 | **Ilya**        | Seis minijuegos en catalán para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas con cuatro animales. |
 | **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
@@ -50,6 +51,10 @@ Sticky**. Conserva todo lo del original y añade veintisiete cosas:
 
 Este fork quita además dos apps del original que aquí no se usan: **Study** y
 **xkcd**. Su código sigue en el repositorio, pero no aparecen en el dispositivo.
+
+La imagen de la Sticky lleva solo cuatro idiomas de interfaz (inglés, español,
+catalán y portugués): los otros treinta y uno ocupaban 350 KB que hacían falta
+para las apps. Se cambia en `custom_i18n_builtin_langs`, en `platformio.ini`.
 
 Lo que sigue es, en su mayoría, el README del proyecto original. Hay tres cosas
 que no aplican a este fork:
@@ -87,7 +92,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **39 games and 18 apps**,
+that holds still is good at: **40 games and 18 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -143,6 +148,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Hive**         | Surround the other queen with insects on no board at all. Device or a friend. |
 | **Triples**      | Slide the board a step: 1 and 2 make 3, pairs double. One new tile a move.   |
 | **Mancala**     | Kalah against the machine or a friend, with the rules a tap away.         |
+| **Tactics**     | Lichess chess puzzles from a pack on the card, at your own rating.        |
 | **Misterios**   | Six short detective cases, in Spanish: question, look, accuse.            |
 | **Ilya**         | Six games for a three-year-old, in Catalan: pictures, letters, numbers, a mole. |
 | **Pinta**        | A sheet to draw on with a finger: two pens, stamps, a rubber.                |
