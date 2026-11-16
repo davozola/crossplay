@@ -579,6 +579,12 @@ void draw(GfxRenderer& renderer, const int face, const Moment& now) {
   }
 }
 
+void drawNumeral(GfxRenderer& renderer, const int digit, const float x, const float y, const float boxW,
+                 const float pen, const bool ink) {
+  const Canvas c{renderer, renderer.getScreenWidth(), renderer.getScreenHeight()};
+  numeral(c, digit, x, y, boxW, pen, ink);
+}
+
 void drawHint(GfxRenderer& renderer, const char* message) {
   const Canvas c{renderer, renderer.getScreenWidth(), renderer.getScreenHeight()};
   const int h = toybox::kTileCut.inkHeight + 18;

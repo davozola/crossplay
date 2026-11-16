@@ -33,7 +33,6 @@ class MarketsActivity final : public Activity {
   void loadState();
   void saveState();
   bool loadCached(markets::Asset asset);
-  void saveCached(markets::Asset asset);
   int fetchAll();
   void startRefresh();
   void showStatus(const char* headline, const char* detail, bool dismissable);

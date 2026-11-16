@@ -44,6 +44,7 @@
 #include "mystery/MysteryActivity.h"
 #include "naval/NavalActivity.h"
 #include "notes/NotesActivity.h"
+#include "paint/PaintActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
@@ -53,6 +54,7 @@
 #include "sudoku/SudokuActivity.h"
 #include "tak/TakActivity.h"
 #include "theory/TheoryActivity.h"
+#include "today/TodayActivity.h"
 #include "toybattle/ToyBattleActivity.h"
 #include "triples/TriplesActivity.h"
 #include "trivia/TriviaActivity.h"
@@ -105,6 +107,7 @@ constexpr shelf::Item kGames[] = {
     {"TRIPLES", &icon_triples_32, &TriplesActivity::create},
     {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create},
     {"ILYA", &icon_kids_32, &KidsActivity::create},
+    {"PINTA", &icon_pinta_32, &PaintActivity::create},
     {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither},
     {"SHIKAKU", &icon_shikaku_32, &LogicActivity::createShikaku},
     {"AKARI", &icon_akari_32, &LogicActivity::createAkari},
@@ -119,6 +122,7 @@ constexpr shelf::Item kApps[] = {
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"HOY", &icon_hoy_32, &TodayActivity::create},
     {"RELOJ", &icon_clock_32, &ClockActivity::create},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},

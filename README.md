@@ -19,11 +19,12 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade veintitrés cosas:
+Sticky**. Conserva todo lo del original y añade veinticinco cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
 | **Reloj** | Reloj de sobremesa en vertical u horizontal con siete esferas (trazo, paletas, esfera, anillos, matriz, segmentos y palabras), en claro u oscuro. |
+| **Hoy** | Una sola página con la hora, el tiempo, los mercados y el mar; un botón lo actualiza todo de una vez. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
 | **Chess Clock** | Reloj de ajedrez con incremento; cada uno toca su mitad.                |
@@ -42,6 +43,7 @@ Sticky**. Conserva todo lo del original y añade veintitrés cosas:
 | **Triples**     | Deslizar fichas en un 4x4: 1 y 2 hacen 3 y las parejas se doblan. |
 | **Misterios** | Tres casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
 | **Ilya**        | Cinco minijuegos en catalán para un niño de tres años: dibujos, parejas, letras y números. |
+| **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
 | **Slitherlink, Shikaku, Akari, Hashi** | Cuatro puzles de lógica japoneses, 90 tableros cada uno, todos con solución única. |
 
 Este fork quita además dos apps del original que aquí no se usan: **Study** y
@@ -83,7 +85,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **37 games and 16 apps**,
+that holds still is good at: **38 games and 17 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -140,6 +142,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Triples**      | Slide the board a step: 1 and 2 make 3, pairs double. One new tile a move.   |
 | **Misterios**   | Three short detective cases, in Spanish: question, look, accuse.          |
 | **Ilya**         | Five games for a three-year-old, in Catalan: pictures, letters, numbers.     |
+| **Pinta**        | A sheet to draw on with a finger: two pens, stamps, a rubber.                |
 | **Slitherlink**  | Draw one closed loop along the dots from the numbers. 90 boards, one answer. |
 | **Shikaku**      | Cut the grid into rectangles, each holding its own area. 90 boards.          |
 | **Akari**        | Light every cell without two bulbs seeing each other. 90 boards.             |
@@ -155,6 +158,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
 | **Calculator**  | A calculator with keys the size of a thumb, and the sums you already did. |
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
+| **Hoy**         | The time, the weather, the markets and the sea on one page.              |
 | **Reloj**       | A desk clock, upright or on its side, in seven faces.                    |
 | **Pomodoro**    | A focus timer that redraws once a minute and beeps when the session ends. |
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |
