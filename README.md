@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade dieciséis cosas:
+Sticky**. Conserva todo lo del original y añade dieciocho cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -32,6 +32,8 @@ Sticky**. Conserva todo lo del original y añade dieciséis cosas:
 | **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
 | **Markets**     | Bitcoin, S&P 500 y Nasdaq en un panel para tenerlo de pie en la mesa, con detalle de cada uno. |
+| **FM Synth Lab** | Chuleta para un sinte FM de seis operadores (M-VAVE FM-1): los 32 algoritmos dibujados, qué hace cada ratio al espectro y la forma de la envolvente. |
+| **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |
 | **Hive**        | Estrategia con insectos y sin tablero, contra el dispositivo (tres niveles) o a dos. |
 | **Triples**     | Deslizar fichas en un 4x4: 1 y 2 hacen 3 y las parejas se doblan. |
 | **Ilya**        | Cinco minijuegos en catalán para un niño de tres años: dibujos, parejas, letras y números. |
@@ -76,7 +78,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **36 games and 11 apps**,
+that holds still is good at: **36 games and 13 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -152,6 +154,8 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Handwriting** | Pages you write and draw on with a finger; each one saved as a picture too. |
 | **Weather**     | Open-Meteo's forecast for up to six cities, kept on the card for offline. |
 | **Markets**     | Bitcoin, the S&P 500 and the Nasdaq on one screen for a desk stand.       |
+| **FM Synth Lab** | A crib sheet for a six-operator FM synth: 32 algorithms, ratios, envelopes. |
+| **Music Theory** | Scales, chords and changes in any key, and Euclidean rhythms on a wheel.  |
 
 Don't want all of them? Tap GAMES or APPS at the top of the list on your device and
 untick what you don't play.
