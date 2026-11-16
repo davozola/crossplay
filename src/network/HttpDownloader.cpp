@@ -100,7 +100,15 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
         // redirect elsewhere (or to plain http) gets neither.
         if (sameOrigin) {
           if (!username.empty() && !password.empty()) http.setBasicAuth(username, password);
-          for (const auto& h : headers) http.addHeader(h.first, h.second);
+          for (const auto& h : headers) {
+            // A caller's User-Agent replaces ours, for the reason above: a few
+            // public endpoints answer only something that names a browser.
+            if (h.first == "User-Agent") {
+              http.setUserAgent(h.second.c_str());
+            } else {
+              http.addHeader(h.first, h.second);
+            }
+          }
           devreport::Header report[devreport::kHeaderCount];
           const int reportHeaders = devreport::headersFor(url.c_str(), report);
           for (int i = 0; i < reportHeaders; ++i) http.addHeader(report[i].name, report[i].value);

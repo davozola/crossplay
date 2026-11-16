@@ -32,6 +32,7 @@
 #include "jaipur/JaipurActivity.h"
 #include "kakuro/KakuroActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
+#include "markets/MarketsActivity.h"
 #include "mastermind/MastermindActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
@@ -108,6 +109,7 @@ constexpr shelf::Item kApps[] = {
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},
     {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create},
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
+    {"MARKETS", &icon_markets_32, &MarketsActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

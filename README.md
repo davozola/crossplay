@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade ocho cosas:
+Sticky**. Conserva todo lo del original y añade nueve cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -31,6 +31,7 @@ Sticky**. Conserva todo lo del original y añade ocho cosas:
 | **Mastermind**  | Descifra el código de formas, solo contra el dispositivo.               |
 | **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
+| **Markets**     | Bitcoin, S&P 500 y Nasdaq en un panel para tenerlo de pie en la mesa, con detalle de cada uno. |
 
 Lo que sigue es, en su mayoría, el README del proyecto original. Hay tres cosas
 que no aplican a este fork:
@@ -68,7 +69,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **29 games and 12 apps**,
+that holds still is good at: **29 games and 13 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -138,6 +139,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |
 | **Handwriting** | Pages you write and draw on with a finger; each one saved as a picture too. |
 | **Weather**     | Open-Meteo's forecast for up to six cities, kept on the card for offline. |
+| **Markets**     | Bitcoin, the S&P 500 and the Nasdaq on one screen for a desk stand.       |
 
 Don't want all of them? Tap GAMES or APPS at the top of the list on your device and
 untick what you don't play.
@@ -228,6 +230,12 @@ Most of the shelf never touches the network. Of the parts that do:
   York Times itself only for the day or two that mirror has not caught up with,
   never for a day after today; Trivia's question pack and xkcd's comics are downloaded once onto
   the card.
+- **Weather asks Open-Meteo, and Markets asks Yahoo Finance.** Weather sends
+  the city name you type to Open-Meteo's geocoder and a saved city's
+  coordinates to its forecast API. Markets fetches three public quotes from
+  Yahoo Finance's chart endpoint, which is not an official API and can change
+  without notice; with auto-refresh on it does so on a timer and keeps the
+  device awake and on Wi-Fi to do it.
 - **Opening a Hacker News article sends its URL to a third party.** The story
   list comes from the public [Algolia API](https://hn.algolia.com/api), and
   opening an article proxies it through [r.jina.ai](https://r.jina.ai) to get
