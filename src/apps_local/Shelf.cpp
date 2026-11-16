@@ -55,6 +55,7 @@
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "sudoku/SudokuActivity.h"
+#include "tactics/TacticsActivity.h"
 #include "tak/TakActivity.h"
 #include "theory/TheoryActivity.h"
 #include "today/TodayActivity.h"
@@ -109,6 +110,7 @@ constexpr shelf::Item kGames[] = {
     {"HIVE", &icon_hive_32, &HiveActivity::create},
     {"TRIPLES", &icon_triples_32, &TriplesActivity::create},
     {"MANCALA", &icon_mancala_32, &MancalaActivity::create},
+    {"TACTICS", &icon_tactics_32, &TacticsActivity::create},
     {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create},
     {"ILYA", &icon_kids_32, &KidsActivity::create},
     {"PINTA", &icon_pinta_32, &PaintActivity::create},
