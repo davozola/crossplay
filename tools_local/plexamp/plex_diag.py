@@ -697,7 +697,7 @@ def cmd_tls(_args):
             print("  %-22s issued by: %s / %s" % (shown, issuer.get("organizationName"), issuer.get("commonName")))
         except Exception as err:  # noqa: BLE001 - a diagnostic reports whatever went wrong
             print("  %-22s could not be checked: %s" % (host.split(".")[0] + "...", type(err).__name__))
-    print("\nThe firmware verifies against Let's Encrypt (ISRG) and Google Trust Services roots.")
+    print("\nThe firmware verifies against DigiCert Global Root G2, Let's Encrypt (ISRG) and Google Trust Services roots.")
     return 0
 
 
