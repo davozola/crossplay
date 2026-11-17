@@ -19,7 +19,7 @@ namespace mk = markets;
 namespace {
 
 constexpr char kCacheDir[] = "/.crosspoint/markets";
-constexpr uint8_t kCacheVersion = 3;     // 1 kept the source's raw answer
+constexpr uint8_t kCacheVersion = 4;     // 1 kept the source's raw answer
 constexpr size_t kMaxBody = 128 * 1024;  // 300 daily candles are ~22 KB
 // CNBC's endpoints are written for a browser; the others take anything.
 constexpr char kBrowserAgent[] =
@@ -282,6 +282,11 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
         mk::coinbaseUrlFor(info.symbol, url, sizeof(url));
         parsed = get(url, body, size, status) && mk::parseCoinbase(body.get(), size, fetched[i]);
         if (parsed) {
+          // The day's change of what never closes is over the last 24 hours.
+          // Without this answer it falls back to the daily candle's.
+          mk::coinbaseStatsUrlFor(info.symbol, url, sizeof(url));
+          int statsStatus = 0;
+          if (get(url, body, size, statsStatus)) mk::applyCoinbaseStats(body.get(), size, fetched[i]);
           if (clock > 1700000000) fetched[i].time = static_cast<int64_t>(clock);
           if (today == 0) today = fetched[i].days[fetched[i].count - 1];
         }

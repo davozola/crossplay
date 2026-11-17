@@ -99,6 +99,9 @@ struct Quote {
   int32_t gmtOffset = 0;  // the exchange's, seconds
   int64_t sessionStart = 0;
   int64_t sessionEnd = 0;
+  // What it cost 24 hours before `price`, for what trades around the clock and
+  // so has no close to measure a day from. Zero when not known.
+  double dayAgo = 0;
   // Daily closes, oldest first. The last is the live price while a session is
   // open, so the one before it is always the previous close.
   float closes[kMaxCloses] = {};
@@ -109,6 +112,10 @@ struct Quote {
 // Coinbase's candles for a product: an array of [time, low, high, open, close,
 // volume], newest first. False unless it holds at least two.
 bool parseCoinbase(const char* json, size_t len, Quote& out);
+// Coinbase's rolling 24-hour figures, laid over a quote parseCoinbase() made:
+// the price a day ago, and the last trade as the price now.
+bool applyCoinbaseStats(const char* json, size_t len, Quote& out);
+void coinbaseStatsUrlFor(const char* product, char* out, size_t cap);
 // CNBC's daily bars for one symbol, oldest first. False unless it holds two.
 bool parseCnbcBars(const char* json, size_t len, Quote& out);
 // Lays CNBC's quote for `asset` over bars already read: the live price as the
