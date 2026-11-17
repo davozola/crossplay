@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
+Sticky**. Conserva todo lo del original y añade treinta y ocho cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -31,6 +31,7 @@ Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
 | **Jukebox** | Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto, volumen, aleatorio y repetición desde la Sticky. Se enlaza a tu cuenta de Plex con un código en plex.tv/link y no instala nada en el reproductor. Ver [docs/jukebox.md](docs/jukebox.md). |
 | **Marco** | El marco de fotos, como app propia: cada cuánto cambia sola la imagen de reposo (de 15 minutos a 24 horas) con la Sticky dormida, si tiene el set de dos o más fotos que necesita y cuántos cambios lleva. |
 | **Presenter** | Mando de diapositivas por Bluetooth: la Sticky se empareja como un teclado y pasa las de PowerPoint, Keynote o Google Slides en Mac y PC sin instalar nada. Botones grandes para avanzar y retroceder, pantalla en negro, y un reloj de la charla que arranca con la primera diapositiva y avisa a cinco y a dos minutos del final. Ver [docs/presenter.md](docs/presenter.md). |
+| **Liner Notes** | Notas de los discos de tu propia colección: por qué importa cada uno, su contexto, cómo suena, qué escuchar y con qué otros discos tuyos se relaciona, en español o en inglés. El contenido no va en el firmware: es un paquete que haces tú en el ordenador y copias a la tarjeta, y la app lo lee disco a disco. Marcas propias, álbum del día, búsqueda por letra y un botón que pone el disco en Plexamp a través del Jukebox. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
 | **Chess Clock** | Reloj de ajedrez con incremento; cada uno toca su mitad.                |
@@ -106,7 +107,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **42 games and 25 apps**,
+that holds still is good at: **42 games and 26 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -191,6 +192,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Casa**        | The room's temperature and humidity, and the last day of each as a line. |
 | **Reloj**       | A desk clock, upright or on its side, in seven faces.                    |
 | **Presenter**   | A Bluetooth slide clicker with a talk clock that warns at five and two minutes. |
+| **Liner Notes** | Notes on the records in your own library, read from a pack you build and copy to the card. |
 | **Pomodoro**    | A focus timer that redraws once a minute and beeps when the session ends. |
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |
 | **Handwriting** | Pages you write and draw on with a finger; each one saved as a picture too. |

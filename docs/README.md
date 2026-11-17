@@ -60,7 +60,8 @@ reflash and inspect a device over Wi-Fi with no cable
 (`developer-mode.md`), how the two open bridges are attacked and defended
 (`bridge-security.md`), what the Plexamp remote does, stores and has been
 verified against (`jukebox.md`), the Bluetooth slide clicker and what it
-has and has not been tested with (`presenter.md`), and what is knowingly unfinished (`open-items.md`).
+has and has not been tested with (`presenter.md`), the notes on your own records and the pack
+they are read from (`linernotes.md`), and what is knowingly unfinished (`open-items.md`).
 
 Four more are narrower but no less load-bearing, and this paragraph did not
 name any of them until the suite started asking: what the glass hides

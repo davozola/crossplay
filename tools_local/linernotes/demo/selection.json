@@ -1,0 +1,34 @@
+[
+ {
+  "id": "d1",
+  "artist": "The Example Band",
+  "title": "First Light",
+  "year": 1999,
+  "label": "Nowhere Records",
+  "plexKeys": []
+ },
+ {
+  "id": "d2",
+  "artist": "The Example Band",
+  "title": "Second Thoughts",
+  "year": 2003,
+  "label": "Nowhere Records",
+  "plexKeys": []
+ },
+ {
+  "id": "d3",
+  "artist": "Ada Placeholder",
+  "title": "Rooms With No Doors",
+  "year": 1987,
+  "label": "Sample Label",
+  "plexKeys": []
+ },
+ {
+  "id": "d4",
+  "artist": "Los Ficticios",
+  "title": "Mapa de ninguna parte",
+  "year": 2011,
+  "label": "Sello Inventado",
+  "plexKeys": []
+ }
+]
