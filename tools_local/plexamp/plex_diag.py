@@ -10,6 +10,8 @@ what is playing, fetches the artwork, and tries the player's own control port.
     python3 plex_diag.py login      # shows a code to type at plex.tv/link
     python3 plex_diag.py report     # everything, read-only
     python3 plex_diag.py control    # pause/play and next/previous on a player
+    python3 plex_diag.py probe      # volume, seek, shuffle, repeat: each tried and put back
+    python3 plex_diag.py dump       # raw answers, secrets removed, into ./plex_dump
     python3 plex_diag.py logout     # forget the token
 
 The token is kept in ~/.config/crossplay-plexdiag/state.json (mode 600),
@@ -528,6 +530,147 @@ def cmd_control(args):
     return 0
 
 
+# --- The less certain controls, each tried and put back -----------------------
+
+
+def first_player(state, name=None):
+    players = [p for p in survey(state) if p.get("control")]
+    if name:
+        players = [p for p in players if name.lower() in (p.get("name") or "").lower()]
+    return players[0] if players else None
+
+
+def cmd_probe(args):
+    state = load_state()
+    if not need_token(state):
+        return 1
+    p = first_player(state, args.player)
+    print("\n5. Other controls")
+    if not p:
+        note("FAILED", "probe", "no player with a reachable control port")
+        summary()
+        return 1
+    ctl = p["control"]
+    before, _ = timeline(state, *ctl)
+    if not before or before.get("state") != "playing":
+        note("NOT TESTED", "probe", "needs a track playing, not %s" % (before or {}).get("state", "idle"))
+        summary()
+        return 1
+    print("   On '%s'. Each setting is changed for a moment and put back." % p.get("name"))
+
+    def setting(label, key, param, other, restore):
+        code, body = command(state, ctl[0], ctl[1], ctl[2], "setParameters", ctl[3], "&%s=%s" % (param, other))
+        ok, info = wait_state(state, ctl, lambda i: str(i.get(key)) == str(other), 5)
+        note("VERIFIED" if ok else "FAILED", label,
+             "the player reports %s=%s" % (key, (info or {}).get(key)) if ok
+             else "HTTP %s %s; the player still reports %s=%s" % (code, body, key, (info or {}).get(key)))
+        command(state, ctl[0], ctl[1], ctl[2], "setParameters", ctl[3], "&%s=%s" % (param, restore))
+        time.sleep(1.0)
+
+    if before.get("volume") is None:
+        note("NOT TESTED", "volume", "the player does not report one")
+    else:
+        vol = int(float(before["volume"]))
+        setting("volume", "volume", "volume", vol - 5 if vol >= 10 else vol + 5, vol)
+    if before.get("shuffle") is None:
+        note("NOT TESTED", "shuffle", "the player does not report it")
+    else:
+        setting("shuffle", "shuffle", "shuffle", "0" if before["shuffle"] == "1" else "1", before["shuffle"])
+    if before.get("repeat") is None:
+        note("NOT TESTED", "repeat", "the player does not report it")
+    else:
+        setting("repeat", "repeat", "repeat", "0" if before["repeat"] != "0" else "2", before["repeat"])
+
+    now, _ = timeline(state, *ctl)
+    try:
+        at = int(now.get("time"))
+        length = int(now.get("duration"))
+    except (TypeError, ValueError, AttributeError):
+        at = length = None
+    if at is None or length < 40000:
+        note("NOT TESTED", "seek", "needs a track longer than 40 seconds")
+    else:
+        target = at + 20000 if at + 30000 < length else at - 20000
+        code, body = command(state, ctl[0], ctl[1], ctl[2], "seekTo", ctl[3], "&offset=%d" % target)
+        ok, info = wait_state(state, ctl, lambda i: abs(int(i.get("time", -99999)) - target) < 6000, 5)
+        note("VERIFIED" if ok else "FAILED", "seek within the track",
+             "the player reports %s" % fmt_ms((info or {}).get("time")) if ok else "HTTP %s %s" % (code, body))
+        command(state, ctl[0], ctl[1], ctl[2], "seekTo", ctl[3], "&offset=%d" % at)
+
+    # The queue is the server's: the player only names it.
+    queue = (now or {}).get("playQueueID")
+    if not queue or not p.get("server"):
+        note("NOT TESTED", "play queue", "the player names no queue")
+    else:
+        base, token = p["server"]
+        code, body, _ = fetch("%s/playQueues/%s?window=20&own=1" % (base, queue), headers(state, token), timeout=8)
+        items = ((as_json(body) or {}).get("MediaContainer", {}).get("Metadata", [])) if code == 200 else None
+        note("VERIFIED" if items else "FAILED", "play queue read from the server",
+             "%d tracks around the current one" % len(items) if items else "HTTP %s" % code)
+    summary()
+    return 0
+
+
+# --- Raw answers, for building the firmware's parsers against the real thing ---
+
+SECRET_KEYS = ("token", "accesstoken", "authtoken", "x-plex-token", "publicaddress", "email", "username",
+               "ownerid", "sourcetitle", "home", "httpsrequired")
+
+
+def scrub_json(value):
+    if isinstance(value, dict):
+        return {k: ("REDACTED" if k.lower() in SECRET_KEYS else scrub_json(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [scrub_json(v) for v in value]
+    return value
+
+
+def scrub_xml(text):
+    import re
+    return re.sub(r'(?i)\b(token|X-Plex-Token|accessToken|authToken)="[^"]*"', r'\1="REDACTED"', text)
+
+
+def cmd_dump(args):
+    state = load_state()
+    if not need_token(state):
+        return 1
+    out = os.path.join(os.getcwd(), "plex_dump")
+    os.makedirs(out, exist_ok=True)
+
+    def save(name, text):
+        with open(os.path.join(out, name), "w") as f:
+            f.write(text)
+        print("  wrote plex_dump/%s (%d bytes)" % (name, len(text)))
+
+    data = resources(state)
+    if data is not None:
+        save("resources.json", json.dumps(scrub_json(data), indent=1))
+    p = first_player(state, args.player)
+    if not p:
+        print("No player with a reachable control port; only the account's answer was saved.")
+        return 1
+    host, port, token, target = p["control"]
+    for name, path in (("timeline.xml", "/player/timeline/poll?wait=0&includeMetadata=1&commandID=1"),
+                       ("timeline_plain.xml", "/player/timeline/poll?wait=0&commandID=2"),
+                       ("player_resources.xml", "/resources")):
+        code, body, ctype = fetch("http://%s:%s%s" % (host, port, path), player_headers(state, token, target))
+        save(name, "<!-- HTTP %s, %s -->\n%s" % (code, ctype, scrub_xml(body.decode("utf-8", "replace"))))
+    if p.get("server"):
+        base, stoken = p["server"]
+        code, body, _ = fetch(base + "/status/sessions", headers(state, stoken), timeout=8)
+        if code == 200:
+            save("sessions.json", json.dumps(scrub_json(as_json(body)), indent=1))
+        info = p.get("timeline") or {}
+        if info.get("playQueueID"):
+            code, body, _ = fetch("%s/playQueues/%s?window=10&own=1" % (base, info["playQueueID"]),
+                                  headers(state, stoken), timeout=8)
+            if code == 200:
+                save("playqueue.json", json.dumps(scrub_json(as_json(body)), indent=1))
+    print("\nTokens, e-mail and public addresses are replaced with REDACTED. Local addresses and")
+    print("your library's track names are in these files: look them over before sharing them.")
+    return 0
+
+
 def cmd_add_player(args):
     state = load_state()
     state.setdefault("manual_players", [])
@@ -551,6 +694,12 @@ def main():
     ct = sub.add_parser("control", help="pause/play and next/previous on a player")
     ct.add_argument("--player", help="part of the player's name, when there are several")
     ct.set_defaults(fn=cmd_control)
+    pr = sub.add_parser("probe", help="volume, seek, shuffle, repeat and the queue, each put back")
+    pr.add_argument("--player")
+    pr.set_defaults(fn=cmd_probe)
+    dp = sub.add_parser("dump", help="raw answers with secrets removed, into ./plex_dump")
+    dp.add_argument("--player")
+    dp.set_defaults(fn=cmd_dump)
     ad = sub.add_parser("add-player", help="a player's IP address, when discovery does not find it")
     ad.add_argument("address")
     ad.set_defaults(fn=cmd_add_player)
