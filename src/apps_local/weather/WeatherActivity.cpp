@@ -514,6 +514,21 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
       // A city with nothing on the card yet is fetched straight away.
       if (!haveForecast_) startJob(Job::Forecast);
       break;
+    case ui::ActionMoveUp: {
+      if (event.value < 1 || event.value >= placeCount_) return;
+      // The order is the order of the boards, so the first three and five are a choice.
+      const wx::Place moved = places_[event.value];
+      places_[event.value] = places_[event.value - 1];
+      places_[event.value - 1] = moved;
+      if (selected_ == event.value) {
+        selected_ = event.value - 1;
+      } else if (selected_ == event.value - 1) {
+        selected_ = event.value;
+      }
+      saveState();
+      openCities();
+      break;
+    }
     case ui::ActionRemove: {
       if (event.value < 0 || event.value >= placeCount_) return;
       char path[64];
