@@ -27,7 +27,7 @@ SHOTS = {
     "SHIKAKU": "shikaku", "AKARI": "akari", "HASHI": "hashi", "HACKER NEWS": "hackernews", "THE BATCH": "batch",
     "DISCOVER": "discover", "APRENDE": "aprende", "EFEMERIDES": "efemerides", "INSTAPAPER": "instapaper",
     "WALLPAPERS": "wallpapers", "WIKIPEDIA": "wikipedia", "CALCULATOR": "calculator", "NOTES": "notes",
-    "HOY": "hoy", "CASA": "casa", "RELOJ": "clock", "POMODORO": "pomodoro", "CHESS CLOCK": "chessclock",
+    "HOY": "hoy", "CASA": "casa", "RELOJ": "clock", "POMODORO": "pomodoro", "PRESENTER": "presenter", "CHESS CLOCK": "chessclock",
     "HANDWRITING": "handwriting", "WEATHER": "weather", "NAVAL WEATHER": "naval", "MARKETS": "markets",
     "FM-1 GUIAS": "fmguide", "MUSIC THEORY": "theory", "RPN 12C": "rpn",
     "MARCO": "marco",
