@@ -79,7 +79,9 @@ bool begin(const char* name, const uint8_t batteryPercent) {
   }
   input = hid->inputReport(kReportId);
   hid->outputReport(kReportId);
-  hid->manufacturer("CrossPlay");
+  // The no-argument call is what creates the characteristic; setting the name
+  // before it writes through a pointer nothing has filled in.
+  hid->manufacturer()->setValue("CrossPlay");
   hid->pnp(0x02, kVendorId, kProductId, 0x0100);
   hid->hidInfo(0x00, 0x01);
   hid->reportMap(const_cast<uint8_t*>(kReportMap), sizeof(kReportMap));
