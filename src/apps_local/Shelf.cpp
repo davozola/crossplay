@@ -28,6 +28,7 @@
 #include "dungeon/DungeonActivity.h"
 #include "fmguide/FmGuideActivity.h"
 #include "forehead/ForeheadActivity.h"
+#include "frame/FrameActivity.h"
 #include "go/GoActivity.h"
 #include "hackernews/HackerNewsActivity.h"
 #include "handwriting/HandwritingActivity.h"
@@ -198,6 +199,9 @@ constexpr shelf::Item kApps[] = {
      "del firmware."},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create, 3, false, "El fondo de reposo",
      "Elige una imagen o un conjunto de ellas para la pantalla de reposo, y cada cuánto cambia con el marco de fotos."},
+    {"MARCO", &icon_frame_32, &FrameActivity::create, 3, false, "Cambia la foto de reposo sola",
+     "El marco de fotos: cada cuánto cambia la imagen de la pantalla de reposo mientras la Sticky duerme. Las fotos "
+     "se eligen en Wallpapers."},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create, 1, false, "50.000 artículos sin internet",
      "Cincuenta mil artículos en la tarjeta, que se leen como un libro. En inglés."},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create, 3, false, "Calculadora de teclas grandes",
