@@ -671,6 +671,36 @@ def cmd_dump(args):
     return 0
 
 
+def cmd_tls(_args):
+    """Who signs the certificates the firmware has to verify."""
+    import socket
+    import ssl
+    state = load_state()
+    hosts = ["plex.tv"]
+    if state.get("token"):
+        code, body, _ = fetch(PLEX_TV + "/api/v2/resources?includeHttps=1", headers(state))
+        for dev in (as_json(body) or []) if code == 200 else []:
+            if "server" not in (dev.get("provides") or ""):
+                continue
+            for conn in dev.get("connections") or []:
+                uri = conn.get("uri") or ""
+                if uri.startswith("https://") and conn.get("local"):
+                    hosts.append(uri[8:].split(":")[0] + ":" + str(conn.get("port") or 32400))
+    for target in hosts:
+        host, _, port = target.partition(":")
+        try:
+            ctx = ssl.create_default_context()
+            with socket.create_connection((host, int(port or 443)), timeout=8) as raw:
+                with ctx.wrap_socket(raw, server_hostname=host) as tls:
+                    issuer = dict(x[0] for x in tls.getpeercert().get("issuer", ()))
+            shown = host if host == "plex.tv" else "<server>.plex.direct"
+            print("  %-22s issued by: %s / %s" % (shown, issuer.get("organizationName"), issuer.get("commonName")))
+        except Exception as err:  # noqa: BLE001 - a diagnostic reports whatever went wrong
+            print("  %-22s could not be checked: %s" % (host.split(".")[0] + "...", type(err).__name__))
+    print("\nThe firmware verifies against Let's Encrypt (ISRG) and Google Trust Services roots.")
+    return 0
+
+
 def cmd_add_player(args):
     state = load_state()
     state.setdefault("manual_players", [])
@@ -700,6 +730,7 @@ def main():
     dp = sub.add_parser("dump", help="raw answers with secrets removed, into ./plex_dump")
     dp.add_argument("--player")
     dp.set_defaults(fn=cmd_dump)
+    sub.add_parser("tls", help="who signs the certificates the firmware must verify").set_defaults(fn=cmd_tls)
     ad = sub.add_parser("add-player", help="a player's IP address, when discovery does not find it")
     ad.add_argument("address")
     ad.set_defaults(fn=cmd_add_player)

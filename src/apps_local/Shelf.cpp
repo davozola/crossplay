@@ -40,6 +40,7 @@
 #include "insider/InsiderActivity.h"
 #include "instapaper/InstapaperActivity.h"
 #include "jaipur/JaipurActivity.h"
+#include "jukebox/JukeboxActivity.h"
 #include "kakuro/KakuroActivity.h"
 #include "kids/KidsActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
@@ -202,6 +203,9 @@ constexpr shelf::Item kApps[] = {
     {"MARCO", &icon_frame_32, &FrameActivity::create, 3, false, "Cambia la foto de reposo sola",
      "El marco de fotos: cada cuánto cambia la imagen de la pantalla de reposo mientras la Sticky duerme. Las fotos "
      "se eligen en Wallpapers."},
+    {"JUKEBOX", &icon_jukebox_32, &JukeboxActivity::create, 3, true, "Mando para Plexamp",
+     "Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto y volumen desde "
+     "aquí. Se enlaza a tu cuenta de Plex con un código."},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create, 1, false, "50.000 artículos sin internet",
      "Cincuenta mil artículos en la tarjeta, que se leen como un libro. En inglés."},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create, 3, false, "Calculadora de teclas grandes",
