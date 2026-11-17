@@ -59,6 +59,13 @@ class HalDisplay {
   // Fast refresh that sends only a panel-memory rectangle to the controller.
   // x and w must be multiples of 8.
   void displayWindow(int x, int y, int w, int h);
+  // A caller's own black-and-white waveform for the fast refreshes that follow
+  // (the controller's 110-byte LUT format: voltage select, timing, frame rate,
+  // voltages), or null to go back to the panel's own. For drawing, where a
+  // short drive that only inks new pixels shows a stroke sooner than the
+  // factory waveform. Whoever sets one must clear it before any refresh that
+  // is not theirs.
+  void setInkWaveform(const unsigned char* lut);
   // Block until a pending deferred refresh completes (no-op when none is).
   void waitRefreshComplete();
   // True when displayBufferAsync() genuinely overlaps (panel driver defers);

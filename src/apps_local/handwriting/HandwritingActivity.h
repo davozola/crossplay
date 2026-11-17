@@ -74,6 +74,17 @@ class HandwritingActivity final : public Activity {
   // True from asking for a repaint until the panel has shown it.
   std::atomic<bool> painting{false};
   int paintedCount = 0;
+
+  // Fast ink, experimental: while a stroke is being drawn the panel is driven
+  // with a short waveform of the app's own that only inks new pixels, instead
+  // of the factory one. 0 is off; 1 to 3 are shorter and shorter drives. The
+  // stroke is redrawn with the factory waveform when the finger lifts.
+  int inkSpeed = 0;
+  bool inkWaveformOn = false;
+  uint32_t lastInkMs = 0;  // how long the last stroke refresh took, for tuning
+  void loadInkSpeed();
+  void saveInkSpeed();
+  void endInkWaveform();
   // The framebuffer holds the page as last painted, so a stroke in progress
   // can add its new ink to it instead of rebuilding the screen.
   bool pageOnPanel = false;
