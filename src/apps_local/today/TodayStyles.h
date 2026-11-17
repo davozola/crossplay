@@ -17,7 +17,8 @@ constexpr int kStyles = 10;
 const char* name(int style);
 
 // What a part of the page leads to when it is tapped.
-enum Target : uint8_t { None = 0, Clock, Weather, Markets, Sea, Event, Refresh };
+// Auto is the foot's left corner: how often the page fetches by itself.
+enum Target : uint8_t { None = 0, Clock, Weather, Markets, Sea, Event, Refresh, Auto };
 // A tapped part arrives as this action plus its Target.
 constexpr freeink::ui::ActionId kTargetAction = 40;
 
@@ -33,6 +34,8 @@ struct Page {
   static constexpr int kEvents = 3;
   Event events[kEvents];
   int eventCount = 0;
+  // Minutes between fetches the page makes by itself, 0 for never.
+  int autoMinutes = 0;
 };
 
 // Draws the page in a style, with its tappable parts and the foot they share:

@@ -2034,10 +2034,26 @@ void foot(toybox::Screen& screen, GfxRenderer& r, const Page& page, const int st
   const int top = contentBottom(screen);
   const int cy = top + kFootH / 2 + 2;
   r.fillRectDither(toybox::kMargin, top + 1, width - toybox::kMargin * 2, 1, Color::DarkGray);
-  if (page.data.hasForecast && std::strlen(page.data.forecast.current.time) >= 16) {
-    char when[24];
-    std::snprintf(when, sizeof(when), "datos %.5s", page.data.forecast.current.time + 11);
-    text(r, NOTOSANS_12_FONT_ID, toybox::kMargin, cy - r.getLineHeight(NOTOSANS_12_FONT_ID) / 2, when);
+  // When the data is from, led by how often it is fetched: "datos" for by
+  // hand, "auto 30m" and the like otherwise. A tap here steps the interval.
+  {
+    char lead[toybox::kIntChars + 12];
+    if (page.autoMinutes <= 0) {
+      std::snprintf(lead, sizeof(lead), "datos");
+    } else if (page.autoMinutes >= 60) {
+      std::snprintf(lead, sizeof(lead), "auto %dh", (page.autoMinutes / 60) % 100);
+    } else {
+      std::snprintf(lead, sizeof(lead), "auto %dm", page.autoMinutes % 100);
+    }
+    char when[toybox::kIntChars + 24];
+    if (page.data.hasForecast && std::strlen(page.data.forecast.current.time) >= 16) {
+      std::snprintf(when, sizeof(when), "%s %.5s", lead, page.data.forecast.current.time + 11);
+    } else {
+      std::snprintf(when, sizeof(when), "%s", lead);
+    }
+    text(r, NOTOSANS_12_FONT_ID, toybox::kMargin, cy - r.getLineHeight(NOTOSANS_12_FONT_ID) / 2, when,
+         page.autoMinutes > 0 ? kBold : kRegular);
+    zone(screen, 0, top, 160, kFootH + 6, Auto);
   }
   for (int i = 0; i < kStyles; ++i) {
     const int dx = width / 2 + (i * 2 - kStyles + 1) * 7;
