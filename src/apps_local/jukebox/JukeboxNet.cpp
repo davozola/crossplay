@@ -193,6 +193,26 @@ int art(const Config& config, const Now& now, const int size, const char* path) 
   return 200;
 }
 
+int server(const Config& config, const Now& now, const std::string& url, std::string& body) {
+  body.clear();
+  if (url.compare(0, 8, "https://") != 0 || now.serverBase.empty() ||
+      url.compare(0, now.serverBase.size(), now.serverBase) != 0 || heapTooLow()) {
+    return 0;
+  }
+  freeink::SecureHttpClient http;
+  http.setCACert(roots());
+  http.setTimeout(15000);
+  if (!http.begin(url)) return 0;
+  identify(http, config);
+  http.addHeader("Accept", "application/json");
+  http.addHeader("X-Plex-Token", config.tokenFor(now.serverId));
+  const int status = http.sendRequest("GET", std::string());
+  if (status > 0) body = http.getString();
+  http.end();
+  LOG_INF(kTag, "server %s -> %d (verified TLS)", forLog(url).c_str(), status);
+  return status > 0 ? status : 0;
+}
+
 std::string newClientId() {
   char id[40];
   std::snprintf(id, sizeof(id), "crossplay-%08lx%08lx", static_cast<unsigned long>(esp_random()),
@@ -249,7 +269,8 @@ int player(const Config&, const std::string& host, const std::string& url, std::
                 "<MediaContainer><Timeline state=\"%s\" duration=\"%d\" time=\"%d\" ratingKey=\"%d\" type=\"music\" "
                 "volume=\"%d\" shuffle=\"%d\" repeat=\"%d\" "
                 "controllable=\"volume,repeat,skipPrevious,seekTo,stop,playPause,shuffle,skipNext\" "
-                "machineIdentifier=\"demo-server\" protocol=\"https\" address=\"demo.invalid\" port=\"32400\">",
+                "machineIdentifier=\"demo-server\" protocol=\"https\" address=\"demo.invalid\" port=\"32400\" "
+                "playQueueID=\"1\">",
                 demo.playing ? "playing" : "paused", track->durationMs, demo.timeMs % 10000000, 100 + demo.track,
                 demo.volume % 1000, demo.shuffle % 10, demo.repeat % 10);
   body = head;
@@ -273,6 +294,22 @@ int art(const Config&, const Now& now, int, const char* path) {
   if (!Storage.openFileForWrite(kTag, path, out)) return 0;
   uint8_t chunk[512];
   for (int n = in.read(chunk, sizeof(chunk)); n > 0; n = in.read(chunk, sizeof(chunk))) out.write(chunk, n);
+  return 200;
+}
+
+int server(const Config&, const Now&, const std::string&, std::string& body) {
+  body = R"({"MediaContainer":{"playQueueTotalCount":3,"playQueueSelectedItemID":)" + std::to_string(10 + demo.track) +
+         R"(,"Metadata":[)";
+  for (int i = 0; i < kDemoTrackCount; ++i) {
+    // The demo titles carry XML entities for the timeline; the queue is JSON.
+    const char* titles[] = {"Paper Lanterns", "Caf\xC3\xA9 at the End of the Line",
+                            "A Song With a Considerably Longer Title Than Fits"};
+    const char* artists[] = {"The Demo Quartet", "Example & Sons", "Sample Orchestra"};
+    body += std::string(i ? "," : "") + R"({"playQueueItemID":)" + std::to_string(10 + i) + R"(,"ratingKey":")" +
+            std::to_string(100 + i) + R"(","title":")" + titles[i] + R"(","grandparentTitle":")" + artists[i] +
+            R"(","duration":)" + std::to_string(kDemoTracks[i].durationMs) + "}";
+  }
+  body += "]}}";
   return 200;
 }
 

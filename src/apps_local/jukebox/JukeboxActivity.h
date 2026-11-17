@@ -28,8 +28,8 @@ class JukeboxActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Welcome, Linking, Players, Playing, Menu, Unlink, Notice, Busy };
-  enum class Step : uint8_t { None, PinCreate, Players, Adopt, Connect };
+  enum class View : uint8_t { Welcome, Linking, Players, Playing, Showcase, Queue, Menu, Unlink, Notice, Busy };
+  enum class Step : uint8_t { None, PinCreate, Players, Adopt, Connect, Queue };
   // Whether a command has ever been taken by this player, as far as this
   // sitting knows.
   enum class Control : uint8_t { Untried, Works, Failed };
@@ -47,6 +47,7 @@ class JukeboxActivity final : public Activity {
   void doPlayers();
   void doAdopt();
   void doConnect();
+  void doQueue();
   void askAddress();
 
   bool poll(bool withMetadata);
@@ -60,7 +61,11 @@ class JukeboxActivity final : public Activity {
   freeink::ui::Rect buildLinking(toybox::Screen& screen);
   void buildPlayers(toybox::Screen& screen);
   void buildPlaying(toybox::Screen& screen);
+  void buildShowcase(toybox::Screen& screen);
+  void buildQueue(toybox::Screen& screen);
   void buildMenu(toybox::Screen& screen);
+  bool drawCover(int x, int y, int side);
+  uint32_t coverKey() const;
   void buildUnlink(toybox::Screen& screen);
   void buildNotice(toybox::Screen& screen);
   int pageBottom() const;
@@ -76,6 +81,7 @@ class JukeboxActivity final : public Activity {
   jukebox::Device candidate_;
 
   jukebox::Now now_;
+  jukebox::Queue queue_;
   uint32_t nowAtMs_ = 0;
   uint32_t lastPollMs_ = 0;
   uint32_t lastPaintMs_ = 0;
@@ -99,6 +105,10 @@ class JukeboxActivity final : public Activity {
   int16_t barX_ = 0;
   int16_t barY_ = 0;
   int16_t barW_ = 0;
+  // Where the cover sits on the playing page: a tap there opens it large.
+  int16_t coverX_ = 0;
+  int16_t coverY_ = 0;
+  int16_t coverW_ = 0;
 
   View view_ = View::Welcome;
   View noticeBack_ = View::Welcome;

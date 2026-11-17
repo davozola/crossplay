@@ -671,6 +671,124 @@ def cmd_dump(args):
     return 0
 
 
+def cmd_library(args):
+    """Browsing, jumping within the queue, and starting an album: what the firmware's next step needs."""
+    state = load_state()
+    if not need_token(state):
+        return 1
+    p = first_player(state, args.player)
+    print("\n6. Library, queue jump and starting playback")
+    if not p or not p.get("server"):
+        note("FAILED", "library", "no player with a reachable control port and a server behind it")
+        summary()
+        return 1
+    ctl = p["control"]
+    base, stoken = p["server"]
+    before, _ = timeline(state, *ctl)
+    if not before or before.get("state") != "playing":
+        note("NOT TESTED", "library", "needs a track playing, so there is something to put back")
+        summary()
+        return 1
+    out = os.path.join(os.getcwd(), "plex_dump")
+    os.makedirs(out, exist_ok=True)
+
+    def get(path, name=None):
+        code, body, _ = fetch(base + path, headers(state, stoken), timeout=10)
+        data = as_json(body) if code == 200 else None
+        if data is not None and name:
+            with open(os.path.join(out, name), "w") as f:
+                json.dump(scrub_json(data), f, indent=1)
+        return code, (data or {}).get("MediaContainer", {})
+
+    page = "X-Plex-Container-Start=0&X-Plex-Container-Size=6"
+    code, mc = get("/library/sections", "sections.json")
+    music = [d for d in mc.get("Directory", []) if d.get("type") == "artist"]
+    note("VERIFIED" if music else "FAILED", "music libraries listed",
+         "%d found" % len(music) if music else "HTTP %s" % code)
+    if not music:
+        summary()
+        return 1
+    sec = music[0]["key"]
+    code, mc = get("/library/sections/%s/recentlyAdded?type=9&%s" % (sec, page), "albums_recent.json")
+    albums = mc.get("Metadata", [])
+    note("VERIFIED" if albums else "FAILED", "recently added albums", "%d read" % len(albums) if albums else "HTTP %s" % code)
+    code, mc = get("/library/sections/%s/all?type=8&%s" % (sec, page), "artists.json")
+    artists = mc.get("Metadata", [])
+    note("VERIFIED" if artists else "FAILED", "artists, a page at a time",
+         "%d of %s" % (len(artists), mc.get("totalSize", "?")) if artists else "HTTP %s" % code)
+    if artists:
+        code, mc = get("/library/metadata/%s/children" % artists[0]["ratingKey"], "artist_albums.json")
+        note("VERIFIED" if mc.get("Metadata") else "FAILED", "an artist's albums",
+             "%d read" % len(mc.get("Metadata", [])) if mc.get("Metadata") else "HTTP %s" % code)
+    code, mc = get("/playlists?playlistType=audio&%s" % page, "playlists.json")
+    note("VERIFIED" if code == 200 else "FAILED", "audio playlists", "%d read" % len(mc.get("Metadata", [])) if code == 200 else "HTTP %s" % code)
+    tracks = []
+    if albums:
+        code, mc = get("/library/metadata/%s/children" % albums[0]["ratingKey"], "album_tracks.json")
+        tracks = mc.get("Metadata", [])
+        note("VERIFIED" if tracks else "FAILED", "an album's tracks", "%d read" % len(tracks) if tracks else "HTTP %s" % code)
+
+    def key_now(info):
+        return str((info or {}).get("ratingKey"))
+
+    # Jumping to another track of the queue that is already playing.
+    orig_key, orig_queue = key_now(before), before.get("playQueueID")
+    try:
+        orig_at = int(before.get("time") or 0)
+    except ValueError:
+        orig_at = 0
+    code, mc = get("/playQueues/%s?window=10&own=1" % orig_queue)
+    others = [m for m in mc.get("Metadata", []) if str(m.get("ratingKey")) != orig_key]
+    if not others:
+        note("NOT TESTED", "jump within the queue", "the queue has one track")
+    else:
+        want = str(others[-1]["ratingKey"])
+        code, body = command(state, ctl[0], ctl[1], ctl[2], "skipTo", ctl[3], "&key=%s" % urllib.parse.quote("/library/metadata/" + want, safe=""))
+        ok, info = wait_state(state, ctl, lambda i: key_now(i) == want, 6)
+        note("VERIFIED" if ok else "FAILED", "jump within the queue (skipTo)",
+             "the player moved to the track asked for" if ok else "HTTP %s %s" % (code, body))
+        command(state, ctl[0], ctl[1], ctl[2], "skipTo", ctl[3], "&key=%s" % urllib.parse.quote("/library/metadata/" + orig_key, safe=""))
+        wait_state(state, ctl, lambda i: key_now(i) == orig_key, 6)
+        command(state, ctl[0], ctl[1], ctl[2], "seekTo", ctl[3], "&offset=%d" % orig_at)
+
+    # Starting something new, then putting back what was playing.
+    machine = before.get("machineIdentifier")
+
+    def play(queue_id, track_key, offset):
+        params = "&providerIdentifier=com.plexapp.plugins.library&machineIdentifier=%s&protocol=%s&address=%s&port=%s" % (
+            machine, before.get("protocol"), before.get("address"), before.get("port"))
+        params += "&containerKey=%s&key=%s&offset=%d&token=%s" % (
+            urllib.parse.quote("/playQueues/%s?own=1" % queue_id, safe=""),
+            urllib.parse.quote("/library/metadata/%s" % track_key, safe=""), offset, stoken)
+        return command(state, ctl[0], ctl[1], ctl[2], "playMedia", ctl[3], params)
+
+    if not albums or not tracks or not args.start:
+        note("NOT TESTED", "start an album", "run again with --start: it plays a few seconds of '%s' and then puts your music back"
+             % (albums[0].get("title") if albums else "an album"))
+    else:
+        uri = "server://%s/com.plexapp.plugins.library/library/metadata/%s" % (machine, albums[0]["ratingKey"])
+        code, body, _ = fetch("%s/playQueues?type=audio&shuffle=0&repeat=0&continuous=0&own=1&uri=%s" % (
+            base, urllib.parse.quote(uri, safe="")), headers(state, stoken), method="POST", timeout=10)
+        made = (as_json(body) or {}).get("MediaContainer", {}) if code == 200 else {}
+        with open(os.path.join(out, "playqueue_created.json"), "w") as f:
+            json.dump(scrub_json({"MediaContainer": made}), f, indent=1)
+        new_queue = made.get("playQueueID")
+        note("VERIFIED" if new_queue else "FAILED", "play queue made on the server", "for one album" if new_queue else "HTTP %s" % code)
+        if new_queue:
+            first = str(tracks[0]["ratingKey"])
+            code, body = play(new_queue, first, 0)
+            ok, info = wait_state(state, ctl, lambda i: key_now(i) == first and i.get("state") == "playing", 10)
+            note("VERIFIED" if ok else "FAILED", "start an album on the player (playMedia)",
+                 "the player is playing its first track" if ok else "HTTP %s %s; the player reports %s" % (code, body, key_now(info)))
+            time.sleep(3)
+            code, body = play(orig_queue, orig_key, orig_at)
+            ok, _ = wait_state(state, ctl, lambda i: key_now(i) == orig_key, 10)
+            note("VERIFIED" if ok else "FAILED", "your music put back", "same track, same place" if ok else "HTTP %s %s: start it again in Plexamp" % (code, body))
+    print("\n  Answers saved in plex_dump/ (tokens removed; they hold names from your library).")
+    summary()
+    return 0
+
+
 def cmd_tls(_args):
     """Who signs the certificates the firmware has to verify."""
     import socket
@@ -730,6 +848,10 @@ def main():
     dp = sub.add_parser("dump", help="raw answers with secrets removed, into ./plex_dump")
     dp.add_argument("--player")
     dp.set_defaults(fn=cmd_dump)
+    lb = sub.add_parser("library", help="browse the library, jump within the queue, and (with --start) start an album")
+    lb.add_argument("--player", help="player name, when there is more than one")
+    lb.add_argument("--start", action="store_true", help="also play a few seconds of an album, then put your music back")
+    lb.set_defaults(fn=cmd_library)
     sub.add_parser("tls", help="who signs the certificates the firmware must verify").set_defaults(fn=cmd_tls)
     ad = sub.add_parser("add-player", help="a player's IP address, when discovery does not find it")
     ad.add_argument("address")

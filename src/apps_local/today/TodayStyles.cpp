@@ -219,9 +219,35 @@ enum class EventLook : uint8_t { Pixel, Reader, Centred };
 
 void eventsBlock(toybox::Screen& screen, const GfxRenderer& r, const Page& page, const int x, int y, const int width,
                  const int bottom, const EventLook look) {
+  const bool pixel = look == EventLook::Pixel;
+  // The music first, when there is some: one line, which opens the Jukebox.
+  if (page.playing[0] != 0 && bottom - y > 60) {
+    const int musicTop = y;
+    const int font = NOTOSANS_12_FONT_ID;
+    const std::string line = r.truncatedText(font, page.playing, width);
+    if (pixel) {
+      const char* head = "SUENA AHORA";
+      const int tabW = r.getTextWidth(toybox::kTileFontId, head) + 16;
+      r.fillRect(x, y, tabW, 22, true);
+      r.drawText(toybox::kTileFontId, x + 8,
+                 y + (22 - toybox::kTileCut.inkHeight) / 2 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight),
+                 head, false);
+      y += 26;
+      r.drawText(font, x, y, line.c_str(), true);
+    } else if (look == EventLook::Centred) {
+      textCentre(r, font, x + width / 2, y, "Suena ahora", kBold);
+      y += r.getLineHeight(font);
+      textCentre(r, font, x + width / 2, y, line.c_str());
+    } else {
+      text(r, font, x, y, "Suena ahora", kBold);
+      y += r.getLineHeight(font);
+      text(r, font, x, y, line.c_str());
+    }
+    y += r.getLineHeight(font) + (pixel ? 10 : 6);
+    zone(screen, 0, musicTop, screen.device().width, y - musicTop, Music);
+  }
   if (page.eventCount == 0) return;
   const int top = y;
-  const bool pixel = look == EventLook::Pixel;
   const int bodyFont = pixel ? toybox::kReadingSmallFontId : NOTOSERIF_12_FONT_ID;
   const int lineH = pixel ? 25 : r.getLineHeight(bodyFont);
   const int headH = pixel ? 26 : r.getLineHeight(NOTOSANS_12_FONT_ID);

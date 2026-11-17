@@ -83,6 +83,7 @@ struct Now {
   int repeat = -1;  // 0 off, 1 one, 2 all
   uint16_t can = 0;
   std::string trackKey;  // identifies the track; a change means a new one
+  std::string queueId;   // the play queue it is working through, on the server
   std::string title;
   std::string artist;
   std::string album;
@@ -100,6 +101,23 @@ std::string commandUrl(const std::string& host, int port, const char* command, u
 // The music timeline of a poll's answer. With `keepTrack`, an answer that
 // carries no metadata leaves the track's own fields as they were.
 bool parseTimeline(const char* xml, size_t len, Now& out, bool keepTrack = false);
+// --- The queue, which the server keeps ------------------------------------------
+
+struct QueueItem {
+  std::string key;  // the track's own, as Now::trackKey
+  std::string title;
+  std::string artist;
+  int32_t durationMs = 0;
+};
+struct Queue {
+  std::vector<QueueItem> items;  // a window around the current track
+  int current = -1;              // an index into items, -1 when it is not among them
+  int total = 0;                 // the whole queue's length
+};
+// `window` tracks either side of the one playing.
+std::string queueUrl(const std::string& serverBase, const std::string& queueId, int window);
+bool parseQueue(const char* json, size_t len, Queue& out);
+
 // The server's own resizer, so the reader never holds a full-size cover.
 // A player's own account of itself, from its /resources: its name and its
 // identifier. For a player reached by a typed address, which plex.tv never
