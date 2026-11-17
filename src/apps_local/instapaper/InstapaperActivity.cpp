@@ -36,6 +36,9 @@ constexpr int64_t kClockFloor = 1700000000;
 // converts a handful of articles, so this is seconds rather than tens of them,
 // and each poll is one HTTP round trip on a battery.
 constexpr uint32_t kPollIntervalMs = 1500;
+// Between two asks of whether the code was claimed. Each ask blocks for as long
+// as the bridge takes to answer, so the gap is what leaves the panel listening.
+constexpr uint32_t kPairPollIntervalMs = 3000;
 // Consecutive polls that never reached the bridge before a sync is called off.
 // Six of them is nine seconds of silence, which is longer than any hiccup this
 // reader survives on the desk and shorter than a reader will wait for a screen
@@ -273,12 +276,7 @@ void InstapaperActivity::loop() {
         // blocking TLS call on the same client, one switch branch away, and
         // without it the QR code sits frozen on the glass through the
         // handshake. #306, and fix-the-twin-too.
-        paintBusyNow("CANCELLING");
-        sync_.pairAbandon(pollToken_, pendingToken_);
-        pollToken_.clear();
-        pendingToken_.clear();
-        pairCode_.clear();
-        showQueue();
+        cancelPairing();
         break;
       case Phase::Notice:
       case Phase::Busy:
@@ -304,10 +302,14 @@ void InstapaperActivity::loop() {
   // once a second; and the first version repainted only on failure, so the
   // confirm screen -- the one screen this whole handshake exists to show --
   // was reached and never drawn.
-  if (phase_ == Phase::Pairing && !pollToken_.empty()) {
-    delay(kPollIntervalMs);
+  //
+  // On a timer and not a sleep: the loop keeps turning between polls, so the
+  // panel is read for the tap on CANCEL. Sleeping here left a touch reader
+  // with a code it could not put away.
+  if (phase_ == Phase::Pairing && !pollToken_.empty() && millis() - lastPairPollMs_ >= kPairPollIntervalMs) {
     const Phase before = phase_;
     doPairPoll();
+    lastPairPollMs_ = millis();
     if (phase_ != before) requestUpdate();
     return;
   }
@@ -402,6 +404,9 @@ void InstapaperActivity::loop() {
     case instapaperui::ActionNotice:
       showQueue();
       break;
+    case instapaperui::ActionPairCancel:
+      if (phase_ == Phase::Pairing || phase_ == Phase::PairConfirm) cancelPairing();
+      break;
     case instapaperui::ActionAccount:
       // Opens the confirm. Destroys nothing: the wipe is a second, deliberate
       // press on the confirm's marked control.
@@ -420,6 +425,15 @@ void InstapaperActivity::loop() {
 
 // --- Pairing -------------------------------------------------------------
 
+void InstapaperActivity::cancelPairing() {
+  paintBusyNow("CANCELLING");
+  sync_.pairAbandon(pollToken_, pendingToken_);
+  pollToken_.clear();
+  pendingToken_.clear();
+  pairCode_.clear();
+  showQueue();
+}
+
 bool InstapaperActivity::doPairStart() {
   instapaper::Sync::PairStart start;
   std::string message;
@@ -431,6 +445,7 @@ bool InstapaperActivity::doPairStart() {
   pairCode_ = start.code;
   pollToken_ = start.pollToken;
   phase_ = Phase::Pairing;
+  lastPairPollMs_ = millis();
   return true;
 }
 
