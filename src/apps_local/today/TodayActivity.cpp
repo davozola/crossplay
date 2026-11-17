@@ -45,6 +45,8 @@ enum : fui::ActionId {
 };
 
 constexpr char kStylePath[] = "/.crosspoint/hoy.cfg";
+// What a tap on the foot's left corner steps through, in minutes; 0 is by hand only.
+constexpr int kAutoChoices[] = {0, 15, 30, 60, 180};
 constexpr time_t kClockSetAfter = 1704067200;  // 2024-01-01: before it the clock was never set
 
 const fui::Paint kInk = fui::Paint::solid(fui::Color::Black);
@@ -67,16 +69,23 @@ void TodayActivity::onEnter() {
   todaystore::load(*data_);
   loadEvent();
   style_ = 0;
+  autoMinutes_ = 0;
   if (Storage.exists(kStylePath)) {
     HalFile file;
-    uint8_t saved = 0;
-    if (Storage.openFileForRead("HOY", kStylePath, file) && file.read(&saved, 1) == 1 && saved < todaystyles::kStyles) {
-      style_ = saved;
+    uint8_t saved[2] = {0, 0};
+    if (Storage.openFileForRead("HOY", kStylePath, file) && file.read(saved, 2) >= 1) {
+      if (saved[0] < todaystyles::kStyles) style_ = saved[0];
+      for (const int choice : kAutoChoices) {
+        if (choice == saved[1]) autoMinutes_ = choice;
+      }
     }
   }
   shownMinute_ = -1;
   statusHeadline_ = nullptr;
+  lastFetchMs_ = static_cast<uint32_t>(millis());
   requestUpdate();
+  // Left on auto, it comes back on auto: the first fetch is what joins the network.
+  if (autoMinutes_ > 0) startRefresh();
 }
 
 void TodayActivity::onExit() {
@@ -127,6 +136,7 @@ void TodayActivity::loop() {
   if (step_ == Step::Running) {
     step_ = Step::Idle;
     const int kinds = todaystore::fetchAll(*data_, report_, sizeof(report_));
+    lastFetchMs_ = static_cast<uint32_t>(millis());
     // The day's events too, when EFEMERIDES has not fetched them yet. They are
     // an extra: the report stays about the three the page cannot do without.
     if (eventCount_ == 0) {
@@ -148,6 +158,23 @@ void TodayActivity::loop() {
     }
     requestUpdate();
     return;
+  }
+
+  // Auto: quietly, with no status page, and only when already online. A round
+  // that finds the radio down is skipped and the next one tries again.
+  if (autoMinutes_ > 0 && step_ == Step::Idle && statusHeadline_ == nullptr) {
+    const uint32_t now = static_cast<uint32_t>(millis());
+    if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
+      lastFetchMs_ = now;
+      if (wifiActivated_ && WiFi.status() == WL_CONNECTED) {
+        char quiet[sizeof(report_)];
+        if (todaystore::fetchAll(*data_, quiet, sizeof(quiet)) > 0) {
+          loadEvent();
+          requestUpdate();
+        }
+      }
+      return;
+    }
   }
 
   int pressX = 0;
@@ -190,6 +217,18 @@ void TodayActivity::loop() {
     if (target == todaystyles::Refresh && step_ == Step::Idle) {
       startRefresh();
       requestUpdate();
+    } else if (target == todaystyles::Auto && step_ == Step::Idle && statusHeadline_ == nullptr) {
+      int at = 0;
+      const int count = static_cast<int>(sizeof(kAutoChoices) / sizeof(kAutoChoices[0]));
+      for (int i = 0; i < count; ++i) {
+        if (kAutoChoices[i] == autoMinutes_) at = i;
+      }
+      autoMinutes_ = kAutoChoices[(at + 1) % count];
+      savePrefs();
+      lastFetchMs_ = static_cast<uint32_t>(millis());
+      // Turning it on with the radio down fetches now, which is what joins the network.
+      if (autoMinutes_ > 0 && !wifiActivated_) startRefresh();
+      requestUpdate();
     } else if (target > todaystyles::None && target < todaystyles::Refresh && step_ == Step::Idle &&
                statusHeadline_ == nullptr) {
       // Each part of the page opens the app it is drawn from, and Back there
@@ -222,14 +261,17 @@ void TodayActivity::buildStatus(toybox::Screen& screen) {
 
 void TodayActivity::setStyle(const int style) {
   style_ = ((style % todaystyles::kStyles) + todaystyles::kStyles) % todaystyles::kStyles;
-  HalFile file;
-  if (Storage.openFileForWrite("HOY", kStylePath, file)) {
-    const uint8_t saved = static_cast<uint8_t>(style_);
-    file.write(&saved, 1);
-    file.flush();
-  }
+  savePrefs();
   cleanNext_ = true;
   requestUpdate();
+}
+
+void TodayActivity::savePrefs() {
+  HalFile file;
+  if (!Storage.openFileForWrite("HOY", kStylePath, file)) return;
+  const uint8_t saved[2] = {static_cast<uint8_t>(style_), static_cast<uint8_t>(autoMinutes_)};
+  file.write(saved, 2);
+  file.flush();
 }
 
 void TodayActivity::loadEvent() {
@@ -261,6 +303,7 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   todaystyles::Page page{*data_};
   page.clockSet = t >= kClockSetAfter;
   if (page.clockSet) localtime_r(&t, &page.now);
+  page.autoMinutes = autoMinutes_;
   page.eventCount = eventCount_;
   for (int i = 0; i < eventCount_; ++i) {
     page.events[i].text = eventText_[i];

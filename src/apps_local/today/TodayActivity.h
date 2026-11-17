@@ -35,6 +35,10 @@ class TodayActivity final : public Activity {
   std::unique_ptr<todaystore::Snapshot> data_;
   Step step_ = Step::Idle;
   bool wifiActivated_ = false;
+  // Minutes between fetches made with nobody asking, 0 for never; kept with the style.
+  int autoMinutes_ = 0;
+  uint32_t lastFetchMs_ = 0;
+  void savePrefs();
   int shownMinute_ = -1;
   const char* statusHeadline_ = nullptr;  // non-null while a status page is up
   char report_[192] = "";
