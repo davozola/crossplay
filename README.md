@@ -24,7 +24,7 @@ Sticky**. Conserva todo lo del original y añade treinta y dos cosas:
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
 | **Reloj** | Reloj de sobremesa en vertical u horizontal con siete esferas (trazo, paletas, esfera, anillos, matriz, segmentos y palabras), en claro u oscuro. |
-| **Casa** | La temperatura y la humedad de la habitación con el sensor de la propia Sticky, y las últimas 24 horas de cada una en una gráfica. |
+| **Casa** | La temperatura y la humedad de la habitación con el sensor de la propia Sticky, leídas cada tres segundos mientras está abierta, y las últimas 24 horas de cada una en una gráfica. |
 | **Hoy** | Una página para dejar en el soporte: la hora, el tiempo, los mercados, el mar y una efeméride, en cinco estilos sobre blanco que se cambian deslizando (dos con la letra del firmware; un diario, uno mínimo y uno de esferas con las fuentes del lector). Tocar cada parte abre su app, y Atrás vuelve a Hoy. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |

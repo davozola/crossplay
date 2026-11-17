@@ -24,7 +24,14 @@ enum : fui::ActionId {
   ActionSleepLogging = 1,
 };
 
-constexpr uint32_t kMeasureEveryMs = 60000;
+// While the page is up the sensor is read this often, so the figures follow
+// the room within a few seconds.
+constexpr uint32_t kMeasureEveryMs = 3000;
+// The page repaints once a reading has moved this far from the one printed: a
+// whole step of what is shown, so sensor noise at the edge of a digit does not
+// flash the panel every few seconds.
+constexpr int kTempStepCenti = 10;
+constexpr int kHumStepCenti = 100;
 // Two readings further apart than this are not joined by a line: the device
 // was off, or asleep without the log running.
 constexpr uint32_t kJoinWithin = 2700;
@@ -93,9 +100,11 @@ void CasaActivity::loop() {
   if (static_cast<uint32_t>(millis()) - lastMeasureMs_ >= kMeasureEveryMs) {
     const int logged = log_->count;
     measure();
-    // Repaint for a figure that changed or a new point on the lines, not for
+    // Repaint for a figure that moved or a new point on the lines, not for
     // every reading: the panel should hold still while the room does.
-    if (hasNow_ && (tenthsOf(now_.tempCenti) != shownTenths_ || (now_.humCenti + 50) / 100 != shownHum_ ||
+    const int dt = static_cast<int>(now_.tempCenti) - shownTempCenti_;
+    const int dh = static_cast<int>(now_.humCenti) - shownHumCenti_;
+    if (hasNow_ && (dt >= kTempStepCenti || dt <= -kTempStepCenti || dh >= kHumStepCenti || dh <= -kHumStepCenti ||
                     log_->count != logged)) {
       requestUpdate();
     }
@@ -271,8 +280,8 @@ void CasaActivity::buildPage(toybox::Screen& screen) {
 }
 
 void CasaActivity::render(RenderLock&&) {
-  shownTenths_ = tenthsOf(now_.tempCenti);
-  shownHum_ = (now_.humCenti + 50) / 100;
+  shownTempCenti_ = now_.tempCenti;
+  shownHumCenti_ = now_.humCenti;
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();
