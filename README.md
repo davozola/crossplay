@@ -19,13 +19,15 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y cuatro cosas:
+Sticky**. Conserva todo lo del original y añade treinta y seis cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
 | **Reloj** | Reloj de sobremesa en vertical u horizontal con siete esferas (trazo, paletas, esfera, anillos, matriz, segmentos y palabras), en claro u oscuro. |
 | **Casa** | La temperatura y la humedad de la habitación con el sensor de la propia Sticky, leídas cada tres segundos mientras está abierta, y las últimas 24 horas de cada una en una gráfica. |
 | **Hoy** | Una página para dejar en el soporte: la hora, el tiempo, los mercados, el mar y las efemérides del día, en diez estilos sobre blanco que se cambian deslizando: dos con la letra del firmware y ocho propios (diario, calma, esferas, cartel, un paisaje hecho con los datos, mosaico, billete y hoja de almanaque con la luna). Llena la pantalla entera, tocar cada parte abre su app y Atrás vuelve a Hoy. Al actualizar trae también las efemérides. |
+| **Reversi** | Atrapa las fichas del otro color entre dos tuyas y se dan la vuelta. Contra el dispositivo en tres niveles o a dos en la misma pantalla, en tablero de 8 o de 6. |
+| **Dots and Boxes** | Puntos y cajas: una raya por turno, y quien cierra un cuadrado se lo queda y repite. Contra el dispositivo o a dos, de 3×3 a 6×6. |
 | **Jukebox** | Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto, volumen, aleatorio y repetición desde la Sticky. Se enlaza a tu cuenta de Plex con un código en plex.tv/link y no instala nada en el reproductor. Ver [docs/jukebox.md](docs/jukebox.md). |
 | **Marco** | El marco de fotos, como app propia: cada cuánto cambia sola la imagen de reposo (de 15 minutos a 24 horas) con la Sticky dormida, si tiene el set de dos o más fotos que necesita y cuántos cambios lleva. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
@@ -103,7 +105,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **40 games and 24 apps**,
+that holds still is good at: **42 games and 24 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -138,6 +140,8 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Murdle**       | A logic grid built through the solver, so you never have to guess.           |
 | **Checkers**     | English draughts, where taking is compulsory and the board says so.          |
 | **Connect Four** | Drop a disc, get four in a line. Seven columns, one tap each.                |
+| **Reversi**      | Trap the other colour and turn it over. Three levels, or two players.     |
+| **Dots and Boxes** | Close a square, keep it, go again. Against the device or two players.   |
 | **Yahtzee**      | Thirteen boxes, three rolls a turn, and the Joker rules in full.             |
 | **Knucklebones** | Cult of the Lamb's dice game. Matching dice multiply; yours destroy theirs.  |
 | **Minesweeper**  | Tap to dig, hold to flag, tap a finished number to chord its neighbours.     |
