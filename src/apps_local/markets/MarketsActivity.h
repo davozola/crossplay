@@ -66,6 +66,8 @@ class MarketsActivity final : public Activity {
   markets::Asset open_ = markets::Asset::Bitcoin;
   marketsui::Span span_ = marketsui::Span::Month;
   int autoMinutes_ = 0;
+  int fetchedHour_ = -1;
+  int fetchedMinute_ = 0;
   uint32_t lastFetchMs_ = 0;
 
   const char* statusHeadline_ = "";

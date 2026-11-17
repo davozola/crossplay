@@ -17,6 +17,7 @@
 #include "../../components/UITheme.h"
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
 #include "WeatherSave.h"
@@ -378,7 +379,7 @@ void WeatherActivity::loop() {
     const uint32_t now = static_cast<uint32_t>(millis());
     if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
       lastFetchMs_ = now;
-      if (wifiActivated_ && WiFi.status() == WL_CONNECTED) {
+      if (wifiActivated_ && autorefresh::online(now, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_)) {
         bool any = false;
         if (view_ == View::Board) {
           const int shown = placeCount_ < boardSize() ? placeCount_ : boardSize();

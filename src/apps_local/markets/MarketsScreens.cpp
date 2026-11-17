@@ -349,13 +349,18 @@ void buildDashboard(toybox::Screen& screen, const DashboardModel& model) {
 
   // The foot: the portfolio, how often it fetches by itself, and fetching now.
   const int third = (inner - gap * 2) / 3;
-  char autoLabel[toybox::kIntChars + 12];
+  // With auto on and a fetch behind it, the button says when that was: the
+  // only way to tell a page that is refreshing from one that has stopped.
+  char autoLabel[toybox::kIntChars * 3 + 16];
   if (model.autoMinutes <= 0) {
     std::snprintf(autoLabel, sizeof(autoLabel), "AUTO OFF");
+  } else if (model.fetchedHour >= 0) {
+    std::snprintf(autoLabel, sizeof(autoLabel), "%d M  %02d:%02d", model.autoMinutes % 1000, model.fetchedHour % 24,
+                  model.fetchedMinute % 60);
   } else if (model.autoMinutes >= 60) {
     std::snprintf(autoLabel, sizeof(autoLabel), "AUTO 1 H");
   } else {
-    std::snprintf(autoLabel, sizeof(autoLabel), "AUTO %d MIN", model.autoMinutes);
+    std::snprintf(autoLabel, sizeof(autoLabel), "AUTO %d MIN", model.autoMinutes % 1000);
   }
   fui::ButtonProps p;
   p.label = "PORTFOLIO";
