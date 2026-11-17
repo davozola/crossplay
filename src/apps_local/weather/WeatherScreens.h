@@ -21,7 +21,14 @@ enum : fui::ActionId {
   ActionSearch,
   ActionDismiss,
   ActionDay,  // value: day index, to open its sheet
+  ActionAuto,
+  ActionChooseAuto,  // value: minutes, 0 for off
 };
+
+// The minutes the auto-refresh picker offers; 0 is off. A forecast moves more
+// slowly than a market, so the steps are longer than MARKETS'.
+constexpr int kAutoChoices[] = {0, 15, 30, 60, 180};
+constexpr int kAutoChoiceCount = sizeof(kAutoChoices) / sizeof(kAutoChoices[0]);
 
 // The builder cannot reach the renderer, and the hero temperature is set in a
 // cut bigger than the three the target holds. The activity lends it this to
@@ -35,6 +42,7 @@ struct ForecastModel {
   const weather::Place* place = nullptr;
   const weather::Forecast* forecast = nullptr;  // null: nothing fetched yet
   bool fahrenheit = false;
+  int autoMinutes = 0;
   FaceSwap faces;
 };
 
@@ -82,6 +90,7 @@ void buildDay(toybox::Screen& screen, const DayModel& model);
 void buildCities(toybox::Screen& screen, const CitiesModel& model);
 void buildResults(toybox::Screen& screen, const ResultsModel& model);
 void buildStatus(toybox::Screen& screen, const StatusModel& model);
+void buildAutoPicker(toybox::Screen& screen, int currentMinutes);
 
 // The sky glyph in a `size` square centred on (cx, cy).
 void skyIcon(toybox::Screen& screen, weather::Sky sky, bool day, int cx, int cy, int size);

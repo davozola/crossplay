@@ -21,9 +21,11 @@ class WeatherActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  // With auto-refresh on, the reader stays awake to fetch again by itself.
+  bool preventAutoSleep() override { return autoMinutes_ > 0; }
 
  private:
-  enum class View : uint8_t { Forecast, Day, Cities, Results, Status };
+  enum class View : uint8_t { Forecast, Day, Cities, Results, Status, AutoPicker };
   // A network job: joined Wi-Fi -> Ready -> the status frame is painted -> Run.
   enum class Job : uint8_t { None, Forecast, Search };
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
@@ -38,6 +40,10 @@ class WeatherActivity final : public Activity {
 
   void startJob(Job job);
   void runJob();
+  // The selected city's forecast, fetched with no status page. Needs Wi-Fi up.
+  bool fetchQuietly();
+  void loadAuto();
+  void saveAuto();
   void askCity();
   void showStatus(const char* headline, const char* detail, bool dismissable, View back);
   void route(const freeink::ui::ActionEvent& event);
@@ -47,6 +53,8 @@ class WeatherActivity final : public Activity {
   Job job_ = Job::None;
   Step step_ = Step::Idle;
   bool wifiActivated_ = false;
+  int autoMinutes_ = 0;
+  uint32_t lastFetchMs_ = 0;
 
   weather::Place places_[weather::kMaxPlaces];
   int placeCount_ = 0;

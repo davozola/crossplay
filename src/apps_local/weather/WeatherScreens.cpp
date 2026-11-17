@@ -596,7 +596,8 @@ void days(toybox::Screen& screen, const wx::Forecast& f, const bool fahr, const 
   }
 }
 
-void footer(toybox::Screen& screen, const wx::Forecast* f, const int top, const int height, const int width) {
+void footer(toybox::Screen& screen, const wx::Forecast* f, const int top, const int height, const int width,
+            const int autoMinutes) {
   char when[48] = "NOT FETCHED YET";
   if (f && f->current.time[0]) {
     const wx::Current& c = f->current;
@@ -604,14 +605,31 @@ void footer(toybox::Screen& screen, const wx::Forecast* f, const int top, const 
     int m = 0;
     int d = 0;
     std::sscanf(c.time, "%d-%d-%d", &y, &m, &d);
-    std::snprintf(when, sizeof(when), "UPDATED %s %d %s, %.5s", wx::weekdayName(wx::weekday(y, m, d)), d,
+    std::snprintf(when, sizeof(when), "%s %d %s, %.5s", wx::weekdayName(wx::weekday(y, m, d)), d % 100,
                   wx::monthName(m), c.time + 11);
   }
-  const int bw = 132;
+  char autoLabel[toybox::kIntChars + 12];
+  if (autoMinutes <= 0) {
+    std::snprintf(autoLabel, sizeof(autoLabel), "AUTO OFF");
+  } else if (autoMinutes >= 60) {
+    std::snprintf(autoLabel, sizeof(autoLabel), "AUTO %d H", autoMinutes / 60);
+  } else {
+    std::snprintf(autoLabel, sizeof(autoLabel), "AUTO %d M", autoMinutes);
+  }
+  const int bw = 112;
+  const int gap = 8;
   const int bh = height - 8 < 44 ? height - 8 : 44;
   const int by = top + (height - bh) / 2 + 1;
   caption(screen, toybox::kMargin, top + (height - toybox::kTileCut.inkHeight) / 2,
-          width - toybox::kMargin * 2 - bw - toybox::kGutter, when);
+          width - toybox::kMargin * 2 - bw * 2 - gap - toybox::kGutter, when);
+  fui::ButtonProps a;
+  a.label = autoLabel;
+  a.action = ActionAuto;
+  a.styles = toybox::rowStyles();
+  a.text = toybox::buttonText(screen.theme());
+  a.radius = toybox::kPillRadius / 2;
+  a.state = autoMinutes > 0 ? fui::StateSelected : fui::StateNormal;
+  screen.button(a, rect(width - toybox::kMargin - bw * 2 - gap, by, bw, bh));
   fui::ButtonProps b;
   b.label = "REFRESH";
   b.action = ActionRefresh;
@@ -766,7 +784,7 @@ void buildForecast(toybox::Screen& screen, const ForecastModel& model) {
               "REFRESH JOINS WI-FI AND FETCHES THE FORECAST. IT IS KEPT ON THE CARD, SO IT STILL READS WITH NO "
               "NETWORK.");
     hairline(screen, toybox::kMargin, footTop, inner);
-    footer(screen, nullptr, footTop, footH, width);
+    footer(screen, nullptr, footTop, footH, width, model.autoMinutes);
     return;
   }
 
@@ -788,7 +806,7 @@ void buildForecast(toybox::Screen& screen, const ForecastModel& model) {
   const int rowH = (footTop - y) / (f.dayCount > 0 ? f.dayCount : 1);
   days(screen, f, model.fahrenheit, y, rowH, width);
   hairline(screen, toybox::kMargin, footTop, inner);
-  footer(screen, &f, footTop, footH, width);
+  footer(screen, &f, footTop, footH, width, model.autoMinutes);
 }
 
 void buildDay(toybox::Screen& screen, const DayModel& model) {
@@ -1108,6 +1126,40 @@ void buildStatus(toybox::Screen& screen, const StatusModel& model) {
     ok.radius = toybox::kPillRadius / 2;
     screen.button(ok, rect(width / 2 - 90, headY + 170, 180, toybox::kPillHeight));
   }
+}
+
+void buildAutoPicker(toybox::Screen& screen, const int currentMinutes) {
+  chrome(screen, "AUTO REFRESH", nullptr, 0);
+  const fui::DeviceContext device = screen.device();
+  const int inner = device.width - toybox::kMargin * 2;
+  int y = toybox::kBodyTop - 12;
+  caption(screen, toybox::kMargin, y, inner, "HOW OFTEN SHOULD IT FETCH BY ITSELF?");
+  y += toybox::kTileCut.inkHeight + 16;
+  for (int i = 0; i < kAutoChoiceCount; ++i) {
+    const int minutes = kAutoChoices[i];
+    char text[toybox::kIntChars + 16];
+    if (minutes == 0) {
+      std::snprintf(text, sizeof(text), "OFF");
+    } else if (minutes == 60) {
+      std::snprintf(text, sizeof(text), "EVERY HOUR");
+    } else if (minutes > 60) {
+      std::snprintf(text, sizeof(text), "EVERY %d HOURS", minutes / 60);
+    } else {
+      std::snprintf(text, sizeof(text), "EVERY %d MINUTES", minutes);
+    }
+    fui::ButtonProps b;
+    b.label = text;
+    b.action = ActionChooseAuto;
+    b.value = static_cast<int16_t>(minutes);
+    b.styles = toybox::rowStyles();
+    b.radius = toybox::kPillRadius / 2;
+    b.state = minutes == currentMinutes ? fui::StateSelected : fui::StateNormal;
+    screen.button(b, rect(toybox::kMargin, y, inner, 60));
+    y += 60 + 8;
+  }
+  y += 10;
+  caption(screen, toybox::kMargin, y, inner, "WHILE IT IS ON THE READER STAYS AWAKE AND KEEPS");
+  caption(screen, toybox::kMargin, y + toybox::kTileCut.inkHeight + 8, inner, "THE WI-FI UP, WHICH USES BATTERY.");
 }
 
 }  // namespace weatherui

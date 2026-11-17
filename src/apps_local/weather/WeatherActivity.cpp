@@ -27,6 +27,8 @@ namespace fui = freeink::ui;
 namespace {
 
 using weather::kCacheDir;
+// Kept beside the save and not in it: HOY reads the save's layout as it is.
+constexpr char kAutoPath[] = "/.crosspoint/weather-auto.cfg";
 constexpr size_t kMaxBody = 48 * 1024;  // seven days of hours is ~10 KB
 constexpr size_t kQueryMax = 40;
 
@@ -44,9 +46,13 @@ void WeatherActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadState();
+  loadAuto();
   haveForecast_ = loadCache();
   view_ = placeCount_ == 0 ? View::Cities : View::Forecast;
+  lastFetchMs_ = static_cast<uint32_t>(millis());
   requestUpdate();
+  // Left on auto, it comes back on auto: the first fetch is what joins the network.
+  if (autoMinutes_ > 0 && placeCount_ > 0) startJob(Job::Forecast);
 }
 
 void WeatherActivity::onExit() {
@@ -81,6 +87,43 @@ void WeatherActivity::loadState() {
   }
   selected_ = s->selected < placeCount_ ? s->selected : 0;
   fahrenheit_ = s->fahrenheit != 0;
+}
+
+void WeatherActivity::loadAuto() {
+  autoMinutes_ = 0;
+  if (!Storage.exists(kAutoPath)) return;
+  HalFile file;
+  uint8_t saved = 0;
+  if (!Storage.openFileForRead("WTHR", kAutoPath, file) || file.read(&saved, 1) != 1) return;
+  for (const int choice : weatherui::kAutoChoices) {
+    if (choice == saved) autoMinutes_ = choice;
+  }
+}
+
+void WeatherActivity::saveAuto() {
+  HalFile file;
+  if (!Storage.openFileForWrite("WTHR", kAutoPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(autoMinutes_);
+  file.write(&saved, 1);
+  file.flush();
+}
+
+bool WeatherActivity::fetchQuietly() {
+  if (placeCount_ == 0) return false;
+  char url[512];
+  std::string body;
+  body.reserve(12 * 1024);
+  wx::forecastUrl(places_[selected_], url, sizeof(url));
+  if (!HttpDownloader::fetchUrl(url, body) || body.size() > kMaxBody) {
+    LOG_ERR("WTHR", "auto fetch failed: status %d", HttpDownloader::lastStatus());
+    return false;
+  }
+  auto fresh = makeUniqueNoThrow<wx::Forecast>();
+  if (!fresh || !wx::parseForecast(body.data(), body.size(), *fresh)) return false;
+  forecast_ = *fresh;
+  haveForecast_ = true;
+  saveCache(body.data(), body.size());
+  return true;
 }
 
 void WeatherActivity::saveState() {
@@ -207,6 +250,7 @@ void WeatherActivity::runJob() {
   }
   forecast_ = *fresh;
   haveForecast_ = true;
+  lastFetchMs_ = static_cast<uint32_t>(millis());
   saveCache(body.data(), body.size());
   view_ = View::Forecast;
   requestUpdate();
@@ -265,9 +309,23 @@ void WeatherActivity::loop() {
     return;
   }
 
+  // Auto-refresh: quietly, with no status page, and only when already online.
+  // A round that finds the radio down is skipped and the next one tries again.
+  if (autoMinutes_ > 0 && step_ == Step::Idle && (view_ == View::Forecast || view_ == View::Day)) {
+    const uint32_t now = static_cast<uint32_t>(millis());
+    if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
+      lastFetchMs_ = now;
+      if (wifiActivated_ && WiFi.status() == WL_CONNECTED && fetchQuietly()) requestUpdate();
+      return;
+    }
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     if (step_ != Step::Idle) return;
     switch (view_) {
+      case View::AutoPicker:
+        view_ = View::Forecast;
+        break;
       case View::Forecast:
         shelf::leave(renderer, mappedInput);
         return;
@@ -312,6 +370,27 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
       if (placeCount_ == 0) return;
       startJob(Job::Forecast);
       break;
+    case ui::ActionAuto:
+      view_ = View::AutoPicker;
+      break;
+    case ui::ActionChooseAuto: {
+      int chosen = -1;
+      for (const int choice : ui::kAutoChoices) {
+        if (choice == event.value) chosen = choice;
+      }
+      if (chosen < 0) return;
+      autoMinutes_ = chosen;
+      saveAuto();
+      view_ = View::Forecast;
+      lastFetchMs_ = static_cast<uint32_t>(millis());
+      // Turning it on fetches straight away, which is also what joins the
+      // network the timer will need.
+      if (autoMinutes_ > 0 && !wifiActivated_ && placeCount_ > 0) {
+        startJob(Job::Forecast);
+        return;
+      }
+      break;
+    }
     case ui::ActionSelect:
       if (event.value < 0 || event.value >= placeCount_) return;
       selected_ = event.value;
@@ -391,6 +470,7 @@ void WeatherActivity::render(RenderLock&&) {
       m.place = placeCount_ ? &places_[selected_] : nullptr;
       m.forecast = haveForecast_ ? &forecast_ : nullptr;
       m.fahrenheit = fahrenheit_;
+      m.autoMinutes = autoMinutes_;
       m.faces.ctx = &target;
       m.faces.bindTitle = [](void* ctx, const bool huge) {
         static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
@@ -399,6 +479,9 @@ void WeatherActivity::render(RenderLock&&) {
       weatherui::buildForecast(surface, m);
       break;
     }
+    case View::AutoPicker:
+      weatherui::buildAutoPicker(surface, autoMinutes_);
+      break;
     case View::Day: {
       weatherui::DayModel m;
       m.place = placeCount_ ? &places_[selected_] : nullptr;
