@@ -7,6 +7,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxTokens.h"
+#include "ClockDigits.h"
 
 namespace clockfaces {
 
@@ -550,6 +551,107 @@ void facePalabras(const Canvas& c, const Moment& now) {
   text(c, toybox::kUiFontId, toybox::kUiCut, c.w - margin, c.h - 70, exact, 1);
 }
 
+// ---------------------------------------------------------------- TAMBOR
+// One dark slab with the time set in a grotesque: the hours heavy, the minutes
+// light, and a seam across the middle where the leaves would fold.
+void bigDigit(const Canvas& c, const int digit, const int x, const int y, const bool bold) {
+  const uint16_t* offsets = bold ? clockdigits::kBoldOffsets : clockdigits::kLightOffsets;
+  const uint8_t* runs = (bold ? clockdigits::kBoldRuns : clockdigits::kLightRuns) + offsets[digit];
+  for (int row = 0; row < clockdigits::kHeight; ++row) {
+    const int count = *runs++;
+    for (int i = 0; i < count; ++i) {
+      c.r.fillRect(x + runs[0], y + row, runs[1], 1, false);
+      runs += 2;
+    }
+  }
+}
+
+void faceTambor(const Canvas& c, const Moment& now) {
+  const Digits t = digitsOf(now);
+  char date[32];
+  dateLine(now, date, sizeof(date));
+  const bool wide = c.wide();
+  const int boldW = clockdigits::kBoldWidth;
+  const int lightW = clockdigits::kLightWidth;
+  const int digitH = clockdigits::kHeight;
+  const int margin = 18;
+  const int foot = toybox::kDisplayCut.inkHeight + 62;  // the date under the slab, clear of the strip
+  const int slabW = c.w - margin * 2;
+  const int slabH = c.h - margin - foot;
+  c.r.fillRoundedRect(margin, margin, slabW, slabH, 34, Color::Black);
+
+  const auto pair = [&](const int first, const int x, const int y, const bool bold) {
+    const int w = bold ? boldW : lightW;
+    for (int i = 0; i < 2; ++i) {
+      if (t.valid) {
+        bigDigit(c, t.d[first + i], x + i * w, y, bold);
+      } else {
+        c.r.fillRect(x + i * w + w / 4, y + digitH / 2 - 8, w / 2, 16, false);
+      }
+    }
+  };
+  if (wide) {
+    const int gap = 26;
+    const int total = boldW * 2 + gap + lightW * 2;
+    const int x = (c.w - total) / 2;
+    const int y = margin + (slabH - digitH) / 2;
+    pair(0, x, y, true);
+    pair(2, x + boldW * 2 + gap, y, false);
+    c.r.fillRect(margin, y + digitH / 2 - 1, slabW, 3, true);
+  } else {
+    const int gap = 56;
+    const int y = margin + (slabH - digitH * 2 - gap) / 2;
+    pair(0, (c.w - boldW * 2) / 2, y, true);
+    pair(2, (c.w - lightW * 2) / 2, y + digitH + gap, false);
+    c.r.fillRect(margin, y + digitH / 2 - 1, slabW, 3, true);
+    c.r.fillRect(margin, y + digitH + gap + digitH / 2 - 1, slabW, 3, true);
+  }
+  if (now.valid) text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, c.h - foot + 14, date);
+}
+
+// ---------------------------------------------------------------- RELOJES
+// Twenty-four small dials, six to a numeral, their hands set so that together
+// they write the time.
+void faceRelojes(const Canvas& c, const Moment& now) {
+  const Digits t = digitsOf(now);
+  char date[32];
+  dateLine(now, date, sizeof(date));
+  const bool wide = c.wide();
+  const int cols = wide ? 8 : 4;
+  const int rows = wide ? 3 : 6;
+  const int foot = toybox::kDisplayCut.inkHeight + 62;
+  const int group = wide ? 28 : 26;  // between the hours and the minutes
+  int cell = (c.w - 24 - (wide ? group : 0)) / cols;
+  const int cellByHeight = (c.h - foot - 20 - (wide ? 0 : group)) / rows;
+  if (cellByHeight < cell) cell = cellByHeight;
+  const int radius = cell / 2 - 3;
+  const int left = (c.w - cell * cols - (wide ? group : 0)) / 2;
+  const int top = (c.h - foot - cell * rows - (wide ? 0 : group)) / 2 + 4;
+  const float pen = radius * 0.13f;
+  static constexpr int kDx[5] = {0, 1, 0, -1, -1};
+  static constexpr int kDy[5] = {-1, 0, 1, 0, 1};
+  for (int d = 0; d < 4; ++d) {
+    const cc::Dial* dials = cc::dialsOf(t.valid ? t.d[d] : 8);
+    for (int i = 0; i < 6; ++i) {
+      const int col = (wide ? d * 2 : (d % 2) * 2) + i % 2;
+      const int row = (wide ? 0 : (d / 2) * 3) + i / 2;
+      const int cx = left + col * cell + cell / 2 + (wide && d >= 2 ? group : 0);
+      const int cy = top + row * cell + cell / 2 + (!wide && d >= 2 ? group : 0);
+      disc(c, cx, cy, radius);
+      disc(c, cx, cy, radius - 2, false);
+      const cc::Dial dial = t.valid ? dials[i] : cc::Dial{cc::Rest, cc::Rest};
+      for (const cc::Hand hand : {dial.a, dial.b}) {
+        // A resting hand stops short of the rim and is drawn thin.
+        const bool rest = hand == cc::Rest;
+        const float reach = rest ? radius * 0.55f : radius - 2.0f;
+        stroke(c, cx, cy, cx + kDx[hand] * reach * (rest ? 0.707f : 1.0f),
+               cy + kDy[hand] * reach * (rest ? 0.707f : 1.0f), rest ? 1.5f : pen);
+      }
+    }
+  }
+  if (now.valid) text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, c.h - foot + 10, date);
+}
+
 }  // namespace
 
 void draw(GfxRenderer& renderer, const int face, const Moment& now) {
@@ -572,6 +674,12 @@ void draw(GfxRenderer& renderer, const int face, const Moment& now) {
       break;
     case 5:
       faceSegmentos(c, now);
+      break;
+    case 7:
+      faceTambor(c, now);
+      break;
+    case 8:
+      faceRelojes(c, now);
       break;
     default:
       facePalabras(c, now);

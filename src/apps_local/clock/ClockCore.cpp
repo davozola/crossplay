@@ -48,9 +48,26 @@ int clampDigit(const int d) { return d < 0 ? 0 : (d > 9 ? 9 : d); }
 }  // namespace
 
 const char* faceName(const int face) {
-  static const char* const kNames[kFaces] = {"TRAZO",  "PALETAS",   "ESFERA",  "ANILLOS",
-                                             "MATRIZ", "SEGMENTOS", "PALABRAS"};
+  static const char* const kNames[kFaces] = {"TRAZO",     "PALETAS",  "ESFERA", "ANILLOS", "MATRIZ",
+                                             "SEGMENTOS", "PALABRAS", "TAMBOR", "RELOJES"};
   return kNames[face < 0 ? 0 : (face >= kFaces ? kFaces - 1 : face)];
+}
+
+const Dial* dialsOf(const int digit) {
+  constexpr Dial X{Rest, Rest};
+  static constexpr Dial kDials[10][6] = {
+      {{Right, Down}, {Left, Down}, {Up, Down}, {Up, Down}, {Up, Right}, {Up, Left}},          // 0
+      {X, {Down, Down}, X, {Up, Down}, X, {Up, Up}},                                           // 1
+      {{Right, Right}, {Left, Down}, {Right, Down}, {Left, Up}, {Up, Right}, {Left, Left}},    // 2
+      {{Right, Right}, {Left, Down}, {Right, Right}, {Up, Down}, {Right, Right}, {Left, Up}},  // 3
+      {{Down, Down}, {Down, Down}, {Up, Right}, {Up, Down}, X, {Up, Up}},                      // 4
+      {{Right, Down}, {Left, Left}, {Up, Right}, {Left, Down}, {Right, Right}, {Left, Up}},    // 5
+      {{Right, Down}, {Left, Left}, {Up, Down}, {Left, Down}, {Up, Right}, {Left, Up}},        // 6
+      {{Right, Right}, {Left, Down}, X, {Up, Down}, X, {Up, Up}},                              // 7
+      {{Right, Down}, {Left, Down}, {Up, Right}, {Up, Left}, {Up, Right}, {Up, Left}},         // 8
+      {{Right, Down}, {Left, Down}, {Up, Right}, {Up, Down}, {Right, Right}, {Left, Up}},      // 9
+  };
+  return kDials[clampDigit(digit)];
 }
 
 int strokesOf(const int digit, const Stroke*& out) {

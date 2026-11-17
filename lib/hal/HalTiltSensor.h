@@ -25,6 +25,7 @@ class HalTiltSensor {
   bool _hadActivity = false;       // Non-consuming flag for sleep timer
   bool _inTilt = false;            // Currently tilted past threshold
   bool _isAwake = false;           // Tracks power state
+  bool _held = false;              // FORK CHANGE: an app wants gravity while tilt page turn is off
   unsigned long _initMs = 0;       // Timestamp of sensor init
   unsigned long _lastTiltMs = 0;   // Debounce / cooldown
   unsigned long _wakeMs = 0;       // Timestamp of last wake() for stabilization
@@ -67,6 +68,14 @@ class HalTiltSensor {
   // Non-consuming: true if any tilt activity occurred since last call.
   // Used to reset the auto-sleep inactivity timer.
   bool hadActivity();
+
+  // FORK CHANGE: keeps the sensor sampling for an app that reads gravity, whatever
+  // the tilt page turn setting says. Release it on the way out.
+  void hold(bool on) { _held = on; }
+
+  // FORK CHANGE: acceleration in g, in Imu::read()'s board-independent frame.
+  // False when there is no sensor, or it is asleep or still settling.
+  bool readGravity(float& ax, float& ay, float& az) const;
 
   // Discard any pending tilt events (call when leaving reader or disabling tilt).
   void clearPendingEvents();
