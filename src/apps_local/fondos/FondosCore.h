@@ -77,6 +77,29 @@ inline bool unpackState(const uint8_t* in, const int size, const int count, Mode
   return true;
 }
 
+// The order the pictures are shown in on one visit: every picture once, in an
+// order that depends on `seed`, so the ones at the end of the pack are seen as
+// often as the ones at the start. `first`, when it is a picture, leads.
+inline void shuffled(uint8_t* order, const int count, uint32_t seed, const int first = -1) {
+  for (int i = 0; i < count; ++i) order[i] = static_cast<uint8_t>(i);
+  for (int i = count - 1; i > 0; --i) {
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    const int j = static_cast<int>(seed % static_cast<uint32_t>(i + 1));
+    const uint8_t t = order[i];
+    order[i] = order[j];
+    order[j] = t;
+  }
+  for (int i = 0; i < count && first >= 0; ++i) {
+    if (order[i] == first) {
+      order[i] = order[0];
+      order[0] = static_cast<uint8_t>(first);
+      break;
+    }
+  }
+}
+
 // Steps round the pack.
 inline int step(const int current, const int direction, const int count) {
   return count <= 0 ? 0 : ((current + direction) % count + count) % count;

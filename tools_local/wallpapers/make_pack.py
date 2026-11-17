@@ -5,7 +5,7 @@ Each picture is cropped to the panel's shape (480 by 800, upright), given its
 full range of greys, and dithered to black and white; the pack is those as
 one-bit BMP files, one after another, behind a list of what they are.
 
-    python3 tools_local/wallpapers/make_pack.py <folder with NNN.jpg and elegidos.json> [--sheet out.png]
+    python3 tools_local/wallpapers/make_pack.py <folder with NNN.jpg and elegidos.json> [--sheet out.png] [--out file]
 
 Needs Pillow. Writes src/apps_local/fondos/fondos.pack.
 
@@ -24,7 +24,7 @@ from PIL import Image, ImageFilter, ImageOps
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "src", "apps_local", "fondos", "fondos.pack")
 W, H = 480, 800
-ORDER = ("japonesa", "grabados", "botanica", "paisaje")
+ORDER = ("japonesa", "naturaleza", "grabados", "paisaje", "botanica")
 
 
 def latin(text, cap):
@@ -69,9 +69,10 @@ def trimmed(im):
     return im.crop((max(0, l - pad), max(0, t - pad), min(im.width, r + pad), min(im.height, b + pad)))
 
 
-def picture(path, focus):
+def picture(path, focus, trim=True):
     im = ImageOps.exif_transpose(Image.open(path)).convert("L")
-    im = trimmed(im)
+    if trim:
+        im = trimmed(im)
     # Fill the panel: scale so both sides cover it, then crop the overhang, keeping `focus` of the way down.
     scale = max(W / im.width, H / im.height)
     im = im.resize((max(W, round(im.width * scale)), max(H, round(im.height * scale))), Image.LANCZOS)
@@ -94,6 +95,7 @@ def bmp(im):
 
 def main():
     folder = sys.argv[1]
+    out_path = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else OUT
     chosen = json.load(open(os.path.join(folder, "elegidos.json")))
     chosen.sort(key=lambda c: (ORDER.index(c["kind"]) if c["kind"] in ORDER else 9, c.get("artist") or "", c["id"]))
     texts, pictures, sheet = [], [], []
@@ -102,18 +104,18 @@ def main():
         if not os.path.exists(path):
             print("missing %s" % path)
             continue
-        im = picture(path, c.get("focus", 0.5))
+        im = picture(path, c.get("focus", 0.5), c.get("trim", True))
         pictures.append(bmp(im))
         texts.append(latin(short_title(c.get("title")), 56) + latin(c.get("artist") or "", 40))
         sheet.append(im)
     size = len(pictures[0])
     assert all(len(p) == size for p in pictures)
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, "wb") as f:
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, "wb") as f:
         f.write(b"FND1" + struct.pack("<HI", len(pictures), size))
         f.write(b"".join(texts))
         f.write(b"".join(pictures))
-    print("%d pictures, %d bytes, %s" % (len(pictures), os.path.getsize(OUT), os.path.relpath(OUT, ROOT)))
+    print("%d pictures, %d bytes, %s" % (len(pictures), os.path.getsize(out_path), out_path))
     if "--sheet" in sys.argv:
         cols = 10
         rows = (len(sheet) + cols - 1) // cols

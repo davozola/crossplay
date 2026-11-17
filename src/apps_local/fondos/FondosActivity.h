@@ -37,7 +37,10 @@ class FondosActivity final : public Activity {
   fondos::Header header_;
   // The pack in the firmware, or null when it is read from the card.
   const uint8_t* embedded_ = nullptr;
-  int index_ = 0;
+  int index_ = 0;  // the picture on the page, as the pack numbers it
+  // This visit's order, and where in it the page is.
+  uint8_t order_[fondos::kMaxPictures] = {};
+  int place_ = 0;
   fondos::Mode mode_ = fondos::Mode::Off;
   int chosen_ = 0;
   char title_[fondos::kTitleBytes * 2 + 1] = "";

@@ -5,6 +5,7 @@
 #include <HalDisplay.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <esp_random.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -224,7 +225,12 @@ void FondosActivity::onEnter() {
   note_ = "";
   if (openPack()) {
     loadState();
-    index_ = mode_ == Mode::One ? chosen_ : 0;
+    // A new order every visit, led by the picture in use when there is one.
+    const uint32_t seed =
+        (static_cast<uint32_t>(millis()) * 2654435761u) ^ static_cast<uint32_t>(esp_random()) ^ 0x9E3779B9u;
+    fondos::shuffled(order_, header_.count, seed | 1u, mode_ == Mode::One ? chosen_ : -1);
+    place_ = 0;
+    index_ = order_[0];
     readText(index_);
   }
   requestUpdate();
@@ -262,7 +268,8 @@ void FondosActivity::loop() {
   switch (action) {
     case ActionPrevious:
     case ActionNext:
-      index_ = fondos::step(index_, action == ActionNext ? 1 : -1, header_.count);
+      place_ = fondos::step(place_, action == ActionNext ? 1 : -1, header_.count);
+      index_ = order_[place_];
       readText(index_);
       note_ = "";
       break;
@@ -323,7 +330,7 @@ void FondosActivity::render(RenderLock&&) {
 
     // What it is, and where in the pack; or what just happened.
     char place[toybox::kIntChars * 2 + 8];
-    std::snprintf(place, sizeof(place), "%d / %d", (index_ + 1) % 1000, header_.count % 1000);
+    std::snprintf(place, sizeof(place), "%d / %d", (place_ + 1) % 1000, header_.count % 1000);
     const int placeW = renderer.getTextWidth(NOTOSANS_12_FONT_ID, place);
     renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - placeW, top + 10, place, true);
     if (note_[0] != 0) {
@@ -344,7 +351,7 @@ void FondosActivity::render(RenderLock&&) {
       const bool isChosen = mode_ == Mode::One && chosen_ == index_;
       lab::button(screen, lab::rect(x, rowY, arrow, rowH), "<", ActionPrevious, 0, false, false);
       lab::button(screen, lab::rect(x + arrow + gap, rowY, inner - 2 * (arrow + gap), rowH),
-                  isChosen ? "THIS IS THE ONE IN USE" : "USE THIS ONE", ActionUse, 0, isChosen, false);
+                  isChosen ? "IN USE" : "USE THIS ONE", ActionUse, 0, isChosen, false);
       lab::button(screen, lab::rect(x + inner - arrow, rowY, arrow, rowH), ">", ActionNext, 0, false, false);
       lab::button(screen, lab::rect(x, rowY + rowH + gap, inner, 52),
                   mode_ == Mode::Every ? "A NEW ONE EVERY SLEEP: ON" : "A NEW ONE EVERY SLEEP: OFF", ActionEvery, 0,

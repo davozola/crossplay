@@ -1,0 +1,531 @@
+[
+ {
+  "id": 2941,
+  "kind": "japonesa",
+  "title": "Kanaya, from the series \"Fifty-three Stations of the Tokaido (Tokaido gojusan tsugi)\"",
+  "artist": "Katsushika Hokusai",
+  "date": "c. 1806",
+  "image_id": "09e0b17d-8a17-1d4d-3bea-d8939bb1fdda"
+ },
+ {
+  "id": 13255,
+  "kind": "japonesa",
+  "title": "Yoro Waterfall in Mino Province (Mino no kuni Yoro no taki), from the series Tour of the Waterfalls in Various Provinces (Shokoku Takimeguri)",
+  "artist": "Katsushika Hokusai",
+  "date": "c. 1833",
+  "image_id": "d0e64f27-a884-a994-7962-f5b1dd863edb"
+ },
+ {
+  "id": 25183,
+  "kind": "japonesa",
+  "title": "Ono Falls on the Kisokaidō Road (Kisokaidō Ono no bakufu), from the series Tour of the Waterfalls in Various Provinces (Shokoku taki meguri)",
+  "artist": "Katsushika Hokusai",
+  "date": "c. 1833",
+  "image_id": "6610ddf3-b8d5-a8fa-5a03-a803e7e76042"
+ },
+ {
+  "id": 57271,
+  "kind": "japonesa",
+  "title": "A Peasant Crossing a Bridge, from the series A True Mirror of Chinese and Japanese Poems",
+  "artist": "Katsushika Hokusai",
+  "date": "late 1830s",
+  "image_id": "a0a3469e-c44e-0498-0fe6-5f8dfb16e54e"
+ },
+ {
+  "id": 13142,
+  "kind": "japonesa",
+  "title": "Mimasaka Province: Yamabushi Valley (Mimasaka, Yamabushidani), from the series \"Famous Places in the Sixty-odd Provinces (Rokujuyoshu meisho zue)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1853",
+  "image_id": "50a2febf-a28a-2675-c4db-e4eb7f470413"
+ },
+ {
+  "id": 13152,
+  "kind": "japonesa",
+  "title": "Omi Province: Lake Biwa and Ishiyama Temple (Omi, Biwako Ishiyamadera), from the series \"Famous Places in the Sixty-odd Provinces (Rokujuyoshu meisho zue)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1853",
+  "image_id": "6b06bfa9-e26c-529f-d6c5-9cfc55085593"
+ },
+ {
+  "id": 13154,
+  "kind": "japonesa",
+  "title": "Bingo Province: Kannon Temple at Abuto (Bingo, Abuto, Kannondo), from the series \"Famous Places in the Sixty-odd Provinces (Rokujuyoshu meisho zue)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1853",
+  "image_id": "72dcd316-b688-aeac-549f-95749f0eb609"
+ },
+ {
+  "id": 13171,
+  "kind": "japonesa",
+  "title": "Hilltop View from Yushima Tenjin Shrine (Yushima Tenjin sakaue tenbo), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1856",
+  "image_id": "3ea2cc56-26e2-5b14-1f96-c12df7bcbe11"
+ },
+ {
+  "id": 13188,
+  "kind": "japonesa",
+  "title": "Precints of the Akiba Shrine, Ukeji (Ukeji Akiba no keidai), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "d31179e7-990a-1faf-8e7d-4f08977cde2c"
+ },
+ {
+  "id": 13192,
+  "kind": "japonesa",
+  "title": "Asakusa Rice Fields and Torinomachi Festival (Asakusa tanbo Torinomachi mode), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "72b3d0cf-f10b-3679-cf9f-b7fc211766fa"
+ },
+ {
+  "id": 13198,
+  "kind": "japonesa",
+  "title": "Bamboo Yards and Kyo Bridge (Kyobashi Takegashi), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "ee235172-a244-1970-5853-5db12dfeaae7"
+ },
+ {
+  "id": 18366,
+  "kind": "japonesa",
+  "title": "Oumayagashi, from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "d8930f0d-428c-5bac-718a-060daf54261c"
+ },
+ {
+  "id": 18972,
+  "kind": "japonesa",
+  "title": "Autumn Moon over Ishiyama Temple (Ishiyama shugetsu), from the series \"Eight Views of Omi (Omi hakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "36406ca1-f36b-19e9-6158-45933a7bcd91"
+ },
+ {
+  "id": 26577,
+  "kind": "japonesa",
+  "title": "Plum Garden at Kameido (Kameido Umeyashiki), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "89a2332f-be15-8e05-bc79-778738fdc1ef"
+ },
+ {
+  "id": 26615,
+  "kind": "japonesa",
+  "title": "Drum Bridge and Yuhi Hill at Meguro (Meguro Taikobashi Yuhi-no-oka), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "723f833f-19f7-89e0-60ad-ad7ffc33ca4d"
+ },
+ {
+  "id": 34096,
+  "kind": "japonesa",
+  "title": "Kinryuzan Temple at Asakusa (Asakusa Kinryuzan), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1856",
+  "image_id": "15e90d2e-ba4f-4fff-f784-fc84f4bbfe0a"
+ },
+ {
+  "id": 34277,
+  "kind": "japonesa",
+  "title": "Ryogoku Bridge and the Great Riverbank (Ryogokubashi Okawabata), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1856",
+  "image_id": "003e33b7-fa70-8159-20db-68e2faebdb22"
+ },
+ {
+  "id": 130542,
+  "kind": "japonesa",
+  "title": "Kai Province: Monkey Bridge (Kai, Saruhashi), from the series \"Famous Places in the Sixty-odd Provinces (Rokujuyoshu meisho zue)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1853",
+  "image_id": "ccb040c2-2641-126b-b0d2-2a838c88b587"
+ },
+ {
+  "id": 130558,
+  "kind": "japonesa",
+  "title": "Hida Province: Basket Ferry (Hida, Kagowatashi), from the series \"Famous Places in the Sixty-odd Provinces (Rokujuyoshu meisho zue)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1853",
+  "image_id": "b1f6f63e-585d-d5ae-8221-6d9d7fbeb1ac"
+ },
+ {
+  "id": 130577,
+  "kind": "japonesa",
+  "title": "Awa Province: Naruto Whirlpools (Awa, Naruto no fuha), from the series \"Famous Places in the Sixty-odd Provinces (Rokujuyoshu meisho zue)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1855",
+  "image_id": "e51dec75-e984-b564-869e-143c739eb372"
+ },
+ {
+  "id": 196735,
+  "kind": "japonesa",
+  "title": "Surugacho, from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1856",
+  "image_id": "0465e912-681d-ae13-220d-2aca746a16b8"
+ },
+ {
+  "id": 13229,
+  "kind": "japonesa",
+  "title": "Night Rain at the Paulownia Grove at Akasaka (Akasaka Kiribatake uchu yukei), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige II (Shigenobu)",
+  "date": "1859",
+  "image_id": "24c732cd-dad6-7d5a-a034-238169c1d790"
+ },
+ {
+  "id": 196732,
+  "kind": "japonesa",
+  "title": "Tsuten-kyo Bridge, Tofuku Temple, Kyoto (Kyoto Tofukuji Tsutenkyo bashi) from the series “One Hundred Famous Views in the Various Provinces (Shokoku meisho hyakkei)”",
+  "artist": "Utagawa Hiroshige II (Shigenobu)",
+  "date": "1859",
+  "image_id": "3c28eaae-5d99-4128-57dd-457d3d93bfaf"
+ },
+ {
+  "id": 196747,
+  "kind": "japonesa",
+  "title": "Kintai Bridge at Iwakuni, Suo (Boshu) Province from the series “One Hundred Famous Views of the Various Provinces”",
+  "artist": "Utagawa Hiroshige II (Shigenobu)",
+  "date": "1859",
+  "image_id": "67433b48-87d7-0d1f-9084-a44fc8f85977"
+ },
+ {
+  "id": 196844,
+  "kind": "japonesa",
+  "title": "Actual View of Mount Tate, Etchu Province (Etchu Tateyama shinkei) \"One Hundred Famous Views in the Various Provinces (Shokoku meisho hyakkei)\"",
+  "artist": "Utagawa Hiroshige II (Shigenobu)",
+  "date": "1859",
+  "image_id": "c19d707c-fac8-dd11-ec70-f7b82a4624cd"
+ },
+ {
+  "id": 196846,
+  "kind": "japonesa",
+  "title": "Image of a Whale Hunt at Goto, Hizen Province (Hizen Goto geiryo no zu), from the series “One Hundred Famous Views in the Various Provinces (Shokoku meisho hyakkei)”",
+  "artist": "Utagawa Hiroshige II (Shigenobu)",
+  "date": "1859",
+  "image_id": "29852522-4a8f-9bf0-21ef-c88c0058bf91"
+ },
+ {
+  "id": 21720,
+  "kind": "naturaleza",
+  "title": "Cranes on snow-covered pine",
+  "artist": "Katsushika Hokusai",
+  "date": "c. 1834",
+  "image_id": "cc5fce96-3635-35da-e7fd-a68f4b2a26c3"
+ },
+ {
+  "id": 18876,
+  "kind": "naturaleza",
+  "title": "Great American Shrike",
+  "artist": "Robert Havell",
+  "date": "1834",
+  "image_id": "3f0ab072-0d40-61b3-c60f-c1341454e5da"
+ },
+ {
+  "id": 18878,
+  "kind": "naturaleza",
+  "title": "Florida Jay",
+  "artist": "Robert Havell",
+  "date": "1830",
+  "image_id": "bf44e53f-9df4-3246-8acd-3af23625396a"
+ },
+ {
+  "id": 183040,
+  "kind": "naturaleza",
+  "title": "Black Backed Gull",
+  "artist": "Robert Havell",
+  "date": "1826/39",
+  "image_id": "a48d77a6-ee9d-5da8-00e1-3f8a41a00d2a"
+ },
+ {
+  "id": 11039,
+  "kind": "naturaleza",
+  "title": "Sparrows and Camellia in Snow",
+  "artist": "Utagawa Hiroshige",
+  "date": "c. 1831-33",
+  "image_id": "2270b017-fe5a-fe7a-ed50-911fde5bf644"
+ },
+ {
+  "id": 19018,
+  "kind": "naturaleza",
+  "title": "Japanese white-eye on flowering branch",
+  "artist": "Utagawa Hiroshige",
+  "date": "1830s–1840s",
+  "image_id": "19c28462-767d-b09b-f560-b4572406696a"
+ },
+ {
+  "id": 26605,
+  "kind": "naturaleza",
+  "title": "Fukagawa Susaki and Jumantsubo (Fukagawa Susaki Jumantsubo), from the series \"One Hundred Famous Views of Edo (Meisho Edo hyakkei)\"",
+  "artist": "Utagawa Hiroshige",
+  "date": "1857",
+  "image_id": "5b88161b-254e-fdf2-5d69-b869fd506ac8"
+ },
+ {
+  "id": 2273,
+  "kind": "grabados",
+  "title": "The First Knot",
+  "artist": "Albrecht Dürer",
+  "date": "c. 1507",
+  "image_id": "eed05c65-f9ea-eccf-afb2-59d4b36ba2a4"
+ },
+ {
+  "id": 2287,
+  "kind": "grabados",
+  "title": "The Fifth Knot",
+  "artist": "Albrecht Dürer",
+  "date": "c. 1507",
+  "image_id": "f8e9efbf-e143-8bd9-45b6-9f2065704859"
+ },
+ {
+  "id": 4107,
+  "kind": "grabados",
+  "title": "St. Christopher Facing to the Right",
+  "artist": "Albrecht Dürer",
+  "date": "1521",
+  "image_id": "2c7e949f-9a23-55b2-9edb-1a383c9b63e9"
+ },
+ {
+  "id": 4118,
+  "kind": "grabados",
+  "title": "Erasmus of Rotterdam",
+  "artist": "Albrecht Dürer",
+  "date": "1526",
+  "image_id": "4d06856a-ba89-07fa-68eb-2305246394c2"
+ },
+ {
+  "id": 4152,
+  "kind": "grabados",
+  "title": "The Annunciation, from The Life of the Virgin",
+  "artist": "Albrecht Dürer",
+  "date": "c. 1503, published 1511",
+  "image_id": "32f4b7ec-9595-d66c-76f4-4a97c61720ff"
+ },
+ {
+  "id": 11100,
+  "kind": "grabados",
+  "title": "Knight, Death, and the Devil",
+  "artist": "Albrecht Dürer",
+  "date": "1513",
+  "image_id": "ba78a8c5-6fa2-4263-a702-c1ce74467c8a"
+ },
+ {
+  "id": 14448,
+  "kind": "grabados",
+  "title": "Nativity",
+  "artist": "Albrecht Dürer",
+  "date": "1504",
+  "image_id": "f7c93ce5-818b-1c63-96d7-88b1efe3b2d2"
+ },
+ {
+  "id": 28260,
+  "kind": "grabados",
+  "title": "Melencolia I",
+  "artist": "Albrecht Dürer",
+  "date": "1514",
+  "image_id": "509681b4-1348-6335-f7e5-9a30b62d3b27",
+  "trim": false
+ },
+ {
+  "id": 28266,
+  "kind": "grabados",
+  "title": "The Prodigal Son Amid the Swine",
+  "artist": "Albrecht Dürer",
+  "date": "c. 1496",
+  "image_id": "3adb71ad-f680-8153-18fc-61e5b8c6eff0"
+ },
+ {
+  "id": 106551,
+  "kind": "grabados",
+  "title": "Saint Jerome in his Cell",
+  "artist": "Albrecht Dürer",
+  "date": "1511",
+  "image_id": "927d4fdd-a7f3-b69e-1ba6-3f74f00b9bc4"
+ },
+ {
+  "id": 44743,
+  "kind": "grabados",
+  "title": "The Sleep of Reason Produces Monsters, plate 43 from Los Caprichos",
+  "artist": "Francisco José de Goya y Lucientes",
+  "date": "1797/99",
+  "image_id": "b2272f4e-1221-9321-6973-2d93d5babbf0"
+ },
+ {
+  "id": 7356,
+  "kind": "grabados",
+  "title": "The Smoking Fire, plate 6 from Imaginary Prisons",
+  "artist": "Giovanni Battista Piranesi",
+  "date": "1761",
+  "image_id": "d42b053e-5937-50c0-b18f-75a2ef1ceea5"
+ },
+ {
+  "id": 7358,
+  "kind": "grabados",
+  "title": "The Drawbridge, plate 7 from Imaginary Prisons",
+  "artist": "Giovanni Battista Piranesi",
+  "date": "1761",
+  "image_id": "e8ea62c9-e27c-e0da-4e5f-339d16b0bedc"
+ },
+ {
+  "id": 64511,
+  "kind": "grabados",
+  "title": "The Column of Marcus Aurelius, from Views of Rome",
+  "artist": "Giovanni Battista Piranesi",
+  "date": "1750/59",
+  "image_id": "dd42cb97-b4bd-a95c-12f6-bba45a2d9406"
+ },
+ {
+  "id": 74624,
+  "kind": "grabados",
+  "title": "The Round Tower, plate 3 from the second edition of Carceri d'invenzione (Imaginary Prisons)",
+  "artist": "Giovanni Battista Piranesi",
+  "date": "1750, reworked 1761",
+  "image_id": "d166f39b-41c5-2239-e00c-f4bf6aeae430"
+ },
+ {
+  "id": 18054,
+  "kind": "grabados",
+  "title": "Beggar without Hat or Shoes, plate twelve from The Beggars",
+  "artist": "Jacques Callot",
+  "date": "c. 1622",
+  "image_id": "b0f4051c-fbef-1c86-1b2b-cc2e371589f2"
+ },
+ {
+  "id": 4016,
+  "kind": "grabados",
+  "title": "Ornament with Owl Mocked by Day Birds",
+  "artist": "Martin Schongauer",
+  "date": "c. 1474",
+  "image_id": "10a5f87f-dd01-73f3-4085-dd06f718c989"
+ },
+ {
+  "id": 84751,
+  "kind": "grabados",
+  "title": "The Temptation of Saint Anthony",
+  "artist": "Martin Schongauer",
+  "date": "c. 1469/73",
+  "image_id": "914c1e0c-c2aa-887c-5de2-a45ba72dd7d1"
+ },
+ {
+  "id": 79461,
+  "kind": "grabados",
+  "title": "Self-Portrait Leaning on a Stone Sill",
+  "artist": "Rembrandt van Rijn",
+  "date": "1639",
+  "image_id": "36bd2d6c-2a82-e9e3-eda5-403da398afb5"
+ },
+ {
+  "id": 181616,
+  "kind": "grabados",
+  "title": "Self-Portrait Etching at a Window",
+  "artist": "Rembrandt van Rijn",
+  "date": "1648",
+  "image_id": "a7c1f371-c9e9-7ff3-6e7e-949ae12dc939"
+ },
+ {
+  "id": 159749,
+  "kind": "paisaje",
+  "title": "The Bishop's Tomb, from Vedute",
+  "artist": "Canaletto",
+  "date": "1735/44",
+  "image_id": "b703a6e6-0125-02c3-a47b-6ebe55d32789"
+ },
+ {
+  "id": 159768,
+  "kind": "paisaje",
+  "title": "The House with the Inscription and The House with the Peristyle, from Vedute",
+  "artist": "Canaletto",
+  "date": "1735/44",
+  "image_id": "2ab17600-8a86-7efb-5ac6-d194a791a05f"
+ },
+ {
+  "id": 28734,
+  "kind": "paisaje",
+  "title": "Entrance to the French Capuchin Monastery in Athens",
+  "artist": "Charles Meryon",
+  "date": "1854",
+  "image_id": "2c68af90-3e6c-4501-6ab7-ed6ade0251d0"
+ },
+ {
+  "id": 47194,
+  "kind": "paisaje",
+  "title": "Le Petit Pont, Paris",
+  "artist": "Charles Meryon",
+  "date": "1850",
+  "image_id": "1d96fd55-5726-39b7-baff-2890f31eeb71"
+ },
+ {
+  "id": 47238,
+  "kind": "paisaje",
+  "title": "Chantrey Street, Paris",
+  "artist": "Charles Meryon",
+  "date": "1862",
+  "image_id": "976ff3cf-4ca0-5bd2-e162-5ddd212604e7"
+ },
+ {
+  "id": 63891,
+  "kind": "paisaje",
+  "title": "The Clock Tower, Paris",
+  "artist": "Charles Meryon",
+  "date": "1852",
+  "image_id": "f4a0199a-7961-e505-3f16-8ac96e6e91bd"
+ },
+ {
+  "id": 22630,
+  "kind": "paisaje",
+  "title": "The Four Goats",
+  "artist": "Claude Lorrain",
+  "date": "1630/33",
+  "image_id": "e30de8cd-6a79-1f1b-068a-2c7f9bd36935"
+ },
+ {
+  "id": 41604,
+  "kind": "paisaje",
+  "title": "Small Vertical Landscape",
+  "artist": "Félix Hilaire Buhot",
+  "date": "n.d.",
+  "image_id": "c7b4eff0-81eb-686c-1b36-b8f390a99fe8"
+ },
+ {
+  "id": 48108,
+  "kind": "paisaje",
+  "title": "Trajan's Column, from Views of Rome",
+  "artist": "Giovanni Battista Piranesi",
+  "date": "1750/59",
+  "image_id": "48dc9b5f-a1b9-fffb-ee51-4a33a01a3abb"
+ },
+ {
+  "id": 48164,
+  "kind": "paisaje",
+  "title": "Another view of the Temple of the Sibyl in Tivoli, from Views of Rome",
+  "artist": "Giovanni Battista Piranesi",
+  "date": "1761",
+  "image_id": "5fe64b75-5d48-2753-b5bf-39a513c4ee16"
+ },
+ {
+  "id": 7741,
+  "kind": "paisaje",
+  "title": "The Balcony",
+  "artist": "James McNeill Whistler",
+  "date": "1879/80",
+  "image_id": "961cab69-7b84-c977-e0bd-6ce59399f5c1"
+ },
+ {
+  "id": 22753,
+  "kind": "paisaje",
+  "title": "The Skylark",
+  "artist": "Samuel Palmer",
+  "date": "n.d.",
+  "image_id": "1d53e901-5ead-b4e4-db12-f8ce6e998098"
+ },
+ {
+  "id": 47714,
+  "kind": "paisaje",
+  "title": "Sunset",
+  "artist": "Samuel Palmer",
+  "date": "c. 1850",
+  "image_id": "68a3b364-f1b8-3bc9-15cb-f25161e10d26"
+ }
+]
