@@ -526,6 +526,7 @@ void buildDetail(toybox::Screen& screen, const DetailModel& model) {
   const int cellW = inner / 3;
   char prev[32];
   mk::formatPrice(mk::previousClose(q), prev, sizeof(prev));
+  const bool rolling = q.dayAgo > 0;
   char volume[24];
   if (q.volume > 0) {
     mk::formatVolume(q.volume, volume, sizeof(volume));
@@ -538,7 +539,7 @@ void buildDetail(toybox::Screen& screen, const DetailModel& model) {
   signedPercent(q, sessionsIn(Span::Week, model.asset, q), week, sizeof(week));
   signedPercent(q, sessionsIn(Span::Month, model.asset, q), month, sizeof(month));
   signedPercent(q, q.count, quarter, sizeof(quarter));
-  statCell(screen, x, y, cellW, "PREV CLOSE", prev);
+  statCell(screen, x, y, cellW, rolling ? "24H AGO" : "PREV CLOSE", prev);
   statCell(screen, x + cellW, y, cellW, "VOLUME", volume);
   statCell(screen, x + cellW * 2, y, cellW, "1 WEEK", week);
   box(screen, x + cellW, y, toybox::kHairline, 48, kInk);

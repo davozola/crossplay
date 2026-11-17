@@ -119,6 +119,21 @@ int main() {
     const std::string json = slurp("coinbase.json");
     Quote q;
     check(parseCoinbase(json.data(), json.size(), q), "coinbase parses");
+    {
+      // Around the clock there is no close: the day's change is over 24 hours.
+      Quote day = q;
+      const double candle = dayChangePercent(day);
+      const char stats[] =
+          "{\"open\":\"50000.00\",\"high\":\"52000\",\"low\":\"49000\",\"last\":\"51000.00\",\"volume\":\"1\"}";
+      check(applyCoinbaseStats(stats, sizeof(stats) - 1, day), "coinbase stats apply");
+      check(day.price == 51000.0 && previousClose(day) == 50000.0, "stats give the price now and a day ago");
+      check(std::fabs(dayChangePercent(day) - 2.0) < 1e-9, "the day's change is the last 24 hours");
+      Quote bad = q;
+      check(!applyCoinbaseStats("{}", 2, bad) && dayChangePercent(bad) == candle, "no stats keeps the candle's change");
+      char statsUrl[128];
+      coinbaseStatsUrlFor("BTC-USD", statsUrl, sizeof(statsUrl));
+      check(std::strcmp(statsUrl, "https://api.exchange.coinbase.com/products/BTC-USD/stats") == 0, "stats url");
+    }
     check(q.count == kMaxCloses, "the newest closes fill the buffer");
     check(near(q.price, 63961.67) && near(q.dayHigh, 65366.39) && near(q.dayLow, 63922), "today's candle");
     check(near(previousClose(q), 65315.35), "yesterday's close");

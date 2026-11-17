@@ -347,6 +347,10 @@ void coinbaseUrlFor(const char* product, char* out, const size_t cap) {
   std::snprintf(out, cap, "https://api.exchange.coinbase.com/products/%s/candles?granularity=86400", product);
 }
 
+void coinbaseStatsUrlFor(const char* product, char* out, const size_t cap) {
+  std::snprintf(out, cap, "https://api.exchange.coinbase.com/products/%s/stats", product);
+}
+
 void coinbaseUrl(char* out, const size_t cap) { coinbaseUrlFor(kCatalogue[0].symbol, out, cap); }
 
 void cnbcBarsUrlSpan(const char* symbol, const int32_t today, const int daysBack, char* out, const size_t cap) {
@@ -481,6 +485,20 @@ bool parseCoinbase(const char* json, const size_t len, Quote& out) {
   return true;
 }
 
+bool applyCoinbaseStats(const char* json, const size_t len, Quote& out) {
+  if (!out.valid) return false;
+  const Span stats = flatjson::root(json, len);
+  const double open = loose(member(stats, "open"));
+  const double last = loose(member(stats, "last"));
+  if (open <= 0) return false;
+  out.dayAgo = open;
+  if (last > 0) {
+    out.price = last;
+    out.closes[out.count - 1] = static_cast<float>(last);
+  }
+  return true;
+}
+
 bool parseCnbcBars(const char* json, const size_t len, Quote& out) {
   out = Quote{};
   const Span bars = member(member(flatjson::root(json, len), "barData"), "priceBars");
@@ -585,7 +603,10 @@ bool applyCnbcQuoteFor(const char* json, const size_t len, const char* want, Quo
   return found;
 }
 
-double previousClose(const Quote& q) { return q.count >= 2 ? static_cast<double>(q.closes[q.count - 2]) : q.price; }
+double previousClose(const Quote& q) {
+  if (q.dayAgo > 0) return q.dayAgo;
+  return q.count >= 2 ? static_cast<double>(q.closes[q.count - 2]) : q.price;
+}
 
 double closeBefore(const Quote& q, const Period period) {
   if (q.count < 2) return q.price;
