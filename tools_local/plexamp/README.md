@@ -28,3 +28,6 @@ never printed.
 
 Until `control` has been run against a real player, nothing about controlling
 Plexamp on Android is known.
+
+`python3 plex_diag.py tls` prints who signs plex.tv's and your server's certificates, which is what the
+firmware's Jukebox app has to verify (see `docs/jukebox.md`).

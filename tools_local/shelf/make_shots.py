@@ -31,6 +31,7 @@ SHOTS = {
     "HANDWRITING": "handwriting", "WEATHER": "weather", "NAVAL WEATHER": "naval", "MARKETS": "markets",
     "FM-1 GUIAS": "fmguide", "MUSIC THEORY": "theory", "RPN 12C": "rpn",
     "MARCO": "marco",
+    "JUKEBOX": "jukebox",
 }
 
 

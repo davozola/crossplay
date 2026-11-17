@@ -1,0 +1,92 @@
+[
+ {
+  "name": "Home Server",
+  "product": "Plex Media Server",
+  "productVersion": "1.43.3.10896-cb3ebc72d",
+  "platform": "MacOSX",
+  "platformVersion": "27.0.1",
+  "device": "Mac",
+  "clientIdentifier": "aaaabbbbccccddddeeeeffff0000111122223333",
+  "provides": "server",
+  "ownerId": "REDACTED",
+  "sourceTitle": "REDACTED",
+  "publicAddress": "REDACTED",
+  "accessToken": "REDACTED",
+  "searchEnabled": true,
+  "createdAt": "2025-12-02T08:19:20Z",
+  "lastSeenAt": "2026-11-17T09:39:09Z",
+  "owned": true,
+  "home": "REDACTED",
+  "synced": false,
+  "relay": true,
+  "presence": true,
+  "httpsRequired": "REDACTED",
+  "publicAddressMatches": true,
+  "dnsRebindingProtection": false,
+  "natLoopbackSupported": false,
+  "connections": [
+   {
+    "protocol": "https",
+    "address": "192.168.1.131",
+    "port": 32400,
+    "uri": "https://192-168-1-131.0123456789abcdef0123456789abcdef.plex.direct:32400",
+    "local": true,
+    "relay": false,
+    "IPv6": false
+   },
+   {
+    "protocol": "https",
+    "address": "203.0.113.7",
+    "port": 24909,
+    "uri": "https://203-0-113-7.0123456789abcdef0123456789abcdef.plex.direct:24909",
+    "local": false,
+    "relay": false,
+    "IPv6": false
+   },
+   {
+    "protocol": "https",
+    "address": "198.51.100.9",
+    "port": 8443,
+    "uri": "https://198-51-100-9.0123456789abcdef0123456789abcdef.plex.direct:8443",
+    "local": false,
+    "relay": true,
+    "IPv6": false
+   }
+  ]
+ },
+ {
+  "name": "Android",
+  "product": "Plexamp",
+  "productVersion": "4.12.4",
+  "platform": "Android",
+  "platformVersion": "13",
+  "device": "Android",
+  "clientIdentifier": "11111111-2222-4333-8444-555555555555",
+  "provides": "client,player,pubsub-player",
+  "ownerId": "REDACTED",
+  "sourceTitle": "REDACTED",
+  "publicAddress": "REDACTED",
+  "accessToken": "REDACTED",
+  "searchEnabled": false,
+  "createdAt": "2025-12-15T18:19:50Z",
+  "lastSeenAt": "2026-11-17T10:53:57Z",
+  "owned": true,
+  "home": "REDACTED",
+  "synced": false,
+  "relay": false,
+  "presence": true,
+  "httpsRequired": "REDACTED",
+  "publicAddressMatches": true,
+  "connections": [
+   {
+    "protocol": "http",
+    "address": "192.168.1.135",
+    "port": 32500,
+    "uri": "http://192.168.1.135:32500",
+    "local": true,
+    "relay": false,
+    "IPv6": false
+   }
+  ]
+ }
+]
