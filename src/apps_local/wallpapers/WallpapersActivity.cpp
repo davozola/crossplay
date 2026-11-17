@@ -215,6 +215,7 @@ void WallpapersActivity::onEnter() {
     if (Storage.openFileForRead("WALL", kLayoutPath, layout) && layout.read(&value, 1) == 1) single_ = value == 1;
   }
   pressX_ = -1;
+  pressY_ = -1;
   // Open on the page holding the set wallpaper, so the border is on screen.
   cachedPage_ = -1;
   page_ = 0;
@@ -368,6 +369,23 @@ const char* WallpapersActivity::currentSleepNote() {
   // Choosing, a real set, or a set hidden behind a pin: the set line owns the
   // strip, and it already orders the caveat and the contradiction ahead of any
   // count it might otherwise print.
+  // The photo frame says what it is doing, or why it is doing nothing: it only
+  // has pictures to change between when a set of two or more is chosen.
+  if (frameChoice_ > 0 && !choosing_ && !shadowedSet_ && !sleepBlocked()) {
+    if (chosen < 2) return "Frame is on but needs a set of 2+.";
+    const uint32_t changes = wakejobs::frameChanges();
+    char line[64];
+    if (changes > 0) {
+      std::snprintf(line, sizeof(line), "New every %s asleep: %u so far.", wakejobs::frameLabel(frameChoice_),
+                    static_cast<unsigned>(changes % 100000u));
+    } else {
+      std::snprintf(line, sizeof(line), "%d in the set, new every %s asleep.", chosen % 1000,
+                    wakejobs::frameLabel(frameChoice_));
+    }
+    note_ = line;
+    return note_.c_str();
+  }
+
   if (choosing_ || chosen >= 2 || shadowedSet_) {
     const wallpapers::ShuffleLine line = wallpapers::shuffleStripLine(choosing_, chosen, shadowedSet_, reach);
     if (line.text == nullptr) return nullptr;
@@ -2663,16 +2681,27 @@ void WallpapersActivity::loop() {
   {
     int px = 0;
     int py = 0;
-    if (mappedInput.wasScreenTouchPressed(px, py)) pressX_ = px;
+    if (mappedInput.wasScreenTouchPressed(px, py)) {
+      pressX_ = px;
+      pressY_ = py;
+    }
   }
   // A swipe to the right that begins in the left quarter is the system's Back.
-  // On the grid it is far likelier to be "the slide before", so it is one
-  // unless it began at the very edge or there is no slide before this one.
-  if (view_ == View::Grid && page_ > 0 && mappedInput.wasBackGesture() && pressX_ >= kBackSwipeEdge &&
-      mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    pressX_ = -1;
-    turnPage(-1);
-    return;
+  // On the grid it is the slide before, and never a way out: leaving the app,
+  // or dropping out of choosing a set, because a page swipe started a little
+  // to the left is the grid behaving differently from one swipe to the next.
+  // Back stays what it is for a swipe from the very edge and for the header's
+  // own arrow. A swipe whose first touch was never seen (the loop was busy
+  // with the card) is read as the page swipe it almost always is.
+  if (view_ == View::Grid && mappedInput.wasBackGesture()) {
+    const bool fromEdge = pressX_ >= 0 && pressX_ < kBackSwipeEdge;
+    const bool onHeader = pressY_ >= 0 && pressY_ < toybox::kChromeHeight;
+    if (!fromEdge && !onHeader && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      pressX_ = -1;
+      pressY_ = -1;
+      turnPage(-1);
+      return;
+    }
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Back unwinds the hold branch one step at a time. From the confirm it goes
@@ -2899,9 +2928,13 @@ void WallpapersActivity::loop() {
   const int pages = pageCount();
   switch (mappedInput.wasSwipe()) {
     case MappedInputManager::SwipeDir::Left:
+      pressX_ = -1;
+      pressY_ = -1;
       turnPage(1);
       return;
     case MappedInputManager::SwipeDir::Right:
+      pressX_ = -1;
+      pressY_ = -1;
       turnPage(-1);
       return;
     default:

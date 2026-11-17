@@ -3,8 +3,6 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
-#include <ctime>
-
 #include "../../CrossPointSettings.h"
 #include "../casa/CasaStore.h"
 #include "WakePlan.h"
@@ -19,6 +17,7 @@ namespace {
 
 constexpr char kFramePath[] = "/.crosspoint/frame.cfg";
 constexpr char kPinnedSleep[] = "/sleep.bmp";
+constexpr char kFrameCountPath[] = "/.crosspoint/frame.count";
 
 constexpr uint32_t kFrameSeconds[kFrameChoices] = {0, 900, 1800, 3600, 10800, 43200, 86400};
 constexpr const char* kFrameLabels[kFrameChoices] = {"OFF", "15M", "30M", "1H", "3H", "12H", "24H"};
@@ -46,25 +45,37 @@ uint32_t frameEveryNow() {
 uint32_t armSeconds(const uint32_t liveSeconds, const bool attended) {
   const bool casaOn = casastore::sleepLogging();
   if (attended && casaOn) casastore::note();
-  const uint32_t seconds = wakeplan::arm(state, frameEveryNow(), casaOn ? casastore::kSleepEverySeconds : 0,
-                                         static_cast<int64_t>(time(nullptr)), liveSeconds);
+  const uint32_t seconds =
+      wakeplan::arm(state, frameEveryNow(), casaOn ? casastore::kSleepEverySeconds : 0, liveSeconds, attended);
   LOG_DBG("WAKE", "armed for %u s (live %u)", static_cast<unsigned>(seconds), static_cast<unsigned>(liveSeconds));
   return seconds;
 }
 
-uint32_t rearmSeconds(const uint32_t liveSeconds) {
-  return wakeplan::rearm(state, static_cast<int64_t>(time(nullptr)), liveSeconds);
-}
+uint32_t rearmSeconds(const uint32_t liveSeconds) { return wakeplan::rearm(state, liveSeconds); }
 
 bool onTimerWake() {
-  const int64_t now = static_cast<int64_t>(time(nullptr));
-  const wakeplan::Due due = wakeplan::onTimer(state, now);
+  const wakeplan::Due due = wakeplan::onTimer(state);
   if (due.casa) casastore::note();
-  // A job just done is unscheduled; give it its next time from the intervals
-  // the last sleep was armed with, since this wake may go straight back down
-  // without passing armSeconds.
-  if (state.magic == wakeplan::kMagic) wakeplan::arm(state, state.frameEvery, state.casaEvery, now, 0);
+  if (due.frame) setFrameChanges(frameChanges() + 1);
   return due.frame;
+}
+
+uint32_t frameChanges() {
+  if (!Storage.exists(kFrameCountPath)) return 0;
+  HalFile file;
+  uint32_t count = 0;
+  if (!Storage.openFileForRead("WAKE", kFrameCountPath, file) ||
+      file.read(reinterpret_cast<uint8_t*>(&count), sizeof(count)) != static_cast<int>(sizeof(count))) {
+    return 0;
+  }
+  return count;
+}
+
+void setFrameChanges(const uint32_t count) {
+  HalFile file;
+  if (!Storage.openFileForWrite("WAKE", kFrameCountPath, file)) return;
+  file.write(reinterpret_cast<const uint8_t*>(&count), sizeof(count));
+  file.flush();
 }
 
 int frameChoice() {
@@ -81,6 +92,8 @@ void setFrameChoice(const int choice) {
   const uint8_t value = static_cast<uint8_t>(choice >= 0 && choice < kFrameChoices ? choice : 0);
   file.write(&value, 1);
   file.flush();
+  // A new interval counts its own pictures.
+  setFrameChanges(0);
 }
 
 const char* frameLabel(const int choice) { return kFrameLabels[choice >= 0 && choice < kFrameChoices ? choice : 0]; }

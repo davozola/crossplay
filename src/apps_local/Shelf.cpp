@@ -155,8 +155,10 @@ constexpr shelf::Item kApps[] = {
 // these sit in upstream's Home list and have to look like it; the folder screen
 // shouts its own header, which is our side of the line. A third folder is one row here and
 // nothing else: the Home hook counts this table rather than knowing its length.
+// Neither folder shows the player bar: the name it leads to is for playing
+// against a second reader in the room, and this fork runs on one.
 constexpr shelf::Folder kFolders[] = {
-    {"Games", UIIcon::Games, &icon_games_32, kGames, static_cast<int>(sizeof(kGames) / sizeof(shelf::Item)), true},
+    {"Games", UIIcon::Games, &icon_games_32, kGames, static_cast<int>(sizeof(kGames) / sizeof(shelf::Item)), false},
     {"Apps", UIIcon::Apps, &icon_apps_32, kApps, static_cast<int>(sizeof(kApps) / sizeof(shelf::Item)), false},
 };
 

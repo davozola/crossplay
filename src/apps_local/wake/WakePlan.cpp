@@ -4,21 +4,17 @@ namespace wakeplan {
 
 namespace {
 
-// A due time is kept only while it is still ahead and no further off than
-// one interval: anything else means the clock moved or the interval changed.
-void schedule(int64_t& due, const uint32_t every, const int64_t now) {
+// A job keeps the wait it has unless it has none, or more than one interval:
+// the second means the interval was shortened since.
+void schedule(uint32_t& left, const uint32_t every, const bool restart) {
   if (every == 0) {
-    due = 0;
+    left = 0;
     return;
   }
-  if (due <= now || due - now > static_cast<int64_t>(every)) due = now + static_cast<int64_t>(every);
+  if (restart || left == 0 || left > every) left = every;
 }
 
-uint32_t until(const int64_t due, const int64_t now) {
-  if (due == 0) return 0;
-  const int64_t left = due - now;
-  return left < static_cast<int64_t>(kFloor) ? kFloor : static_cast<uint32_t>(left);
-}
+uint32_t floored(const uint32_t left) { return left == 0 ? 0 : (left < kFloor ? kFloor : left); }
 
 uint32_t soonest(const uint32_t a, const uint32_t b) {
   if (a == 0) return b;
@@ -26,37 +22,47 @@ uint32_t soonest(const uint32_t a, const uint32_t b) {
   return a < b ? a : b;
 }
 
+// Counts `elapsed` off a job; true when that brings it due, and then it is
+// given its next interval.
+bool count(uint32_t& left, const uint32_t every, const uint32_t elapsed) {
+  if (left == 0) return false;
+  if (left <= elapsed + kSlack) {
+    left = every;
+    return true;
+  }
+  left -= elapsed;
+  return false;
+}
+
 }  // namespace
 
-uint32_t arm(State& state, const uint32_t frameEvery, const uint32_t casaEvery, const int64_t now,
-             const uint32_t liveSeconds) {
+uint32_t arm(State& state, const uint32_t frameEvery, const uint32_t casaEvery, const uint32_t liveSeconds,
+             const bool fresh) {
   if (state.magic != kMagic) {
     state = State{};
     state.magic = kMagic;
   }
   state.frameEvery = frameEvery;
   state.casaEvery = casaEvery;
-  schedule(state.frameDue, frameEvery, now);
-  schedule(state.casaDue, casaEvery, now);
-  return rearm(state, now, liveSeconds);
+  schedule(state.frameLeft, frameEvery, fresh);
+  schedule(state.casaLeft, casaEvery, false);
+  return rearm(state, liveSeconds);
 }
 
-uint32_t rearm(const State& state, const int64_t now, const uint32_t liveSeconds) {
+uint32_t rearm(State& state, const uint32_t liveSeconds) {
   if (state.magic != kMagic) return liveSeconds;
-  return soonest(liveSeconds, soonest(until(state.frameDue, now), until(state.casaDue, now)));
+  state.armed = soonest(liveSeconds, soonest(floored(state.frameLeft), floored(state.casaLeft)));
+  return state.armed;
 }
 
-Due onTimer(State& state, const int64_t now) {
+Due onTimer(State& state) {
   Due due = {false, false};
   if (state.magic != kMagic) return due;
-  if (state.frameDue != 0 && now + kSlack >= state.frameDue) {
-    due.frame = true;
-    state.frameDue = 0;
-  }
-  if (state.casaDue != 0 && now + kSlack >= state.casaDue) {
-    due.casa = true;
-    state.casaDue = 0;
-  }
+  const uint32_t elapsed = state.armed;
+  state.armed = 0;
+  if (elapsed == 0) return due;
+  due.frame = count(state.frameLeft, state.frameEvery, elapsed);
+  due.casa = count(state.casaLeft, state.casaEvery, elapsed);
   return due;
 }
 
