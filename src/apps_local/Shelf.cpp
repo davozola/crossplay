@@ -28,6 +28,7 @@
 #include "discover/DiscoverActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "fmguide/FmGuideActivity.h"
+#include "fondos/FondosActivity.h"
 #include "forehead/ForeheadActivity.h"
 #include "frame/FrameActivity.h"
 #include "go/GoActivity.h"
@@ -207,8 +208,9 @@ constexpr shelf::Item kApps[] = {
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create, 1, true, "Tu lista de lectura pendiente",
      "Tu cola de Instapaper sincronizada en los dos sentidos. Se empareja a través de un servidor del autor original "
      "del firmware."},
-    {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create, 3, false, "El fondo de reposo",
-     "Elige una imagen o un conjunto de ellas para la pantalla de reposo, y cada cuánto cambia con el marco de fotos."},
+    {"WALLPAPERS", &icon_wallpapers_32, &FondosActivity::create, 3, false, "Estampas para el reposo",
+     "Estampas japonesas, grabados, láminas de naturaleza y vistas, hechas para esta pantalla. Elige una como fondo de "
+     "reposo, o que cambie sola cada vez que la Sticky se duerme."},
     {"MARCO", &icon_frame_32, &FrameActivity::create, 3, false, "Cambia la foto de reposo sola",
      "El marco de fotos: cada cuánto cambia la imagen de la pantalla de reposo mientras la Sticky duerme. Las fotos "
      "se eligen en Wallpapers."},
