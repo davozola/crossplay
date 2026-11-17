@@ -49,6 +49,8 @@ class MappedInputManager;
 
 namespace shelf {
 
+constexpr uint8_t kNoTab = 0xFF;
+
 // One openable thing. Raw, untranslated title: routing these through tr() would
 // mean editing lib/I18n/translations/*.yaml per app, which is the per-app
 // upstream churn this whole directory exists to avoid.
@@ -70,6 +72,9 @@ struct Item {
   // a long press opens. In Spanish, like the reader they are written for.
   const char* blurb;
   const char* about;
+  // A second tab it is also listed under, for a tab that cuts across the kinds
+  // (the games two people can play on this one screen); kNoTab for none.
+  uint8_t also = kNoTab;
 };
 
 // A titled list of items. Note what is absent: a Folder cannot contain a

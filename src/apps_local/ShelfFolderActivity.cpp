@@ -74,7 +74,7 @@ void ShelfFolderActivity::rebuildList() {
   }
   const int kind = tab - 1;
   for (int i = 0; i < self.count; ++i) {
-    if (tab == self.tabCount + 1 || self.items[i].category == kind) add(i);
+    if (tab == self.tabCount + 1 || self.items[i].category == kind || self.items[i].also == kind) add(i);
   }
 }
 

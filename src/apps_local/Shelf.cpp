@@ -30,7 +30,6 @@
 #include "fmguide/FmGuideActivity.h"
 #include "fondos/FondosActivity.h"
 #include "forehead/ForeheadActivity.h"
-#include "frame/FrameActivity.h"
 #include "go/GoActivity.h"
 #include "hackernews/HackerNewsActivity.h"
 #include "handwriting/HandwritingActivity.h"
@@ -93,12 +92,16 @@ namespace {
 // item's `category` is an index into its folder's list; the folder screen adds
 // a tab before them (the favourites and what was last opened) and one after
 // (everything).
-constexpr const char* kGameTabs[] = {"TABLERO", "CARTAS", "LOGICA", "PALABRAS", "GRUPO", "ILYA"};
+constexpr const char* kGameTabs[] = {"TABLERO", "CARTAS", "LOGICA", "PALABRA", "GRUPO", "ILYA", "A DOS"};
+// A DOS cuts across the kinds: the games two people can play on this one
+// screen, each of which keeps its own tab as well.
+constexpr uint8_t kTwo = 6;
 constexpr const char* kAppTabs[] = {"INFO", "LEER", "APRENDER", "UTIL"};
 
 constexpr shelf::Item kGames[] = {
     {"CHESS", &icon_chess_32, &ChessActivity::create, 0, false, "Ajedrez: máquina o a dos",
-     "Un motor de ajedrez completo en el dispositivo, con varios niveles, o un tablero para jugar entre dos personas."},
+     "Un motor de ajedrez completo en el dispositivo, con varios niveles, o un tablero para jugar entre dos personas.",
+     kTwo},
     {"BATTLESHIP", &icon_battleship_32, &BattleshipActivity::create, 0, false, "Hundir la flota",
      "Coloca tu flota y da caza a la del rival, contra el dispositivo."},
     {"CONNECTIONS", &icon_connections_32, &ConnectionsActivity::create, 3, false, "Agrupa 16 palabras en 4 temas",
@@ -121,15 +124,17 @@ constexpr shelf::Item kGames[] = {
     {"MURDLE", &icon_murdle_32, &MurdleActivity::create, 2, false, "Deduce quién, dónde y con qué",
      "Un misterio en cuadrícula lógica: cruzas pistas hasta saber quién fue, dónde y con qué. Nunca hay que adivinar."},
     {"CHECKERS", &icon_checkers_32, &CheckersActivity::create, 0, false, "Damas inglesas",
-     "Damas con captura obligatoria, que el propio tablero te señala. Contra el dispositivo o a dos."},
+     "Damas con captura obligatoria, que el propio tablero te señala. Contra el dispositivo."},
     {"CONNECT FOUR", &icon_connectfour_32, &ConnectFourActivity::create, 0, false, "Cuatro en raya vertical",
      "Deja caer una ficha y alinea cuatro. Siete columnas, un toque cada una."},
     {"REVERSI", &icon_reversi_32, &ReversiActivity::create, 0, false, "Atrapa y da la vuelta",
      "Pon una ficha que encierre las del otro color entre dos tuyas y se vuelven tuyas. Contra el dispositivo, en "
-     "tres niveles, o a dos en la misma pantalla."},
+     "tres niveles, o a dos en la misma pantalla.",
+     kTwo},
     {"DOTS AND BOXES", &icon_boxes_32, &BoxesActivity::create, 0, false, "Cierra cuadrados con rayas",
      "Puntos y cajas: una raya por turno, y quien cierra un cuadrado se lo queda y repite. Contra el dispositivo o a "
-     "dos."},
+     "dos.",
+     kTwo},
     {"YAHTZEE", &icon_yahtzee_32, &YahtzeeActivity::create, 1, false, "Dados: 13 casillas, 3 tiradas",
      "El juego de dados de las trece casillas, con tres tiradas por turno y las reglas del comodín completas."},
     {"KNUCKLEBONES", &icon_knucklebones_32, &KnucklebonesActivity::create, 1, false, "Dados que suman y destruyen",
@@ -150,16 +155,16 @@ constexpr shelf::Item kGames[] = {
     {"WAVELENGTH", &icon_wavelength_32, &WavelengthActivity::create, 4, false, "Una pista y a discutir",
      "Hay un punto oculto en un espectro entre dos extremos; alguien da una pista y el resto discute dónde cae."},
     {"GO", &icon_go_32, &GoActivity::create, 0, false, "Go en 9x9, 13x13 o 19x19",
-     "Contra el dispositivo o con alguien al lado. Cuenta el territorio por ti al acabar."},
+     "Contra el dispositivo o con alguien al lado. Cuenta el territorio por ti al acabar.", kTwo},
     {"HEX", &icon_hex_32, &HexActivity::create, 0, false, "Une tus dos orillas",
-     "Sin capturas y sin empates: gana quien conecta primero sus dos lados del tablero."},
+     "Sin capturas y sin empates: gana quien conecta primero sus dos lados del tablero.", kTwo},
     {"UNDERHAND", &icon_underhand_32, &UnderhandActivity::create, 1, false, "Cartas: soborna e invoca",
      "El juego de cartas de culto de 2017: administra recursos, soborna, sacrifica, esquiva a la policía e invoca a un "
      "dios."},
     {"WORDLE", &icon_wordle_32, &WordleActivity::create, 3, false, "La palabra del día en 6",
      "La palabra del día en seis intentos, con todos los días anteriores en un archivo. En inglés."},
     {"TAK", &icon_tak_32, &TakActivity::create, 0, false, "Un camino de lado a lado",
-     "El juego de Playtak, de 4x4 a 6x6, contra la máquina o a dos."},
+     "El juego de Playtak, de 4x4 a 6x6, contra la máquina o a dos.", kTwo},
     {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create, 4, false, "Cuenta segundos de cabeza",
      "Toca, cuenta los segundos de cabeza y vuelve a tocar: te dice a cuántas centésimas te has quedado."},
     {"KAKURO", &icon_kakuro_32, &KakuroActivity::create, 2, false, "Sumas cruzadas",
@@ -167,20 +172,43 @@ constexpr shelf::Item kGames[] = {
     {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create, 2, false, "Descifra el código de formas",
      "A solas contra el dispositivo, en tres niveles."},
     {"HIVE", &icon_hive_32, &HiveActivity::create, 0, false, "Insectos sin tablero",
-     "Rodea a la reina rival con tus insectos. Contra el dispositivo, en tres niveles, o a dos."},
+     "Rodea a la reina rival con tus insectos. Contra el dispositivo, en tres niveles, o a dos.", kTwo},
     {"TRIPLES", &icon_triples_32, &TriplesActivity::create, 2, false, "Desliza fichas: 1 y 2 hacen 3",
      "En un tablero de 4x4: el 1 y el 2 suman 3 y las parejas se doblan. Entra una ficha nueva en cada movimiento."},
     {"MANCALA", &icon_mancala_32, &MancalaActivity::create, 0, false, "Kalah: siembra y captura",
-     "Contra la máquina, en tres niveles, o entre dos; de 3 a 6 semillas por hoyo y las reglas a un toque."},
+     "Contra la máquina, en tres niveles, o entre dos; de 3 a 6 semillas por hoyo y las reglas a un toque.", kTwo},
     {"TACTICS", &icon_tactics_32, &TacticsActivity::create, 0, false, "Problemas de ajedrez",
      "Problemas de Lichess desde un paquete en la tarjeta: la dificultad sigue tu nivel, con pistas, reto diario y "
      "estadísticas."},
     {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create, 2, false, "Seis casos de detective",
      "En castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y "
      "coartada rota."},
-    {"ILYA", &icon_kids_32, &KidsActivity::create, 5, false, "Diez juegos en catalán",
-     "Para un niño pequeño: dibujos, parejas, letras, números, El Talp, y cuatro juegos con opciones para crecer con "
-     "él: Memoria, Sumes, Laberint y Punts."},
+    {"ILYA", &icon_kids_32, &KidsActivity::create, 5, false, "Los diez juegos, con dibujos",
+     "La página que usa el niño: los diez juegos en catalán, cada uno con su dibujo para tocar. Cada juego tiene "
+     "además su propia entrada en esta pestaña."},
+    {"DIBUIXOS", &icon_ilya_cards_32, &KidsActivity::createCards, 5, false, "Ilya: láminas con su nombre",
+     "Un dibujo grande y su nombre en catalán; se pasa de uno a otro con un toque."},
+    {"ON ES?", &icon_ilya_find_32, &KidsActivity::createFind, 5, false, "Ilya: busca el dibujo",
+     "Se pide un dibujo por su nombre y hay que tocarlo entre cuatro. Un fallo no cuesta nada: se vuelve a "
+     "preguntar."},
+    {"PARELLES", &icon_ilya_match_32, &KidsActivity::createMatch, 5, false, "Ilya: toca el que es igual",
+     "Se enseña un dibujo y hay que tocar el que es igual entre cuatro."},
+    {"LLETRES", &icon_ilya_letters_32, &KidsActivity::createLetters, 5, false, "Ilya: el abecedario",
+     "Cada letra, en grande, con un dibujo cuyo nombre en catalán empieza por ella."},
+    {"NOMBRES", &icon_ilya_count_32, &KidsActivity::createCount, 5, false, "Ilya: cuenta hasta seis",
+     "Salen de uno a seis dibujos y hay que tocar el número que son."},
+    {"EL TALP", &icon_ilya_mole_32, &KidsActivity::createMole, 5, false, "Ilya: toca al topo",
+     "El topo asoma por un agujero y hay que tocarlo. Se elige cuántos agujeros, quién asoma, cuánto tarda en "
+     "esconderse y si suena."},
+    {"MEMORIA", &icon_ilya_memory_32, &KidsActivity::createMemory, 5, false, "Ilya: parejas boca abajo",
+     "Levanta dos cartas y recuerda dónde está cada una. De 6 a 24 cartas, nueve temas, para uno o dos jugadores.",
+     kTwo},
+    {"SUMES", &icon_ilya_sums_32, &KidsActivity::createSums, 5, false, "Ilya: contar, sumar y restar",
+     "Contar, sumar, restar, más o menos y qué número falta, hasta 5, 10 o 20."},
+    {"LABERINT", &icon_ilya_maze_32, &KidsActivity::createMaze, 5, false, "Ilya: sal del laberinto",
+     "Un laberinto nuevo cada vez, en cuatro tamaños, con pistas y estrellas."},
+    {"PUNTS", &icon_ilya_dots_32, &KidsActivity::createDots, 5, false, "Ilya: une los puntos",
+     "Cuarenta y cuatro dibujos para unir, en tres dificultades, con números, letras o de dos en dos."},
     {"PINTA", &icon_pinta_32, &PaintActivity::create, 5, false, "Pintar con el dedo",
      "Trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras."},
     {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither, 2, false, "Un lazo cerrado entre puntos",
@@ -213,9 +241,6 @@ constexpr shelf::Item kApps[] = {
     {"WALLPAPERS", &icon_wallpapers_32, &FondosActivity::create, 3, false, "Estampas para el reposo",
      "Estampas japonesas, grabados, láminas de naturaleza y vistas, hechas para esta pantalla. Elige una como fondo de "
      "reposo, o que cambie sola cada vez que la Sticky se duerme o cada hora mientras duerme."},
-    {"MARCO", &icon_frame_32, &FrameActivity::create, 3, false, "Cambia la foto de reposo sola",
-     "El marco de fotos: cada cuánto cambia la imagen de la pantalla de reposo mientras la Sticky duerme. Las fotos "
-     "se eligen en Wallpapers."},
     {"JUKEBOX", &icon_jukebox_32, &JukeboxActivity::create, 3, true, "Mando para Plexamp",
      "Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto y volumen desde "
      "aquí. Se enlaza a tu cuenta de Plex con un código."},
@@ -287,12 +312,14 @@ constexpr bool everyItemHasItsTab() {
     for (int i = 0; i < folder.count; ++i) {
       const shelf::Item& item = folder.items[i];
       if (item.category >= folder.tabCount) return false;
+      if (item.also != shelf::kNoTab && item.also >= folder.tabCount) return false;
       if (item.blurb == nullptr || item.blurb[0] == '\0' || item.about == nullptr || item.about[0] == '\0')
         return false;
     }
     for (int tab = 0; tab < folder.tabCount; ++tab) {
       bool used = false;
-      for (int i = 0; i < folder.count; ++i) used = used || folder.items[i].category == tab;
+      for (int i = 0; i < folder.count; ++i)
+        used = used || folder.items[i].category == tab || folder.items[i].also == tab;
       if (!used) return false;
     }
   }

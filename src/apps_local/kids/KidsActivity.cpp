@@ -36,13 +36,71 @@ std::unique_ptr<Activity> KidsActivity::create(GfxRenderer& renderer, MappedInpu
   return makeUniqueNoThrow<KidsActivity>(renderer, mappedInput);
 }
 
+namespace {
+std::unique_ptr<Activity> makeOnly(GfxRenderer& renderer, MappedInputManager& mappedInput, const int number) {
+  return makeUniqueNoThrow<KidsActivity>(renderer, mappedInput, static_cast<int8_t>(number));
+}
+constexpr int numberOf(const kids::Game game) { return static_cast<int>(game); }
+constexpr int numberOf(const kidsmoreui::Which which) { return kids::kGames + static_cast<int>(which); }
+}  // namespace
+
+std::unique_ptr<Activity> KidsActivity::createCards(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kids::Game::Cards));
+}
+std::unique_ptr<Activity> KidsActivity::createFind(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kids::Game::Find));
+}
+std::unique_ptr<Activity> KidsActivity::createMatch(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kids::Game::Match));
+}
+std::unique_ptr<Activity> KidsActivity::createLetters(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kids::Game::Letters));
+}
+std::unique_ptr<Activity> KidsActivity::createCount(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kids::Game::Count));
+}
+std::unique_ptr<Activity> KidsActivity::createMole(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kids::Game::Mole));
+}
+std::unique_ptr<Activity> KidsActivity::createMemory(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kidsmoreui::Which::Memory));
+}
+std::unique_ptr<Activity> KidsActivity::createSums(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kidsmoreui::Which::Sums));
+}
+std::unique_ptr<Activity> KidsActivity::createMaze(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kidsmoreui::Which::Maze));
+}
+std::unique_ptr<Activity> KidsActivity::createDots(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return makeOnly(renderer, mappedInput, numberOf(kidsmoreui::Which::Dots));
+}
+
 void KidsActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   rng_.state = static_cast<uint32_t>(millis()) * 2654435761u + 1u;
   view_ = View::Menu;
   stars_ = 0;
+  // A game that could not be made falls back to the page of all of them.
+  if (only_ != kMenu && !openNumber(only_)) only_ = kMenu;
   requestUpdate();
+}
+
+bool KidsActivity::openNumber(const int number) {
+  if (number >= kids::kGames && number < kids::kGames + kidsmoreui::kGames) {
+    mini_ = kidsmoreui::make(static_cast<kidsmoreui::Which>(number - kids::kGames));
+    if (!mini_) {
+      LOG_ERR("ILYA", "OOM: game %d", number);
+      return false;
+    }
+    mini_->open(rng_, mappedInput.hasTouch());
+    view_ = View::Mini;
+    cleanNext_ = true;
+    return true;
+  }
+  if (number < 0 || number >= kids::kGames) return false;
+  open(static_cast<kids::Game>(number));
+  return true;
 }
 
 void KidsActivity::open(const kids::Game game) {
@@ -224,6 +282,11 @@ void KidsActivity::loop() {
       requestUpdate();
       return;
     }
+    // Opened by itself from the shelf, a game has no page of games behind it.
+    if (only_ != kMenu) {
+      shelf::leave(renderer, mappedInput);
+      return;
+    }
     mini_.reset();
     view_ = View::Menu;
     advanceAtMs_ = 0;
@@ -278,16 +341,7 @@ void KidsActivity::route(const fui::ActionEvent& event) {
   const int deck = game_ == kids::Game::Letters ? kids::letterCount() : kids::kPictures;
   switch (event.action) {
     case ui::ActionGame:
-      if (event.value >= kids::kGames && event.value < kids::kGames + kidsmoreui::kGames) {
-        mini_ = kidsmoreui::make(static_cast<kidsmoreui::Which>(event.value - kids::kGames));
-        if (!mini_) return;
-        mini_->open(rng_, mappedInput.hasTouch());
-        view_ = View::Mini;
-        cleanNext_ = true;
-        break;
-      }
-      if (event.value < 0 || event.value >= kids::kGames) return;
-      open(static_cast<kids::Game>(event.value));
+      if (!openNumber(event.value)) return;
       break;
     case moleui::ActionHoles:
       moleConfig_.holes = static_cast<uint8_t>((moleConfig_.holes + 1) % mole::kHoleChoices);

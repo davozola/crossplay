@@ -13,10 +13,25 @@
 // nothing that can be lost: a wrong tap greys the tile and asks again.
 class KidsActivity final : public Activity {
  public:
-  KidsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity("Ilya", renderer, mappedInput) {}
+  // `only` is the menu's number for one game (KidsCore's six, then KidsMore's
+  // four) when the shelf opened that game by itself; kMenu for the page of all.
+  KidsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const int8_t only = kMenu)
+      : Activity("Ilya", renderer, mappedInput), only_(only) {}
   ~KidsActivity() override = default;
 
+  static constexpr int8_t kMenu = -1;
+
   static std::unique_ptr<Activity> create(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createCards(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createFind(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createMatch(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createLetters(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createCount(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createMole(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createMemory(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createSums(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createMaze(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  static std::unique_ptr<Activity> createDots(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
   void loop() override;
@@ -26,6 +41,8 @@ class KidsActivity final : public Activity {
   enum class View : uint8_t { Menu, Card, Round, MoleSetup, MolePlay, Mini };
 
   void open(kids::Game game);
+  // Opens game `number` of the menu; false when it could not be made.
+  bool openNumber(int number);
   void deal();
   void route(const freeink::ui::ActionEvent& event);
   void cheer();
@@ -46,6 +63,7 @@ class KidsActivity final : public Activity {
   bool cleanNext_ = false;     // the next paint wipes the panel's ghosts
   uint8_t fastPaints_ = 0;
 
+  int8_t only_ = kMenu;
   View view_ = View::Menu;
   kids::Game game_ = kids::Game::Cards;
   kids::Rng rng_;
