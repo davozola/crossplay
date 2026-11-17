@@ -80,6 +80,8 @@ void HalDisplay::displayWindow(const int x, const int y, const int w, const int 
                             static_cast<uint16_t>(h));
 }
 
+void HalDisplay::setInkWaveform(const unsigned char* lut) { einkDisplay.setCustomLUT(lut != nullptr, lut); }
+
 void HalDisplay::waitRefreshComplete() { einkDisplay.waitRefreshComplete(); }
 
 bool HalDisplay::supportsAsyncRefresh() const { return einkDisplay.supportsAsyncRefresh(); }

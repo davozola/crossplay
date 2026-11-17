@@ -1,5 +1,6 @@
 #include "HandwritingActivity.h"
 
+#include <HalDisplay.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -24,7 +25,31 @@ constexpr int kMaxPages = 99;
 
 constexpr int16_t kBarH = 56;
 constexpr int16_t kToolH = 56;
-constexpr int16_t kNibPanelH = 96;
+constexpr int16_t kNibPanelH = 150;
+constexpr int16_t kNibRowH = 96;
+constexpr char kInkSpeedPath[] = "/.crosspoint/handwriting-ink.cfg";
+constexpr int kInkSpeeds = 4;
+// Frames of drive for each fast-ink level; level 0 is the panel's own waveform.
+constexpr uint8_t kInkFrames[kInkSpeeds] = {0, 20, 10, 5};
+
+// The controller's waveform table for fast ink, built for a number of frames.
+// One phase of one group: a pixel going black is driven black for `frames`, one
+// going white is driven white, and a pixel that does not change is left alone,
+// so the paper around a stroke does not flash. The frame rate and the voltages
+// are the ones this panel's grayscale table already uses.
+unsigned char inkLut[110];
+void buildInkLut(const uint8_t frames) {
+  std::memset(inkLut, 0, sizeof(inkLut));
+  inkLut[10] = 0x80;  // black to white: phase A at VSL
+  inkLut[20] = 0x40;  // white to black: phase A at VSH1
+  inkLut[50] = frames;
+  for (int i = 100; i < 105; ++i) inkLut[i] = 0x22;
+  inkLut[105] = 0x17;
+  inkLut[106] = 0x41;
+  inkLut[107] = 0xA8;
+  inkLut[108] = 0x32;
+  inkLut[109] = 0x30;
+}
 // Strokes that start this close to the left edge are the back swipe.
 constexpr int kBackSwipeEdge = 24;
 constexpr uint32_t kSaveAfterMs = 4000;
@@ -55,6 +80,7 @@ enum : fui::ActionId {
   ActionPickNib,  // value: ink::Tool
   ActionOpen,     // value: page number
   ActionNew,
+  ActionInkSpeed,
 };
 
 int16_t areaTop() { return kBarH; }
@@ -119,6 +145,8 @@ void HandwritingActivity::repaint() {
 void HandwritingActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
+  loadInkSpeed();
+  inkWaveformOn = false;
   page = makeUniqueNoThrow<ink::Page>();
   const int16_t width = static_cast<int16_t>(renderer.getScreenWidth());
   const int16_t height = static_cast<int16_t>(areaBottom(static_cast<int16_t>(renderer.getScreenHeight())) - areaTop());
@@ -141,6 +169,7 @@ void HandwritingActivity::onEnter() {
 }
 
 void HandwritingActivity::onExit() {
+  endInkWaveform();
   if (dirty && view == View::Page) savePage();
   saveIndex();
   thumb.reset();
@@ -299,6 +328,10 @@ void HandwritingActivity::routePage(const fui::ActionEvent& event, const uint32_
         nibOpen = !nibOpen;
       }
       break;
+    case ActionInkSpeed:
+      inkSpeed = (inkSpeed + 1) % kInkSpeeds;
+      saveInkSpeed();
+      break;
     case ActionPickNib:
       if (event.value >= 0 && event.value < ink::kToolCount && ink::isNib(static_cast<ink::Tool>(event.value))) {
         nib = static_cast<ink::Tool>(event.value);
@@ -411,7 +444,16 @@ bool HandwritingActivity::renderStroke() {
       if (row[x / 8] & (0x80 >> (x % 8))) renderer.drawPixel(x, top + y, true);
     }
   }
+  if (inkSpeed > 0 && !inkWaveformOn) {
+    buildInkLut(kInkFrames[inkSpeed]);
+#if !defined(SIMULATOR)
+    display.setInkWaveform(inkLut);
+#endif
+    inkWaveformOn = true;
+  }
+  const uint32_t began = static_cast<uint32_t>(millis());
   renderer.displayRegion(x0, top + y0, x1 - x0 + 1, y1 - y0 + 1);
+  lastInkMs = static_cast<uint32_t>(millis()) - began;
   return true;
 }
 
@@ -420,6 +462,8 @@ void HandwritingActivity::render(RenderLock&&) {
     painting = false;
     return;
   }
+  // Anything but new ink is drawn with the panel's own waveform.
+  endInkWaveform();
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();
@@ -522,7 +566,7 @@ void HandwritingActivity::renderPage(toybox::Screen& screen) {
     const int cw = (w - 8 - gap * 3) / 4;
     for (int i = 0; i < 4; ++i) {
       const bool on = kNibs[i] == nib;
-      const fui::Rect r = rect(4 + i * (cw + gap), py + 10, cw, kNibPanelH - 20);
+      const fui::Rect r = rect(4 + i * (cw + gap), py + 10, cw, kNibRowH - 20);
       fui::ButtonProps b;
       b.label = "";
       b.action = ActionPickNib;
@@ -538,6 +582,26 @@ void HandwritingActivity::renderPage(toybox::Screen& screen) {
       s.color = on ? fui::Color::White : fui::Color::Black;
       t.text(toybox::inkCentred(rect(r.x, r.y + 44, r.width, 24), toybox::kTileCut), ink::toolName(kNibs[i]), s);
     }
+  }
+
+  // Under the nibs: how new ink is put on the panel, and how long the last
+  // stroke refresh took, which is the number to tune it by.
+  if (nibOpen) {
+    char label[toybox::kIntChars * 2 + 40];
+    if (inkSpeed == 0) {
+      std::snprintf(label, sizeof(label), "INK: NORMAL  (LAST %u MS)", static_cast<unsigned>(lastInkMs % 100000u));
+    } else {
+      std::snprintf(label, sizeof(label), "INK: FAST %d, %d FRAMES  (LAST %u MS)", inkSpeed, kInkFrames[inkSpeed],
+                    static_cast<unsigned>(lastInkMs % 100000u));
+    }
+    fui::ButtonProps b;
+    b.label = label;
+    b.action = ActionInkSpeed;
+    b.styles = toybox::rowStyles();
+    b.text = toybox::buttonText(screen.theme());
+    b.state = inkSpeed > 0 ? fui::StateSelected : fui::StateNormal;
+    b.radius = toybox::kPillRadius / 2;
+    screen.button(b, rect(4, bottom - kNibPanelH + kNibRowH - 4, w - 8, kNibPanelH - kNibRowH - 6));
   }
 
   // The tools.
@@ -675,6 +739,34 @@ void HandwritingActivity::loadIndex() {
     nib = static_cast<ink::Tool>(data[4]);
     tool = nib;
   }
+}
+
+void HandwritingActivity::loadInkSpeed() {
+  inkSpeed = 0;
+  if (!Storage.exists(kInkSpeedPath)) return;
+  HalFile file;
+  uint8_t value = 0;
+  if (Storage.openFileForRead("INK", kInkSpeedPath, file) && file.read(&value, 1) == 1 && value < kInkSpeeds) {
+    inkSpeed = value;
+  }
+}
+
+void HandwritingActivity::saveInkSpeed() {
+  HalFile file;
+  if (!Storage.openFileForWrite("INK", kInkSpeedPath, file)) return;
+  const uint8_t value = static_cast<uint8_t>(inkSpeed);
+  file.write(&value, 1);
+  file.flush();
+}
+
+// Hands the panel back to its own waveform. Only a flag in the driver: the
+// next ordinary refresh reloads the factory table by itself.
+void HandwritingActivity::endInkWaveform() {
+  if (!inkWaveformOn) return;
+#if !defined(SIMULATOR)
+  display.setInkWaveform(nullptr);
+#endif
+  inkWaveformOn = false;
 }
 
 void HandwritingActivity::saveIndex() {
