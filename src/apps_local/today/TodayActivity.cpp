@@ -24,6 +24,7 @@
 #include "../history/HistoryCore.h"
 #include "../history/HistoryStore.h"
 #include "../jukebox/JukeboxPeek.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -168,7 +169,7 @@ void TodayActivity::loop() {
     const uint32_t now = static_cast<uint32_t>(millis());
     if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
       lastFetchMs_ = now;
-      if (wifiActivated_ && WiFi.status() == WL_CONNECTED) {
+      if (wifiActivated_ && autorefresh::online(now, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_)) {
         char quiet[sizeof(report_)];
         const bool wasPlaying = playing_[0] != 0;
         const bool music = jukebox::peekPlaying(playing_, sizeof(playing_)) || wasPlaying;

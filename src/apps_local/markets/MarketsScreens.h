@@ -50,6 +50,9 @@ struct FaceSwap {
 struct DashboardModel {
   const markets::Quote* quotes = nullptr;  // kAssets of them
   int autoMinutes = 0;
+  // When the quotes were last fetched, by this reader's clock; -1 when not yet.
+  int fetchedHour = -1;
+  int fetchedMinute = 0;
   FaceSwap faces;
 };
 

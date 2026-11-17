@@ -19,6 +19,7 @@
 #include "../../components/UITheme.h"
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
 #include "MarketsStore.h"
@@ -47,6 +48,9 @@ void MarketsActivity::onEnter() {
   view_ = View::Dashboard;
   lastFetchMs_ = static_cast<uint32_t>(millis());
   requestUpdate();
+  // Left on auto, it comes back on auto: the first fetch is what joins the
+  // network, and without it no later round would ever find one.
+  if (autoMinutes_ > 0) startRefresh();
 }
 
 void MarketsActivity::onExit() {
@@ -91,6 +95,14 @@ bool MarketsActivity::loadCached(const mk::Asset asset) {
 int MarketsActivity::fetchAll() {
   const int ok = marketsstore::fetchAll(quotes_, report_, sizeof(report_));
   lastFetchMs_ = static_cast<uint32_t>(millis());
+  const time_t t = time(nullptr);
+  // Only once the clock has been set; a reader fresh from a flash has 1970.
+  if (ok > 0 && t > 1700000000) {
+    struct tm parts = {};
+    localtime_r(&t, &parts);
+    fetchedHour_ = parts.tm_hour;
+    fetchedMinute_ = parts.tm_min;
+  }
   reprice();
   return ok;
 }
@@ -253,7 +265,14 @@ void MarketsActivity::loop() {
     const uint32_t now = static_cast<uint32_t>(millis());
     if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
       lastFetchMs_ = now;
-      if (wifiActivated_ && WiFi.status() == WL_CONNECTED && fetchAll() > 0) requestUpdate();
+      if (!wifiActivated_) {
+        startRefresh();
+        requestUpdate();
+        return;
+      }
+      if (autorefresh::online(now, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_) && fetchAll() > 0) {
+        requestUpdate();
+      }
       return;
     }
   }
@@ -414,6 +433,8 @@ void MarketsActivity::render(RenderLock&&) {
       marketsui::DashboardModel m;
       m.quotes = quotes_;
       m.autoMinutes = autoMinutes_;
+      m.fetchedHour = fetchedHour_;
+      m.fetchedMinute = fetchedMinute_;
       m.faces = faces;
       marketsui::buildDashboard(surface, m);
       break;
