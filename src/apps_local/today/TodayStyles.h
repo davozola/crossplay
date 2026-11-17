@@ -18,7 +18,7 @@ const char* name(int style);
 
 // What a part of the page leads to when it is tapped.
 // Auto is the foot's left corner: how often the page fetches by itself.
-enum Target : uint8_t { None = 0, Clock, Weather, Markets, Sea, Event, Refresh, Auto };
+enum Target : uint8_t { None = 0, Clock, Weather, Markets, Sea, Event, Music, Refresh, Auto };
 // A tapped part arrives as this action plus its Target.
 constexpr freeink::ui::ActionId kTargetAction = 40;
 
@@ -34,6 +34,8 @@ struct Page {
   static constexpr int kEvents = 3;
   Event events[kEvents];
   int eventCount = 0;
+  // What the Plexamp player chosen in JUKEBOX was playing at the last fetch; empty when nothing.
+  const char* playing = "";
   // Minutes between fetches the page makes by itself, 0 for never.
   int autoMinutes = 0;
 };

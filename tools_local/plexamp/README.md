@@ -31,3 +31,7 @@ Plexamp on Android is known.
 
 `python3 plex_diag.py tls` prints who signs plex.tv's and your server's certificates, which is what the
 firmware's Jukebox app has to verify (see `docs/jukebox.md`).
+
+`python3 plex_diag.py library` lists the music library a page at a time and jumps within the playing queue
+(then jumps back). With `--start` it also plays a few seconds of a recently added album and puts your music
+back. Its answers are saved in `plex_dump/`.

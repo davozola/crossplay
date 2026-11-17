@@ -46,7 +46,8 @@ Media Server, from a computer running `tools_local/plexamp/plex_diag.py`, which
 speaks exactly the requests the firmware does:
 
 - linking with a code, listing servers and players;
-- reading the timeline with track metadata, and fetching the cover;
+- reading the timeline with track metadata, fetching the cover, and reading
+  the play queue from the server;
 - pause, play, next, previous, volume, shuffle, repeat and seek.
 
 The firmware's readers run against those captured answers in
@@ -91,7 +92,18 @@ The firmware's readers run against those captured answers in
 - **No analytics or telemetry.** Requests go to plex.tv, your server and your
   player, and nowhere else.
 
+## More than the controls
+
+- **QUEUE** shows the tracks around the one playing, read from the media
+  server. It is to look at: jumping to a track waits for that command to be
+  tried on a real player.
+- **Tapping the cover** opens it large with the track's name and nothing to
+  press, for a reader left on a shelf. Any tap goes back.
+- **HOY** shows a "Suena ahora" line with the track when its refresh finds the
+  chosen player playing, and a tap on it opens Jukebox.
+
 ## Not built yet
 
-A view of the queue, browsing the library, and starting playback from the
-reader.
+Browsing the library, starting playback from the reader, and jumping within
+the queue. `plex_diag.py library` tries those three against a real player
+first; the firmware follows what it finds.

@@ -21,6 +21,7 @@
 #include "../../util/QrUtils.h"
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
+#include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
 #include "JukeboxNet.h"
@@ -45,6 +46,7 @@ enum : fui::ActionId {
   ActionShuffle,
   ActionRepeat,
   ActionMenu,
+  ActionQueue,
   ActionBackToPlayer,
   ActionChangePlayer,
   ActionUnlink,
@@ -80,6 +82,10 @@ constexpr int kProgressRow = 40;
 constexpr int kControlsHeight = kSmallRow + kVolumeRow + kTransportRow + 2 * kRowGap + kProgressRow;
 constexpr int kTrackHeight = 100 + 14;
 constexpr int kCoverTop = 44;
+// The cover on its own: a margin above it, and the room the words below need.
+constexpr int kShowcaseTop = 16;
+constexpr int kShowcaseText = 190;
+constexpr int kQueueWindow = 5;
 
 uint32_t ms() { return static_cast<uint32_t>(millis()); }
 
@@ -322,6 +328,18 @@ void JukeboxActivity::doAdopt() {
   view_ = View::Playing;
 }
 
+void JukeboxActivity::doQueue() {
+  std::string body;
+  const int status =
+      jukebox::net::server(config_, now_, jukebox::queueUrl(now_.serverBase, now_.queueId, kQueueWindow * 2), body);
+  if (status != 200 || !jukebox::parseQueue(body.data(), body.size(), queue_)) {
+    notice("NO QUEUE", "THE SERVER DID NOT GIVE THE QUEUE OVER A VERIFIED CONNECTION. THE CONTROLS STILL WORK.",
+           View::Playing);
+    return;
+  }
+  view_ = View::Queue;
+}
+
 void JukeboxActivity::doConnect() {
   now_ = Now{};
   artFor_ = 0;
@@ -361,7 +379,7 @@ bool JukeboxActivity::poll(const bool withMetadata) {
   if (now_.thumb.empty()) {
     artFor_ = 0;
     artWanted_ = false;
-  } else if (jukebox::artHash(now_.serverId, now_.thumb) != artFor_) {
+  } else if (coverKey() != artFor_) {
     artWanted_ = true;
   }
   return true;
@@ -369,7 +387,7 @@ bool JukeboxActivity::poll(const bool withMetadata) {
 
 void JukeboxActivity::fetchArt() {
   artWanted_ = false;
-  const uint32_t key = jukebox::artHash(now_.serverId, now_.thumb);
+  const uint32_t key = coverKey();
   artFor_ = 0;
   Storage.mkdir(kDir);
   // Asked for at the size it is drawn, so the reader never decodes a full cover.
@@ -480,8 +498,13 @@ void JukeboxActivity::act(const fui::ActionId action, const int value) {
       view_ = View::Menu;
       requestUpdate();
       break;
+    case ActionQueue:
+      request(Step::Queue, "READING THE QUEUE");
+      break;
     case ActionBackToPlayer:
       view_ = config_.hasPlayer() ? View::Playing : View::Players;
+      // The cover on the card may be the large one.
+      artWanted_ = view_ == View::Playing && !now_.thumb.empty() && coverKey() != artFor_;
       requestUpdate();
       break;
     case ActionChangePlayer:
@@ -526,6 +549,9 @@ void JukeboxActivity::loop() {
       case Step::Connect:
         doConnect();
         break;
+      case Step::Queue:
+        doQueue();
+        break;
       case Step::None:
         break;
     }
@@ -552,6 +578,10 @@ void JukeboxActivity::loop() {
       case View::Notice:
         act(ActionNoticeOk, 0);
         break;
+      case View::Showcase:
+      case View::Queue:
+        act(ActionBackToPlayer, 0);
+        break;
       case View::Players:
         if (config_.hasPlayer()) {
           view_ = View::Playing;
@@ -568,7 +598,7 @@ void JukeboxActivity::loop() {
   }
 
   // The keys, on a reader that has them.
-  if (view_ == View::Playing) {
+  if (view_ == View::Playing || view_ == View::Showcase) {
     using Button = MappedInputManager::Button;
     if (mappedInput.wasReleased(Button::Confirm)) return act(ActionPlayPause, 0);
     if (mappedInput.wasReleased(Button::Right)) return act(ActionNext, 0);
@@ -589,6 +619,18 @@ void JukeboxActivity::loop() {
       command("seekTo", extra);
       return;
     }
+    // The cover opens large, and the large cover closes on any tap.
+    if (view_ == View::Showcase) {
+      act(ActionBackToPlayer, 0);
+      return;
+    }
+    if (view_ == View::Playing && coverW_ > 0 && tapX >= coverX_ && tapX <= coverX_ + coverW_ && tapY >= coverY_ &&
+        tapY <= coverY_ + coverW_) {
+      view_ = View::Showcase;
+      artWanted_ = !now_.thumb.empty();
+      requestUpdate();
+      return;
+    }
     fui::InputSnapshot input;
     input.touchReleased = true;
     input.touchX = static_cast<int16_t>(tapX);
@@ -602,7 +644,7 @@ void JukeboxActivity::loop() {
 
   if (view_ == View::Linking) {
     pollPin();
-  } else if (view_ == View::Playing) {
+  } else if (view_ == View::Playing || view_ == View::Showcase) {
     tick();
   }
 }
@@ -616,8 +658,13 @@ int JukeboxActivity::pageBottom() const {
 
 // The cover's square: what the page has left between its head and the track's
 // name. Asked of the server at this size and drawn at it.
+uint32_t JukeboxActivity::coverKey() const {
+  return jukebox::artHash(now_.serverId, now_.thumb) ^ (static_cast<uint32_t>(coverSide()) * 2654435761u);
+}
+
 int JukeboxActivity::coverSide() const {
   const int inner = renderer.getScreenWidth() - 2 * toybox::kMargin;
+  if (view_ == View::Showcase) return std::min(inner, pageBottom() - kShowcaseText - kShowcaseTop);
   const int room = pageBottom() - kControlsHeight - kTrackHeight - 10 - kCoverTop;
   return std::max(120, std::min(inner, room));
 }
@@ -754,25 +801,10 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
   const int artTop = kCoverTop;
   const int side = coverSide();
   const int artX = x + (inner - side) / 2;
-  bool drawn = false;
-  if (!idle && artFor_ != 0 && artFor_ == jukebox::artHash(now_.serverId, now_.thumb)) {
-    // drawBitmap is a silent no-op while the font cache is scanning.
-    const FontCacheManager* fonts = renderer.getFontCacheManager();
-    HalFile file;
-    if ((fonts == nullptr || !fonts->isScanning()) && Storage.openFileForRead(kTag, kArtBmp, file)) {
-      Bitmap bitmap(file);
-      if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
-        const int w = std::min(side, bitmap.getWidth());
-        const int h = std::min(side, bitmap.getHeight());
-        const int ax = artX + (side - w) / 2;
-        const int ay = artTop + (side - h) / 2;
-        renderer.drawBitmap1Bit(bitmap, ax, ay, side, side);
-        // A hairline, so a cover with a white edge still has one.
-        renderer.drawRect(ax, ay, w, h, true);
-        drawn = true;
-      }
-    }
-  }
+  coverX_ = static_cast<int16_t>(artX);
+  coverY_ = static_cast<int16_t>(artTop);
+  coverW_ = static_cast<int16_t>(side);
+  const bool drawn = !idle && drawCover(artX, artTop, side);
   if (!drawn) {
     renderer.drawRoundedRect(artX, artTop, side, side, 2, 10, true);
     const char* head = silent && idle ? "PLAYER NOT ANSWERING" : idle ? "NOTHING PLAYING" : "NO COVER";
@@ -863,18 +895,22 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
                toybox::kUiCut);
   }
 
-  const int cell = (inner - 2 * gap) / 3;
+  const int cell = (inner - 3 * gap) / 4;
   if ((can & jukebox::CanShuffle) && now_.shuffle >= 0) {
     lab::button(screen, lab::rect(x, smallY, cell, smallH), "SHUFFLE", ActionShuffle, 0, now_.shuffle != 0, true);
   }
   if ((can & jukebox::CanRepeat) && now_.repeat >= 0) {
     lab::button(screen, lab::rect(x + cell + gap, smallY, cell, smallH),
                 now_.repeat == 1   ? "REPEAT 1"
-                : now_.repeat == 2 ? "REPEAT ALL"
+                : now_.repeat == 2 ? "REP. ALL"
                                    : "REPEAT",
                 ActionRepeat, 0, now_.repeat != 0, true);
   }
-  lab::button(screen, lab::rect(x + 2 * (cell + gap), smallY, cell, smallH), "MENU", ActionMenu, 0, false, true);
+  // The queue lives on the server the track came from; without one there is none to show.
+  if (!silent && !now_.queueId.empty() && !now_.serverBase.empty()) {
+    lab::button(screen, lab::rect(x + 2 * (cell + gap), smallY, cell, smallH), "QUEUE", ActionQueue, 0, false, true);
+  }
+  lab::button(screen, lab::rect(x + 3 * (cell + gap), smallY, cell, smallH), "MENU", ActionMenu, 0, false, true);
 
   shownKey_ = now_.trackKey;
   shownState_ = now_.state;
@@ -883,6 +919,115 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
   shownRepeat_ = now_.repeat;
   shownSilent_ = silent;
   lastPaintMs_ = ms();
+}
+
+// The saved cover, when it is this track's at this size. False when there is
+// none to draw.
+bool JukeboxActivity::drawCover(const int x, const int y, const int side) {
+  if (artFor_ == 0 || artFor_ != coverKey()) return false;
+  // drawBitmap is a silent no-op while the font cache is scanning.
+  const FontCacheManager* fonts = renderer.getFontCacheManager();
+  HalFile file;
+  if ((fonts != nullptr && fonts->isScanning()) || !Storage.openFileForRead(kTag, kArtBmp, file)) return false;
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
+  const int w = std::min(side, bitmap.getWidth());
+  const int h = std::min(side, bitmap.getHeight());
+  const int ax = x + (side - w) / 2;
+  const int ay = y + (side - h) / 2;
+  renderer.drawBitmap1Bit(bitmap, ax, ay, side, side);
+  // A hairline, so a cover with a white edge still has one.
+  renderer.drawRect(ax, ay, w, h, true);
+  return true;
+}
+
+// The cover and the words, and nothing to press: a page to leave on a shelf
+// while the music plays. A tap anywhere goes back to the controls.
+void JukeboxActivity::buildShowcase(toybox::Screen& screen) {
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - toybox::kMargin * 2;
+  const int side = coverSide();
+  const int artX = x + (inner - side) / 2;
+  const bool silent = misses_ >= kQuietAfter;
+  const bool idle = now_.state == State::Stopped || now_.trackKey.empty();
+  if (idle || !drawCover(artX, kShowcaseTop, side)) {
+    renderer.drawRoundedRect(artX, kShowcaseTop, side, side, 2, 10, true);
+    lab::label(screen, lab::rect(artX, kShowcaseTop + side / 2 - 20, side, toybox::kUiCut.inkHeight),
+               silent && idle ? "PLAYER NOT ANSWERING"
+               : idle         ? "NOTHING PLAYING"
+                              : "NO COVER",
+               toybox::kUiFont, toybox::kUiCut);
+  }
+  int y = kShowcaseTop + side + 14;
+  if (!idle) {
+    auto centred = [&](const int font, const std::string& text, const EpdFontFamily::Style style) {
+      const std::string line = renderer.truncatedText(font, text.c_str(), inner, style);
+      renderer.drawText(font, x + (inner - renderer.getTextWidth(font, line.c_str(), style)) / 2, y, line.c_str(), true,
+                        style);
+    };
+    centred(NOTOSANS_18_FONT_ID, now_.title, kBold);
+    y += 46;
+    centred(NOTOSANS_16_FONT_ID, now_.artist, EpdFontFamily::REGULAR);
+    y += 40;
+    centred(NOTOSANS_12_FONT_ID, now_.year.empty() ? now_.album : now_.album + "  \xC2\xB7  " + now_.year,
+            EpdFontFamily::REGULAR);
+    y += 38;
+    if (now_.durationMs > 0) {
+      const int32_t position = positionNow();
+      renderer.drawRoundedRect(x, y, inner, 10, 2, 5, true);
+      const int fill = static_cast<int>(static_cast<long>(inner - 6) * position / now_.durationMs);
+      if (fill > 0) renderer.fillRect(x + 3, y + 3, fill, 4, true);
+    }
+  }
+  const char* state = silent ? "NO ANSWER" : now_.state == State::Paused ? "PAUSED" : "";
+  lab::caption(screen, x, pageBottom() - toybox::kTileCut.inkHeight, inner, state, fui::TextAlign::Center);
+  barW_ = 0;
+  shownKey_ = now_.trackKey;
+  shownState_ = now_.state;
+  shownVolume_ = now_.volume;
+  shownShuffle_ = now_.shuffle;
+  shownRepeat_ = now_.repeat;
+  shownSilent_ = silent;
+  lastPaintMs_ = ms();
+}
+
+// What comes next, as the server has it. To look at, for now: jumping to a
+// track from here waits until that command has been tried on a real player.
+void JukeboxActivity::buildQueue(toybox::Screen& screen) {
+  lab::chrome(screen, "QUEUE");
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - toybox::kMargin * 2;
+  int y = toybox::kChromeHeight + 10;
+  char count[toybox::kIntChars * 2 + 24];
+  std::snprintf(count, sizeof(count), "%d TRACKS IN THE QUEUE", queue_.total % 100000);
+  lab::caption(screen, x, y, inner, count);
+  y += toybox::kTileCut.inkHeight + 10;
+  const int rowH = 52;
+  const int buttonH = 56;
+  const int room = (pageBottom() - buttonH - 10 - y) / rowH;
+  // The playing track a third of the way down, so most of the page is what follows.
+  int first = queue_.current > 2 ? queue_.current - 2 : 0;
+  const int count2 = static_cast<int>(queue_.items.size());
+  if (first + room > count2) first = std::max(0, count2 - room);
+  for (int i = first; i < count2 && i < first + room; ++i) {
+    const jukebox::QueueItem& item = queue_.items[static_cast<size_t>(i)];
+    const bool current = i == queue_.current;
+    char length[16];
+    jukebox::formatTime(item.durationMs, length, sizeof(length));
+    const int lengthW = renderer.getTextWidth(NOTOSANS_12_FONT_ID, length);
+    if (current) renderer.fillRect(x, y + 4, 6, rowH - 10, true);
+    const int tx = x + 16;
+    const int tw = inner - 16 - lengthW - 12;
+    renderer.drawText(NOTOSANS_12_FONT_ID, tx, y,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, item.title.c_str(), tw, kBold).c_str(), true, kBold);
+    renderer.drawText(NOTOSANS_12_FONT_ID, tx, y + 24,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, item.artist.c_str(), tw).c_str(), true);
+    renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - lengthW, y, length, true);
+    y += rowH;
+  }
+  if (queue_.items.empty()) lab::paragraph(screen, x, y, inner, "THE SERVER GAVE AN EMPTY QUEUE.", 2);
+  lab::button(screen, lab::rect(x, pageBottom() - buttonH, inner, buttonH), "BACK TO THE MUSIC", ActionBackToPlayer, 0,
+              true, false);
 }
 
 void JukeboxActivity::buildMenu(toybox::Screen& screen) {
@@ -988,6 +1133,12 @@ void JukeboxActivity::render(RenderLock&&) {
       break;
     case View::Playing:
       buildPlaying(screen);
+      break;
+    case View::Showcase:
+      buildShowcase(screen);
+      break;
+    case View::Queue:
+      buildQueue(screen);
       break;
     case View::Menu:
       buildMenu(screen);

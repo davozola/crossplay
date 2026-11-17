@@ -129,6 +129,27 @@ int main() {
     check(!parseTimeline(junk, sizeof(junk) - 1, now), "something else is not a timeline");
   }
 
+  // --- the queue, as the server really answers ---
+  {
+    const std::string json = slurp("fixtures/playqueue.json");
+    Queue queue;
+    check(parseQueue(json.data(), json.size(), queue), "the queue reads");
+    check(queue.total == 14 && queue.items.size() == 14, "its length, and the window");
+    check(queue.current == 10, "which one is playing");
+    if (queue.current >= 0) {
+      check(queue.items[queue.current].key == "9253", "the playing track's key matches the timeline's");
+      check(queue.items[queue.current].title == "Onze heures", "its title, past the nested members before it");
+    }
+    check(queue.items[0].artist == "Fran\xC3\xA7oise Exemple" && queue.items[0].durationMs == 353093,
+          "artist and duration");
+    check(!parseQueue("[]", 2, queue), "something else is not a queue");
+    check(queueUrl("https://h:32400", "333", 8) == "https://h:32400/playQueues/333?window=8&own=1",
+          "where it is asked");
+    const std::string xml = slurp("fixtures/timeline.xml");
+    Now now;
+    check(parseTimeline(xml.data(), xml.size(), now) && now.queueId == "333", "the timeline names its queue");
+  }
+
   // --- a player describing itself ---
   {
     const std::string xml = slurp("fixtures/player_resources.xml");

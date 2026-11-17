@@ -1,0 +1,368 @@
+{
+ "MediaContainer": {
+  "size": 14,
+  "identifier": "com.plexapp.plugins.library",
+  "mediaTagPrefix": "/system/bundle/media/flags/",
+  "mediaTagVersion": 1786536554,
+  "playQueueID": 333,
+  "playQueueSelectedItemID": 8699,
+  "playQueueSelectedItemOffset": 10,
+  "playQueueSelectedMetadataItemID": "9253",
+  "playQueueShuffled": false,
+  "playQueueSourceURI": "library://x/item/%2Flibrary%2Fmetadata%2F9242",
+  "playQueueTotalCount": 14,
+  "playQueueVersion": 4,
+  "Metadata": [
+   {
+    "playQueueItemID": 8717,
+    "ratingKey": "9243",
+    "key": "/library/metadata/9243",
+    "type": "track",
+    "title": "Premier essai",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 1,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 353093,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 353093,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8718,
+    "ratingKey": "9244",
+    "key": "/library/metadata/9244",
+    "type": "track",
+    "title": "Deuxième page",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 2,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 146000,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 146000,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8719,
+    "ratingKey": "9245",
+    "key": "/library/metadata/9245",
+    "type": "track",
+    "title": "L'Heure d'essai",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 3,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 223906,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 223906,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8720,
+    "ratingKey": "9246",
+    "key": "/library/metadata/9246",
+    "type": "track",
+    "title": "Quatrième vague",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 4,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 176933,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 176933,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8721,
+    "ratingKey": "9247",
+    "key": "/library/metadata/9247",
+    "type": "track",
+    "title": "Cinq à sept",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 5,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 166400,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 166400,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8722,
+    "ratingKey": "9248",
+    "key": "/library/metadata/9248",
+    "type": "track",
+    "title": "Six pieds",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 6,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 303693,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 303693,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8723,
+    "ratingKey": "9249",
+    "key": "/library/metadata/9249",
+    "type": "track",
+    "title": "Sept mers",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 7,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 230840,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 230840,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8724,
+    "ratingKey": "9250",
+    "key": "/library/metadata/9250",
+    "type": "track",
+    "title": "Huit clos",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 8,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 255359,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 255359,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8725,
+    "ratingKey": "9251",
+    "key": "/library/metadata/9251",
+    "type": "track",
+    "title": "Neuf vies",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 9,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 189240,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 189240,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8726,
+    "ratingKey": "9252",
+    "key": "/library/metadata/9252",
+    "type": "track",
+    "title": "Dix de plus",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 10,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 202360,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 202360,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8699,
+    "ratingKey": "9253",
+    "key": "/library/metadata/9253",
+    "type": "track",
+    "title": "Onze heures",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 11,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 262706,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 262706,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8728,
+    "ratingKey": "9254",
+    "key": "/library/metadata/9254",
+    "type": "track",
+    "title": "Douze mois",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 12,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 155733,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 155733,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8729,
+    "ratingKey": "9255",
+    "key": "/library/metadata/9255",
+    "type": "track",
+    "title": "Treize lunes",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 13,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 278533,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 278533,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "playQueueItemID": 8730,
+    "ratingKey": "9256",
+    "key": "/library/metadata/9256",
+    "type": "track",
+    "title": "Quatorze juillet",
+    "grandparentTitle": "Françoise Exemple",
+    "parentTitle": "Vingt à trente mille pas",
+    "index": 14,
+    "parentYear": 2000,
+    "thumb": "/library/metadata/9242/thumb/1789179605",
+    "duration": 113960,
+    "Media": [
+     {
+      "id": 1,
+      "duration": 113960,
+      "Part": [
+       {
+        "id": 2,
+        "container": "flac"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

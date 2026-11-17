@@ -35,6 +35,9 @@ int player(const Config& config, const std::string& host, const std::string& url
 // A cover, resized by the server it lives on, into a file on the card.
 int art(const Config& config, const Now& now, int size, const char* path);
 
+// The media server a track came from, at its plex.direct name: the queue.
+int server(const Config& config, const Now& now, const std::string& url, std::string& body);
+
 // A fresh identifier for this reader, made once and kept with the settings.
 std::string newClientId();
 

@@ -305,6 +305,7 @@ bool parseTimeline(const char* xml, const size_t len, Now& out, const bool keepT
     now.thumb.clear();
   }
   now.trackKey = key;
+  now.queueId = attrOr(music, "playQueueID");
   now.serverId = attrOr(music, "machineIdentifier");
   const std::string address = attrOr(music, "address");
   if (!address.empty()) {
@@ -342,6 +343,35 @@ bool parsePlayerInfo(const char* xml, const size_t len, std::string& name, std::
   id = attrOr(tag, "machineIdentifier");
   product = attrOr(tag, "product");
   return !id.empty();
+}
+
+std::string queueUrl(const std::string& serverBase, const std::string& queueId, const int window) {
+  char tail[48];
+  std::snprintf(tail, sizeof(tail), "?window=%d&own=1", window % 1000);
+  return serverBase + "/playQueues/" + queueId + tail;
+}
+
+bool parseQueue(const char* json, const size_t len, Queue& out) {
+  const Span container = member(flatjson::root(json, len), "MediaContainer");
+  if (!container.ok()) return false;
+  out = Queue{};
+  out.total = static_cast<int>(whole(member(container, "playQueueTotalCount")));
+  const long selected = whole(member(container, "playQueueSelectedItemID"));
+  out.items.reserve(24);
+  flatjson::forEach(member(container, "Metadata"), 64, [&](int, const Span& item) {
+    QueueItem q;
+    // A number in some answers and a string in others.
+    const Span key = member(item, "ratingKey");
+    q.key = key.ok() && *key.p == '"' ? text(key) : std::to_string(whole(key));
+    q.title = text(member(item, "title"));
+    q.artist = text(member(item, "grandparentTitle"));
+    q.durationMs = static_cast<int32_t>(whole(member(item, "duration")));
+    if (selected != 0 && whole(member(item, "playQueueItemID")) == selected) {
+      out.current = static_cast<int>(out.items.size());
+    }
+    out.items.push_back(q);
+  });
+  return true;
 }
 
 std::string artUrl(const std::string& serverBase, const std::string& thumb, const int size) {

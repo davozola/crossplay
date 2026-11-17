@@ -23,6 +23,7 @@
 #include "../clock/ClockFaces.h"
 #include "../history/HistoryCore.h"
 #include "../history/HistoryStore.h"
+#include "../jukebox/JukeboxPeek.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -137,6 +138,7 @@ void TodayActivity::loop() {
     step_ = Step::Idle;
     const int kinds = todaystore::fetchAll(*data_, report_, sizeof(report_));
     lastFetchMs_ = static_cast<uint32_t>(millis());
+    jukebox::peekPlaying(playing_, sizeof(playing_));
     // The day's events too, when EFEMERIDES has not fetched them yet. They are
     // an extra: the report stays about the three the page cannot do without.
     if (eventCount_ == 0) {
@@ -168,7 +170,9 @@ void TodayActivity::loop() {
       lastFetchMs_ = now;
       if (wifiActivated_ && WiFi.status() == WL_CONNECTED) {
         char quiet[sizeof(report_)];
-        if (todaystore::fetchAll(*data_, quiet, sizeof(quiet)) > 0) {
+        const bool wasPlaying = playing_[0] != 0;
+        const bool music = jukebox::peekPlaying(playing_, sizeof(playing_)) || wasPlaying;
+        if (todaystore::fetchAll(*data_, quiet, sizeof(quiet)) > 0 || music) {
           loadEvent();
           requestUpdate();
         }
@@ -233,7 +237,8 @@ void TodayActivity::loop() {
                statusHeadline_ == nullptr) {
       // Each part of the page opens the app it is drawn from, and Back there
       // comes back here.
-      static constexpr const char* kApps[] = {"", "RELOJ", "WEATHER", "MARKETS", "NAVAL WEATHER", "EFEMERIDES"};
+      static constexpr const char* kApps[] = {"",           "RELOJ",  "WEATHER", "MARKETS", "NAVAL WEATHER",
+                                              "EFEMERIDES", "JUKEBOX"};
       shelf::openFrom(kApps[target], "HOY", renderer, mappedInput);
     } else if (event.action == ActionDismiss) {
       statusHeadline_ = nullptr;
@@ -304,6 +309,7 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   page.clockSet = t >= kClockSetAfter;
   if (page.clockSet) localtime_r(&t, &page.now);
   page.autoMinutes = autoMinutes_;
+  page.playing = playing_;
   page.eventCount = eventCount_;
   for (int i = 0; i < eventCount_; ++i) {
     page.events[i].text = eventText_[i];
