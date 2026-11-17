@@ -1,0 +1,11 @@
+# The Sticky's flash, laid out for one large app instead of two for updating
+# over the air. Its chip holds 32 MB; this table stays inside the first 16 MB,
+# which is all the flash the bootloader and the cache are configured for, and
+# gives the app the whole of it rather than half. The cost is updating itself:
+# with no second slot, the Wi-Fi and SD-card updaters refuse, and a new build
+# goes on over USB.
+# Name,   Type, SubType, Offset,  Size
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0xFE0000,
+coredump, data, coredump,0xFF0000,0x10000,

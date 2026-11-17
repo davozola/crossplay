@@ -57,6 +57,11 @@ Sticky**. Conserva todo lo del original y añade treinta y tres cosas:
 Este fork quita además dos apps del original que aquí no se usan: **Study** y
 **xkcd**. Su código sigue en el repositorio, pero no aparecen en el dispositivo.
 
+En la Sticky la app ocupa un único hueco de 15,9 MB en vez de dos de 7,9 MB
+(`partitions_sticky.csv`), así que hay sitio de sobra para más apps; a cambio no
+se actualiza sola por Wi-Fi ni desde la tarjeta, y cada versión se graba por
+USB.
+
 La imagen de la Sticky lleva solo cuatro idiomas de interfaz (inglés, español,
 catalán y portugués): los otros treinta y uno ocupaban 350 KB que hacían falta
 para las apps. Se cambia en `custom_i18n_builtin_langs`, en `platformio.ini`.
