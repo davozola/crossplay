@@ -39,7 +39,7 @@ Sticky**. Conserva todo lo del original y añade treinta y seis cosas:
 | **Handwriting** | Libreta para escribir y dibujar con el dedo; cada página se guarda como imagen. |
 | **Weather**     | Previsión de Open-Meteo para hasta seis ciudades; la última se queda en la tarjeta. |
 | **Naval Weather** | Parte marítimo de los sitios guardados en Weather: viento en nudos, oleaje, mar de fondo y agua, una semana, consultable sin red. |
-| **Wallpapers** (ampliada) | Galería con swipe entre diapositivas, una o cuatro por diapositiva, y un segundo pack de 16 fondos dibujados para la Sticky que se descarga por Wi-Fi. |
+| **Wallpapers** (rehecha) | Sesenta y seis estampas y grabados de dominio público del Art Institute of Chicago, recortados y tramados para esta pantalla: Hiroshige y Hokusai, Durero, Piranesi, Rembrandt, Goya, Meryon, Canaletto, Audubon. Una imagen por página, un botón para dejarla de fondo de reposo y un interruptor para que cambie sola cada vez que la Sticky se duerme. Van dentro del firmware: no hace falta Wi-Fi. Procedencia en [src/apps_local/fondos/PROVENANCE.md](src/apps_local/fondos/PROVENANCE.md). |
 | **Markets**     | Tres valores a elegir entre veintiuno (Bitcoin, S&P 500 y Nasdaq de serie) en un panel para tenerlo de pie en la mesa, con detalle de cada uno, y una cartera: apuntas cuánto tienes de cada cosa y ves el total y el cambio del día. |
 | **FM-1 Guías** | Guías de usuario, por capítulos y con el panel dibujado, de cuatro firmwares de la comunidad para la M-VAVE FM-1 (SLOOP, Felucca, FM-1+VA y X0X), más una de instalación y rescate. Sustituye a FM Synth Lab. |
 | **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |
@@ -182,7 +182,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Aprende**     | A five-minute lesson a day in maths, economics, electronics or AI (Spanish). |
 | **Efemerides**  | On this day: science, history and culture, from Spanish Wikipedia.       |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
-| **Wallpapers**  | Pick an image on the card as the sleep screen, one tap to set it.        |
+| **Wallpapers**  | 66 public-domain prints made for the panel; keep one, or a new one each sleep. |
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
 | **Calculator**  | A calculator with keys the size of a thumb, and the sums you already did. |
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
