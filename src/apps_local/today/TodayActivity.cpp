@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <string>
+#include <vector>
 
 #include "../../DevMode.h"
 #include "../../SilentRestart.h"
@@ -18,9 +20,11 @@
 #include "../Shelf.h"
 #include "../clock/ClockCore.h"
 #include "../clock/ClockFaces.h"
+#include "../history/HistoryCore.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
+#include "../ui/ToyboxSerif.h"
 #include "../ui/ToyboxTheme.h"
 #include "../weather/WeatherScreens.h"
 
@@ -52,14 +56,6 @@ void rule(toybox::Screen& screen, const int y) {
   lab::ink(screen, toybox::kMargin, y, screen.device().width - toybox::kMargin * 2, toybox::kHairline);
 }
 
-// An arrowhead for a rise or a fall.
-void tick(toybox::Screen& screen, const int x, const int y, const bool up) {
-  for (int i = 0; i < 8; ++i) {
-    const int w = up ? i * 2 + 2 : (7 - i) * 2 + 2;
-    lab::ink(screen, x - w / 2, y + i, w, 1);
-  }
-}
-
 }  // namespace
 
 std::unique_ptr<Activity> TodayActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput) {
@@ -76,6 +72,7 @@ void TodayActivity::onEnter() {
     return;
   }
   todaystore::load(*data_);
+  loadEvent();
   shownMinute_ = -1;
   statusHeadline_ = nullptr;
   requestUpdate();
@@ -186,6 +183,31 @@ void TodayActivity::buildStatus(toybox::Screen& screen) {
   if (statusDismissable_) lab::button(screen, lab::rect(x, y + 220, inner, 48), "OK", ActionDismiss, 0);
 }
 
+void TodayActivity::loadEvent() {
+  eventText_[0] = 0;
+  eventYear_ = 0;
+  const time_t t = time(nullptr);
+  if (t < kClockSetAfter) return;
+  struct tm parts = {};
+  localtime_r(&t, &parts);
+  char path[64];
+  std::snprintf(path, sizeof(path), "/.crosspoint/efemerides/%02d-%02d.txt", (parts.tm_mon + 1) % 100,
+                parts.tm_mday % 100);
+  std::string text;
+  if (!Storage.exists(path) || !Storage.readFileToString("HOY", path, 96u * 1024u, text)) return;
+  std::vector<history::Event> events;
+  events.reserve(128);
+  history::unpack(text, events);
+  // Science first, then whatever the day has.
+  int pick = -1;
+  for (int k = 0; k < history::kKinds && pick < 0; ++k) {
+    pick = history::featured(events, static_cast<history::Kind>(k), parts.tm_mon + 1, parts.tm_mday);
+  }
+  if (pick < 0) return;
+  std::snprintf(eventText_, sizeof(eventText_), "%s", events[static_cast<size_t>(pick)].text.c_str());
+  eventYear_ = events[static_cast<size_t>(pick)].year;
+}
+
 void TodayActivity::buildPage(toybox::Screen& screen) {
   const todaystore::Snapshot& d = *data_;
   const int width = screen.device().width;
@@ -193,145 +215,227 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   const int inner = width - x * 2;
   const int bottom = screen.device().height - lab::kBottomReserve - 6;
   char a[32];
-  char b[64];
+  char b[72];
 
-  // The time in the clock's own numerals, and the date beside it.
+  // --- The hour, white on a black band across the top. ---
   const time_t t = time(nullptr);
   const bool clockSet = t >= kClockSetAfter;
   struct tm parts = {};
   if (clockSet) localtime_r(&t, &parts);
+  const int heroH = 204;
+  renderer.fillRect(0, 0, width, heroH, true);
   {
-    const float boxW = 64;
-    const float pen = 6.5f;
+    const float boxW = 78;
+    const float pen = 8.5f;
     const float boxH = boxW * clockcore::kNumeralHeight;
-    float nx = static_cast<float>(x);
-    const float ny = 26;
+    float nx = static_cast<float>(x + 4);
+    const float ny = 22;
     const int digits[4] = {parts.tm_hour / 10, parts.tm_hour % 10, parts.tm_min / 10, parts.tm_min % 10};
     for (int i = 0; i < 4; ++i) {
       if (clockSet) {
-        clockfaces::drawNumeral(renderer, digits[i], nx, ny, boxW, pen);
+        clockfaces::drawNumeral(renderer, digits[i], nx, ny, boxW, pen, false);
       } else {
-        lab::ink(screen, static_cast<int>(nx) + 12, static_cast<int>(ny + boxH / 2) - 4, static_cast<int>(boxW) - 24,
-                 8);
+        renderer.fillRect(static_cast<int>(nx) + 14, static_cast<int>(ny + boxH / 2) - 5, static_cast<int>(boxW) - 28,
+                          10, false);
       }
       if (i == 1) {
-        toybox::disc(screen, static_cast<int16_t>(nx + boxW + 17), static_cast<int16_t>(ny + boxH * 0.32f), 5,
-                     fui::Color::Black);
-        toybox::disc(screen, static_cast<int16_t>(nx + boxW + 17), static_cast<int16_t>(ny + boxH * 0.68f), 5,
-                     fui::Color::Black);
+        const int cx = static_cast<int>(nx + boxW + 18);
+        renderer.fillRoundedRect(cx - 6, static_cast<int>(ny + boxH * 0.30f) - 6, 12, 12, 6, Color::White);
+        renderer.fillRoundedRect(cx - 6, static_cast<int>(ny + boxH * 0.70f) - 6, 12, 12, 6, Color::White);
       }
-      nx += boxW + (i == 1 ? 34 : 10);
+      nx += boxW + (i == 1 ? 36 : 10);
     }
+    // The day under the numerals; when the data is from, in the corner.
     if (clockSet) {
-      lab::label(screen, lab::rect(x, 30, inner, toybox::kDisplayCut.inkHeight), clockcore::weekdayEs(parts.tm_wday),
-                 toybox::kDisplayFont, toybox::kDisplayCut, fui::TextAlign::Right);
-      std::snprintf(a, sizeof(a), "%d %s", parts.tm_mday, clockcore::monthEs(parts.tm_mon + 1));
-      lab::value(screen, x, 30 + toybox::kDisplayCut.inkHeight + 16, inner, a, fui::TextAlign::Right);
+      std::snprintf(b, sizeof(b), "%s %d %s", clockcore::weekdayEs(parts.tm_wday), parts.tm_mday,
+                    clockcore::monthEs(parts.tm_mon + 1));
+      renderer.drawText(toybox::kUiFontId, x + 4,
+                        heroH - 16 - toybox::kUiCut.inkHeight - (toybox::kUiCut.ascender - toybox::kUiCut.inkHeight), b,
+                        false);
+    }
+    // Fetching everything again: a ring with an arrowhead, top right.
+    const int bx = width - x - 46;
+    const int by = 16;
+    fui::ButtonProps refresh;
+    refresh.label = "";
+    refresh.action = ActionRefresh;
+    refresh.styles.explicitlySet = true;
+    refresh.minTouchSize = 0;
+    screen.button(refresh, lab::rect(bx - 14, 0, 46 + 14 + x, 84));
+    renderer.drawRoundedRect(bx, by, 46, 46, 2, 12, false);
+    renderer.drawRoundedRect(bx + 12, by + 12, 22, 22, 3, 11, false);
+    renderer.fillRect(bx + 23, by + 8, 14, 12, true);
+    const int ax[3] = {bx + 22, bx + 32, bx + 22};
+    const int ay[3] = {by + 8, by + 14, by + 20};
+    renderer.fillPolygon(ax, ay, 3, false);
+    if (d.hasForecast && std::strlen(d.forecast.current.time) >= 16) {
+      std::snprintf(b, sizeof(b), "%.5s", d.forecast.current.time + 11);
+      const int w = renderer.getTextWidth(toybox::kTileFontId, b);
+      renderer.drawText(toybox::kTileFontId, bx + (46 - w) / 2,
+                        by + 54 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight), b, false);
     }
   }
-  int y = 150;
-  rule(screen, y);
-  y += 12;
+  int y = heroH + 12;
 
-  // Weather: now on the left, the next three days on the right.
+  // --- The weather now, large, and the three days after today. ---
+  const int weatherH = 150;
   if (d.hasForecast) {
     const wx::Forecast& f = d.forecast;
-    lab::caption(screen, x, y, inner / 2, d.place.name, fui::TextAlign::Left, fui::Color::DarkGray);
-    weatherui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, x + 52, y + 82, 92);
+    weatherui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, x + 58, y + 62, 112);
     std::snprintf(a, sizeof(a), "%d", wx::displayTemp(f.current.temp, d.fahrenheit));
-    const int tx = x + 116;
-    lab::label(screen, lab::rect(tx, y + 44, 110, toybox::kDisplayCut.inkHeight), a, toybox::kDisplayFont,
-               toybox::kDisplayCut, fui::TextAlign::Left);
-    degree(screen, tx + static_cast<int>(std::strlen(a)) * 31 + 10, y + 50, 7);
+    const int tx = x + 128;
+    renderer.drawText(toybox::kLargeFontId, tx, y - 10, a, true);
+    degree(screen, tx + renderer.getTextWidth(toybox::kLargeFontId, a) + 12, y + 16, 9);
+    lab::caption(screen, tx, y + toybox::kLargeCut.ascender, 150, d.place.name, fui::TextAlign::Left,
+                 fui::Color::DarkGray);
     if (f.dayCount > 0) {
-      std::snprintf(b, sizeof(b), "%d / %d", wx::displayTemp(f.days[0].max, d.fahrenheit),
-                    wx::displayTemp(f.days[0].min, d.fahrenheit));
-      lab::caption(screen, tx, y + 44 + toybox::kDisplayCut.inkHeight + 12, 120, b);
-      std::snprintf(b, sizeof(b), "LLUVIA %d%%", static_cast<int>(f.days[0].precip));
-      lab::caption(screen, tx, y + 44 + toybox::kDisplayCut.inkHeight + 34, 120, b);
+      std::snprintf(b, sizeof(b), "%d / %d   LLUVIA %d%%", wx::displayTemp(f.days[0].max, d.fahrenheit),
+                    wx::displayTemp(f.days[0].min, d.fahrenheit), static_cast<int>(f.days[0].precip));
+      lab::caption(screen, tx, y + toybox::kLargeCut.ascender + toybox::kTileCut.inkHeight + 10, 190, b);
     }
-    const int colW = 66;
+    const int colW = 56;
     const int right = x + inner;
     for (int k = 1; k <= 3 && k < f.dayCount; ++k) {
       const wx::Day& day = f.days[k];
       const int cx = right - (3 - k) * colW - colW / 2;
-      lab::caption(screen, cx - colW / 2, y, colW, clockcore::weekdayEs(wx::weekday(day.year, day.month, day.day)),
-                   fui::TextAlign::Center, fui::Color::DarkGray);
-      weatherui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 56, 44);
+      // The day's first three letters: the columns are narrow.
+      std::snprintf(b, sizeof(b), "%.3s", clockcore::weekdayEs(wx::weekday(day.year, day.month, day.day)));
+      lab::caption(screen, cx - colW / 2, y + 2, colW, b, fui::TextAlign::Center, fui::Color::DarkGray);
+      weatherui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 50, 40);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.max, d.fahrenheit));
-      lab::caption(screen, cx - colW / 2, y + 96, colW, b, fui::TextAlign::Center);
+      lab::caption(screen, cx - colW / 2, y + 84, colW, b, fui::TextAlign::Center);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.min, d.fahrenheit));
-      lab::caption(screen, cx - colW / 2, y + 118, colW, b, fui::TextAlign::Center, fui::Color::DarkGray);
+      lab::caption(screen, cx - colW / 2, y + 104, colW, b, fui::TextAlign::Center, fui::Color::DarkGray);
     }
   } else {
     lab::paragraph(screen, x, y + 30, inner,
-                   d.hasPlace ? "SIN PREVISION TODAVIA. PULSA ACTUALIZAR CON WI-FI."
+                   d.hasPlace ? "SIN PREVISION TODAVIA. TOCA EL ANILLO DE ARRIBA CON WI-FI."
                               : "ELIGE UN SITIO EN WEATHER Y VUELVE: ESTA PAGINA USA EL MISMO.",
                    3);
   }
-  y += 150;
+  y += weatherH;
+
+  // --- The day ahead: the temperature as a line, the chance of rain as bars. ---
+  const int curveH = 92;
   if (d.hasForecast) {
-    // The hours ahead, two at a time: the hour, the temperature, the chance of rain.
     const wx::Forecast& f = d.forecast;
     const int first = wx::nowIndex(f);
-    const int cols = 6;
-    const int colW = inner / cols;
-    lab::box(screen, x, y, inner, 1, fui::Paint::dither(fui::Color::DarkGray));
-    for (int k = 0; k < cols; ++k) {
-      const int i = first + (k + 1) * 2;
-      if (i >= f.hourCount) break;
-      const wx::Hour& hr = f.hours[i];
-      const int cx = x + k * colW;
-      std::snprintf(b, sizeof(b), "%02dH", static_cast<int>(hr.hour) % 100);
-      lab::caption(screen, cx, y + 12, colW, b, fui::TextAlign::Center, fui::Color::DarkGray);
-      std::snprintf(b, sizeof(b), "%d", wx::displayTemp(hr.temp, d.fahrenheit));
-      lab::value(screen, cx, y + 12 + toybox::kTileCut.inkHeight + 8, colW, b, fui::TextAlign::Center);
-      std::snprintf(b, sizeof(b), "%d%%", static_cast<int>(hr.precip));
-      lab::caption(screen, cx, y + 12 + toybox::kTileCut.inkHeight + 8 + toybox::kUiCut.inkHeight + 8, colW, b,
-                   fui::TextAlign::Center, hr.precip >= 40 ? fui::Color::Black : fui::Color::DarkGray);
+    int n = f.hourCount - first;
+    if (n > 24) n = 24;
+    if (n >= 3) {
+      float lo = f.hours[first].temp;
+      float hi = lo;
+      for (int i = 1; i < n; ++i) {
+        const float v = f.hours[first + i].temp;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      const float span = hi - lo > 1 ? hi - lo : 1;
+      const int plotX = x;
+      const int plotW = inner - 34;
+      const int top = y + 6;
+      const int lineH = 44;
+      const int rainTop = top + lineH + 8;
+      const int rainH = 18;
+      auto px = [&](const int i) { return plotX + plotW * i / (n - 1); };
+      auto py = [&](const int i) { return top + static_cast<int>(lineH * (hi - f.hours[first + i].temp) / span); };
+      for (int i = 0; i + 1 < n; ++i) {
+        // Shade under the line down to the rain, then the line over it.
+        for (int sx = px(i); sx < px(i + 1); ++sx) {
+          const int sy = py(i) + (py(i + 1) - py(i)) * (sx - px(i)) / (px(i + 1) - px(i) > 0 ? px(i + 1) - px(i) : 1);
+          renderer.fillRectDither(sx, sy, 1, top + lineH + 4 - sy, Color::LightGray);
+        }
+      }
+      for (int i = 0; i + 1 < n; ++i) renderer.drawLine(px(i), py(i), px(i + 1), py(i + 1), 3, true);
+      const int barW = plotW / n - 2 > 3 ? plotW / n - 2 : 3;
+      for (int i = 0; i < n; ++i) {
+        const int h = rainH * f.hours[first + i].precip / 100;
+        renderer.fillRect(px(i) - (i == 0 ? 0 : barW / 2), rainTop + rainH - (h > 1 ? h : 1), barW, h > 1 ? h : 1,
+                          true);
+      }
+      // The extremes at the right, and the hour under every sixth.
+      std::snprintf(b, sizeof(b), "%d", wx::displayTemp(hi, d.fahrenheit));
+      lab::caption(screen, x + inner - 30, top - 2, 30, b, fui::TextAlign::Right);
+      std::snprintf(b, sizeof(b), "%d", wx::displayTemp(lo, d.fahrenheit));
+      lab::caption(screen, x + inner - 30, top + lineH - toybox::kTileCut.inkHeight + 2, 30, b, fui::TextAlign::Right,
+                   fui::Color::DarkGray);
+      for (int i = 0; i < n; i += 6) {
+        std::snprintf(b, sizeof(b), "%02dH", static_cast<int>(f.hours[first + i].hour) % 100);
+        lab::caption(screen, px(i) - (i == 0 ? 0 : 20), rainTop + rainH + 5, 44, b,
+                     i == 0 ? fui::TextAlign::Left : fui::TextAlign::Center, fui::Color::DarkGray);
+      }
     }
   }
-  y += 96;
-  rule(screen, y);
-  y += 10;
+  y += curveH + 10;
 
-  // Markets: a row each.
+  // --- Markets: a tile each, with the day's move and the month's line. ---
+  const int tileGap = 8;
+  const int tileW = (inner - tileGap * (mk::kAssets - 1)) / mk::kAssets;
+  const int tileH = 100;
   for (int i = 0; i < mk::kAssets; ++i) {
     const mk::Quote& q = d.quotes[i];
-    const int rowH = 44;
-    const int ty = y + (rowH - toybox::kUiCut.inkHeight) / 2;
-    lab::value(screen, x, ty, 170, mk::infoOf(static_cast<mk::Asset>(i)).name);
-    if (q.valid) {
-      mk::formatPriceShort(q.price, a, sizeof(a));
-      lab::value(screen, x + 150, ty, 170, a, fui::TextAlign::Right);
-      const double pct = mk::dayChangePercent(q);
-      mk::formatPercent(pct, a, sizeof(a));
-      lab::caption(screen, x + inner - 96, y + (rowH - toybox::kTileCut.inkHeight) / 2, 96, a, fui::TextAlign::Right);
-      tick(screen, x + 340, y + rowH / 2 - 4, pct >= 0);
-    } else {
-      lab::caption(screen, x + inner - 96, y + (rowH - toybox::kTileCut.inkHeight) / 2, 96, "--", fui::TextAlign::Right,
-                   fui::Color::DarkGray);
+    const int tx = x + i * (tileW + tileGap);
+    renderer.drawRoundedRect(tx, y, tileW, tileH, 2, 10, true);
+    lab::caption(screen, tx + 10, y + 10, tileW - 20, mk::infoOf(static_cast<mk::Asset>(i)).name);
+    if (!q.valid) {
+      lab::caption(screen, tx, y + tileH / 2, tileW, "--", fui::TextAlign::Center, fui::Color::DarkGray);
+      continue;
     }
-    y += rowH;
+    mk::formatPriceShort(q.price, a, sizeof(a));
+    lab::value(screen, tx + 10, y + 10 + toybox::kTileCut.inkHeight + 8, tileW - 20, a);
+    const double pct = mk::dayChangePercent(q);
+    mk::formatPercent(pct, a, sizeof(a));
+    // A fall is a solid pill, a rise an outlined one.
+    const int pillW = renderer.getTextWidth(toybox::kTileFontId, a) + 14;
+    const int pillY = y + 10 + toybox::kTileCut.inkHeight + 8 + toybox::kUiCut.inkHeight + 7;
+    if (pct < 0) {
+      renderer.fillRoundedRect(tx + 10, pillY, pillW, 20, 8, Color::Black);
+    } else {
+      renderer.drawRoundedRect(tx + 10, pillY, pillW, 20, 1, 8, true);
+    }
+    renderer.drawText(
+        toybox::kTileFontId, tx + 17,
+        pillY + (20 - toybox::kTileCut.inkHeight) / 2 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight), a,
+        pct >= 0);
+    // The last month of closes along the foot of the tile.
+    int n = q.count < 22 ? q.count : 22;
+    if (n >= 3) {
+      const int from = q.count - n;
+      float lo = q.closes[from];
+      float hi = lo;
+      for (int k = 1; k < n; ++k) {
+        if (q.closes[from + k] < lo) lo = q.closes[from + k];
+        if (q.closes[from + k] > hi) hi = q.closes[from + k];
+      }
+      const float span = hi - lo > 0 ? hi - lo : 1;
+      const int sx0 = tx + pillW + 18;
+      const int sw = tileW - pillW - 28;
+      const int sy0 = pillY - 2;
+      const int sh = 24;
+      if (sw > 20) {
+        for (int k = 0; k + 1 < n; ++k) {
+          renderer.drawLine(sx0 + sw * k / (n - 1), sy0 + static_cast<int>(sh * (hi - q.closes[from + k]) / span),
+                            sx0 + sw * (k + 1) / (n - 1),
+                            sy0 + static_cast<int>(sh * (hi - q.closes[from + k + 1]) / span), 2, true);
+        }
+      }
+    }
   }
-  y += 6;
-  rule(screen, y);
-  y += 12;
+  y += tileH + 12;
 
-  // The sea: wind, waves, water.
+  // --- The sea: wind, waves, water. ---
   const int cellW = inner / 3;
   if (d.hasSea) {
     const nv::Hour& h = d.sea.hours[nv::nowIndex(d.sea)];
+    const int vy = y + toybox::kTileCut.inkHeight + 8;
     lab::caption(screen, x, y, cellW, "VIENTO", fui::TextAlign::Left, fui::Color::DarkGray);
     lab::caption(screen, x + cellW, y, cellW, "OLAS", fui::TextAlign::Left, fui::Color::DarkGray);
     lab::caption(screen, x + cellW * 2, y, cellW, "AGUA", fui::TextAlign::Left, fui::Color::DarkGray);
-    const int vy = y + toybox::kTileCut.inkHeight + 10;
-    const int dy = vy + toybox::kUiCut.inkHeight + 10;
     if (h.wind >= 0) {
       std::snprintf(a, sizeof(a), "%d KN", static_cast<int>(std::lround(h.wind)));
       lab::value(screen, x, vy, cellW, a);
-      std::snprintf(b, sizeof(b), "F%d  %s", nv::beaufort(h.wind), nv::compass(h.windFrom));
-      lab::caption(screen, x, dy, cellW, b);
+      std::snprintf(b, sizeof(b), "F%d %s", nv::beaufort(h.wind), nv::compass(h.windFrom));
+      lab::caption(screen, x, vy + toybox::kUiCut.inkHeight + 6, cellW, b, fui::TextAlign::Left, fui::Color::DarkGray);
     } else {
       lab::value(screen, x, vy, cellW, "--");
     }
@@ -339,9 +443,9 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
       const int tenths = static_cast<int>(std::lround(h.wave * 10));
       std::snprintf(a, sizeof(a), "%d.%d M", tenths / 10, tenths % 10);
       lab::value(screen, x + cellW, vy, cellW, a);
-      std::snprintf(b, sizeof(b), "%d S  %s", static_cast<int>(std::lround(h.wavePeriod < 0 ? 0 : h.wavePeriod)),
-                    nv::compass(h.waveFrom));
-      lab::caption(screen, x + cellW, dy, cellW, b);
+      std::snprintf(b, sizeof(b), "%d S", static_cast<int>(std::lround(h.wavePeriod < 0 ? 0 : h.wavePeriod)));
+      lab::caption(screen, x + cellW, vy + toybox::kUiCut.inkHeight + 6, cellW, b, fui::TextAlign::Left,
+                   fui::Color::DarkGray);
     } else {
       lab::value(screen, x + cellW, vy, cellW, "--");
     }
@@ -353,17 +457,24 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
       lab::value(screen, x + cellW * 2, vy, cellW, "--");
     }
   } else {
-    lab::caption(screen, x, y + 20, inner, d.hasPlace ? "SIN PARTE DEL MAR PARA ESTE SITIO" : "", fui::TextAlign::Left,
+    lab::caption(screen, x, y + 14, inner, d.hasPlace ? "SIN PARTE DEL MAR PARA ESTE SITIO" : "", fui::TextAlign::Left,
                  fui::Color::DarkGray);
   }
+  y += toybox::kTileCut.inkHeight + 8 + toybox::kUiCut.inkHeight + 6 + toybox::kTileCut.inkHeight + 10;
 
-  // When the forecast is from, and the way to fetch everything again.
-  if (d.hasForecast && std::strlen(d.forecast.current.time) >= 16) {
-    std::snprintf(b, sizeof(b), "DATOS DE LAS %.5s", d.forecast.current.time + 11);
-    lab::caption(screen, x, bottom - 46 + (46 - toybox::kTileCut.inkHeight) / 2, inner - 190, b, fui::TextAlign::Left,
-                 fui::Color::DarkGray);
+  // --- A day like this one, when EFEMERIDES has fetched it. ---
+  if (eventText_[0] != 0 && bottom - y >= 70) {
+    rule(screen, y);
+    y += 10;
+    history::yearLabel(eventYear_, a, sizeof(a));
+    std::snprintf(b, sizeof(b), "UN DIA COMO HOY, %s", a);
+    const int tabW = renderer.getTextWidth(toybox::kTileFontId, b) + 16;
+    renderer.fillRect(x, y, tabW, 22, true);
+    renderer.drawText(
+        toybox::kTileFontId, x + 8,
+        y + (22 - toybox::kTileCut.inkHeight) / 2 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight), b, false);
+    toyboxserif::draw(renderer, toybox::kReadingSmallFontId, 25, x, y + 24, inner, eventText_, (bottom - y - 24) / 25);
   }
-  lab::button(screen, lab::rect(x + inner - 180, bottom - 46, 180, 46), "ACTUALIZAR", ActionRefresh, 0);
 }
 
 void TodayActivity::render(RenderLock&&) {

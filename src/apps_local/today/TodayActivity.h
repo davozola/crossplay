@@ -6,9 +6,9 @@
 #include "../ui/ToyboxScreen.h"
 #include "TodayStore.h"
 
-// HOY: one page to leave standing. The time, today's weather and the next
-// three days, the three markets and the sea, all from what the other apps
-// keep on the card, with one button that fetches the lot again.
+// HOY: one page to leave standing. The time on a black band, today's weather
+// and the day ahead as a curve, the three markets, the sea and a line of what
+// happened on this day, all from what the other apps keep on the card.
 class TodayActivity final : public Activity {
  public:
   TodayActivity(GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity("Today", renderer, mappedInput) {}
@@ -38,6 +38,11 @@ class TodayActivity final : public Activity {
   const char* statusHeadline_ = nullptr;  // non-null while a status page is up
   char report_[192] = "";
   bool statusDismissable_ = false;
+
+  // What happened on a day like this, from what EFEMERIDES keeps on the card.
+  void loadEvent();
+  char eventText_[220] = "";
+  int eventYear_ = 0;
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;

@@ -25,7 +25,7 @@ Sticky**. Conserva todo lo del original y añade treinta y dos cosas:
 | --------------- | ----------------------------------------------------------------------- |
 | **Reloj** | Reloj de sobremesa en vertical u horizontal con siete esferas (trazo, paletas, esfera, anillos, matriz, segmentos y palabras), en claro u oscuro. |
 | **Casa** | La temperatura y la humedad de la habitación con el sensor de la propia Sticky, y las últimas 24 horas de cada una en una gráfica. |
-| **Hoy** | Una sola página con la hora, el tiempo, los mercados y el mar; un botón lo actualiza todo de una vez. |
+| **Hoy** | Una página para dejar en el soporte: la hora en grande sobre negro, el tiempo con la curva del día, los mercados en tres fichas, el mar y una efeméride. Un toque lo actualiza todo. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
 | **Chess Clock** | Reloj de ajedrez con incremento; cada uno toca su mitad.                |
