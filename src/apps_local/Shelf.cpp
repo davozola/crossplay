@@ -60,6 +60,7 @@
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
+#include "presenter/PresenterActivity.h"
 #include "reversi/ReversiActivity.h"
 #include "rpn/RpnActivity.h"
 #include "seasalt/SeaSaltActivity.h"
@@ -231,6 +232,9 @@ constexpr shelf::Item kApps[] = {
      "Con el sensor de la propia Sticky, leído cada tres segundos, y las últimas 24 horas en una gráfica."},
     {"RELOJ", &icon_clock_32, &ClockActivity::create, 0, false, "Reloj de mesa, siete esferas",
      "En vertical u horizontal, en claro u oscuro: trazo, paletas, esfera, anillos, matriz, segmentos y palabras."},
+    {"PRESENTER", &icon_presenter_32, &PresenterActivity::create, 3, false, "Mando para diapositivas",
+     "La Sticky se empareja por Bluetooth como un teclado y pasa las diapositivas de PowerPoint, Keynote o Google "
+     "Slides, sin instalar nada. Con reloj de la charla y avisos a cinco y a dos minutos del final."},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create, 3, false, "Temporizador de concentración",
      "Sesiones de trabajo y descanso; pita al acabar cada una."},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create, 3, false, "Reloj de ajedrez",
