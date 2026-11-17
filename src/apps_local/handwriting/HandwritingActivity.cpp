@@ -587,7 +587,7 @@ void HandwritingActivity::renderPage(toybox::Screen& screen) {
   // Under the nibs: how new ink is put on the panel, and how long the last
   // stroke refresh took, which is the number to tune it by.
   if (nibOpen) {
-    char label[toybox::kIntChars * 2 + 40];
+    char label[toybox::kIntChars * 3 + 40];
     if (inkSpeed == 0) {
       std::snprintf(label, sizeof(label), "INK: NORMAL  (LAST %u MS)", static_cast<unsigned>(lastInkMs % 100000u));
     } else {
