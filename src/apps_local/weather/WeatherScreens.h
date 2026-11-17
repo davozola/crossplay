@@ -21,7 +21,15 @@ enum : fui::ActionId {
   ActionSearch,
   ActionDismiss,
   ActionDay,  // value: day index, to open its sheet
+  ActionAuto,
+  ActionBoardOpen,   // value: saved place index, to open it full screen
+  ActionChooseAuto,  // value: minutes, 0 for off
 };
+
+// The minutes the auto-refresh picker offers; 0 is off. A forecast moves more
+// slowly than a market, so the steps are longer than MARKETS'.
+constexpr int kAutoChoices[] = {0, 15, 30, 60, 180};
+constexpr int kAutoChoiceCount = sizeof(kAutoChoices) / sizeof(kAutoChoices[0]);
 
 // The builder cannot reach the renderer, and the hero temperature is set in a
 // cut bigger than the three the target holds. The activity lends it this to
@@ -35,6 +43,7 @@ struct ForecastModel {
   const weather::Place* place = nullptr;
   const weather::Forecast* forecast = nullptr;  // null: nothing fetched yet
   bool fahrenheit = false;
+  int autoMinutes = 0;
   FaceSwap faces;
 };
 
@@ -82,6 +91,32 @@ void buildDay(toybox::Screen& screen, const DayModel& model);
 void buildCities(toybox::Screen& screen, const CitiesModel& model);
 void buildResults(toybox::Screen& screen, const ResultsModel& model);
 void buildStatus(toybox::Screen& screen, const StatusModel& model);
+void buildAutoPicker(toybox::Screen& screen, int currentMinutes);
+
+// A saved city's cached forecast, as much of it as a tile on the board shows.
+struct BoardCard {
+  bool have = false;
+  bool day = true;
+  int16_t code = 0;
+  float temp = 0;
+  float max = 0;
+  float min = 0;
+  int8_t precip = 0;
+  bool hasDay = false;
+  char time[6] = "";  // "HH:MM" the forecast is from
+};
+
+// Several cities at once: the first `size` saved ones, a tile each.
+struct BoardModel {
+  const weather::Place* places = nullptr;
+  const BoardCard* cards = nullptr;
+  int count = 0;  // saved places
+  int size = 3;   // tiles on the page: 3 or 5
+  bool fahrenheit = false;
+  int autoMinutes = 0;
+  FaceSwap faces;
+};
+void buildBoard(toybox::Screen& screen, const BoardModel& model);
 
 // The sky glyph in a `size` square centred on (cx, cy).
 void skyIcon(toybox::Screen& screen, weather::Sky sky, bool day, int cx, int cy, int size);
