@@ -22,6 +22,7 @@
 #include "../clock/ClockCore.h"
 #include "../clock/ClockFaces.h"
 #include "../history/HistoryCore.h"
+#include "../history/HistoryStore.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -118,7 +119,7 @@ void TodayActivity::loop() {
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = "DESCARGANDO";
-    std::snprintf(report_, sizeof(report_), "TIEMPO, MAR Y MERCADOS");
+    std::snprintf(report_, sizeof(report_), "TIEMPO, MAR, MERCADOS Y EFEMERIDES");
     // The status frame must be on the panel before the fetch blocks.
     requestUpdateAndWait();
     return;
@@ -126,6 +127,18 @@ void TodayActivity::loop() {
   if (step_ == Step::Running) {
     step_ = Step::Idle;
     const int kinds = todaystore::fetchAll(*data_, report_, sizeof(report_));
+    // The day's events too, when EFEMERIDES has not fetched them yet. They are
+    // an extra: the report stays about the three the page cannot do without.
+    if (eventCount_ == 0) {
+      const time_t t = time(nullptr);
+      if (t >= kClockSetAfter) {
+        struct tm parts = {};
+        localtime_r(&t, &parts);
+        std::vector<history::Event> fetched;
+        historystore::fetchDay(parts.tm_mon + 1, parts.tm_mday, fetched);
+      }
+      loadEvent();
+    }
     if (kinds == 3) {
       statusHeadline_ = nullptr;
     } else {
@@ -220,28 +233,27 @@ void TodayActivity::setStyle(const int style) {
 }
 
 void TodayActivity::loadEvent() {
-  eventText_[0] = 0;
-  eventYear_ = 0;
+  eventCount_ = 0;
   const time_t t = time(nullptr);
   if (t < kClockSetAfter) return;
   struct tm parts = {};
   localtime_r(&t, &parts);
   char path[64];
-  std::snprintf(path, sizeof(path), "/.crosspoint/efemerides/%02d-%02d.txt", (parts.tm_mon + 1) % 100,
-                parts.tm_mday % 100);
+  historystore::dayPath(parts.tm_mon + 1, parts.tm_mday, path, sizeof(path));
   std::string text;
   if (!Storage.exists(path) || !Storage.readFileToString("HOY", path, 96u * 1024u, text)) return;
   std::vector<history::Event> events;
   events.reserve(128);
   history::unpack(text, events);
-  // Science first, then whatever the day has.
-  int pick = -1;
-  for (int k = 0; k < history::kKinds && pick < 0; ++k) {
-    pick = history::featured(events, static_cast<history::Kind>(k), parts.tm_mon + 1, parts.tm_mday);
+  // The day's best of each kind, science first.
+  for (int k = 0; k < history::kKinds && eventCount_ < 3; ++k) {
+    const int pick = history::featured(events, static_cast<history::Kind>(k), parts.tm_mon + 1, parts.tm_mday);
+    if (pick < 0) continue;
+    std::snprintf(eventText_[eventCount_], sizeof(eventText_[eventCount_]), "%s",
+                  events[static_cast<size_t>(pick)].text.c_str());
+    eventYear_[eventCount_] = events[static_cast<size_t>(pick)].year;
+    ++eventCount_;
   }
-  if (pick < 0) return;
-  std::snprintf(eventText_, sizeof(eventText_), "%s", events[static_cast<size_t>(pick)].text.c_str());
-  eventYear_ = events[static_cast<size_t>(pick)].year;
 }
 
 void TodayActivity::buildPage(toybox::Screen& screen) {
@@ -249,8 +261,11 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   todaystyles::Page page{*data_};
   page.clockSet = t >= kClockSetAfter;
   if (page.clockSet) localtime_r(&t, &page.now);
-  page.eventText = eventText_;
-  page.eventYear = eventYear_;
+  page.eventCount = eventCount_;
+  for (int i = 0; i < eventCount_; ++i) {
+    page.events[i].text = eventText_[i];
+    page.events[i].year = eventYear_[i];
+  }
   todaystyles::draw(style_, screen, renderer, page);
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 
-// HOY's faces. The same day's data drawn five ways, to be swiped between: two
-// in the firmware's own pixel hand, and three that leave it for the reader's
+// HOY's faces. The same day's data drawn ten ways, to be swiped between: two
+// in the firmware's own pixel hand, and eight that leave it for the reader's
 // serif and sans and for drawn dials.
 
 #include <ctime>
@@ -13,7 +13,7 @@ class GfxRenderer;
 
 namespace todaystyles {
 
-constexpr int kStyles = 5;
+constexpr int kStyles = 10;
 const char* name(int style);
 
 // What a part of the page leads to when it is tapped.
@@ -25,8 +25,14 @@ struct Page {
   const todaystore::Snapshot& data;
   bool clockSet = false;
   struct tm now = {};
-  const char* eventText = "";  // what happened on a day like this; empty when not fetched
-  int eventYear = 0;
+  // What happened on days like this one, the best of each kind; none when not fetched.
+  struct Event {
+    const char* text = "";
+    int year = 0;
+  };
+  static constexpr int kEvents = 3;
+  Event events[kEvents];
+  int eventCount = 0;
 };
 
 // Draws the page in a style, with its tappable parts and the foot they share:
