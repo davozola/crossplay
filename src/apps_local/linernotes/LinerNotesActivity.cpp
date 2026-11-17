@@ -520,7 +520,7 @@ void LinerNotesActivity::buildList(toybox::Screen& screen) {
     lab::button(screen, lab::rect(x + inner - side, footY, side, kFooterH), "MORE", ActionListPage, 1, false, true);
   }
   if (total > 0) {
-    char page[24];
+    char page[32];
     std::snprintf(page, sizeof(page), "%d OF %d", listTop_ / rows + 1, (total + rows - 1) / rows);
     lab::caption(screen, x + side, footY + (kFooterH - toybox::kTileCut.inkHeight) / 2, inner - 2 * side, page,
                  fui::TextAlign::Center);
@@ -593,7 +593,7 @@ void LinerNotesActivity::buildAlbum(toybox::Screen& screen) {
   if (lineTop_ + lines < total) {
     lab::button(screen, lab::rect(x + inner - side, pagesY, side, kFooterH), "MORE", ActionTextPage, 1, true, true);
   }
-  char page[24];
+  char page[32];
   std::snprintf(page, sizeof(page), "%d OF %d", lineTop_ / lines + 1, (total + lines - 1) / lines);
   lab::caption(screen, x + side, pagesY + (kFooterH - toybox::kTileCut.inkHeight) / 2, inner - 2 * side, page,
                fui::TextAlign::Center);

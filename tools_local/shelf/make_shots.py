@@ -30,7 +30,9 @@ SHOTS = {
     "HOY": "hoy", "CASA": "casa", "RELOJ": "clock", "POMODORO": "pomodoro", "PRESENTER": "presenter", "LINER NOTES": "linernotes", "CHESS CLOCK": "chessclock",
     "HANDWRITING": "handwriting", "WEATHER": "weather", "NAVAL WEATHER": "naval", "MARKETS": "markets",
     "FM-1 GUIAS": "fmguide", "MUSIC THEORY": "theory", "RPN 12C": "rpn",
-    "MARCO": "marco",
+    "DIBUIXOS": "ilya-cards", "ON ES?": "ilya-find", "PARELLES": "ilya-match", "LLETRES": "ilya-letters",
+    "NOMBRES": "ilya-count", "EL TALP": "ilya-mole", "MEMORIA": "ilya-memory", "SUMES": "ilya-sums",
+    "LABERINT": "ilya-maze", "PUNTS": "ilya-dots",
     "JUKEBOX": "jukebox", "REVERSI": "reversi", "DOTS AND BOXES": "boxes",
 }
 

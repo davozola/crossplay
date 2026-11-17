@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y ocho cosas:
+Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -29,7 +29,6 @@ Sticky**. Conserva todo lo del original y añade treinta y ocho cosas:
 | **Reversi** | Atrapa las fichas del otro color entre dos tuyas y se dan la vuelta. Contra el dispositivo en tres niveles o a dos en la misma pantalla, en tablero de 8 o de 6. |
 | **Dots and Boxes** | Puntos y cajas: una raya por turno, y quien cierra un cuadrado se lo queda y repite. Contra el dispositivo o a dos, de 3×3 a 6×6. |
 | **Jukebox** | Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto, volumen, aleatorio y repetición desde la Sticky. Se enlaza a tu cuenta de Plex con un código en plex.tv/link y no instala nada en el reproductor. Ver [docs/jukebox.md](docs/jukebox.md). |
-| **Marco** | El marco de fotos, como app propia: cada cuánto cambia sola la imagen de reposo (de 15 minutos a 24 horas) con la Sticky dormida, si tiene el set de dos o más fotos que necesita y cuántos cambios lleva. |
 | **Presenter** | Mando de diapositivas por Bluetooth: la Sticky se empareja como un teclado y pasa las de PowerPoint, Keynote o Google Slides en Mac y PC sin instalar nada. Botones grandes para avanzar y retroceder, pantalla en negro, y un reloj de la charla que arranca con la primera diapositiva y avisa a cinco y a dos minutos del final. Ver [docs/presenter.md](docs/presenter.md). |
 | **Liner Notes** | Notas de los discos de tu propia colección: por qué importa cada uno, su contexto, cómo suena, qué escuchar y con qué otros discos tuyos se relaciona, en español o en inglés. El contenido no va en el firmware: es un paquete que haces tú en el ordenador y copias a la tarjeta, y la app lo lee disco a disco. Marcas propias, álbum del día, búsqueda por letra y un botón que pone el disco en Plexamp a través del Jukebox. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
@@ -55,7 +54,7 @@ Sticky**. Conserva todo lo del original y añade treinta y ocho cosas:
 | **Aprende** | Cinco minutos al día: una idea de matemáticas, economía, electrónica o IA, con un ejemplo y una pregunta. Cuarenta lecciones en español, racha diaria y progreso por materia. |
 | **Efemérides** | Qué pasó un día como hoy: un hecho de ciencia, uno de historia y uno de cultura en portada, la lista completa del día detrás, y cada día buscado guardado en la tarjeta. De Wikipedia en español. |
 | **Misterios** | Seis casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
-| **Ilya**        | Diez juegos en catalán para un niño pequeño: dibujos, parejas, letras, números, El Talp (un golpea-al-topo sin prisas), y cuatro con página de opciones para que crezcan con él: **Memoria** (de 6 a 24 cartas, nueve temas, uno o dos jugadores), **Sumes** (contar, sumar, restar, más o menos y qué número falta, hasta 5, 10 o 20), **Laberint** (cuatro tamaños, nuevo cada vez, con pistas y estrellas) y **Punts** (44 dibujos para unir, en tres dificultades, con números, letras o de dos en dos). |
+| **Ilya**        | Diez juegos en catalán para un niño pequeño, cada uno con su entrada en la pestaña ILYA además de la página de dibujos que los reúne: dibujos, parejas, letras, números, El Talp (un golpea-al-topo sin prisas), y cuatro con página de opciones para que crezcan con él: **Memoria** (de 6 a 24 cartas, nueve temas, uno o dos jugadores), **Sumes** (contar, sumar, restar, más o menos y qué número falta, hasta 5, 10 o 20), **Laberint** (cuatro tamaños, nuevo cada vez, con pistas y estrellas) y **Punts** (44 dibujos para unir, en tres dificultades, con números, letras o de dos en dos). |
 | **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
 | **Slitherlink, Shikaku, Akari, Hashi** | Cuatro puzles de lógica japoneses, 90 tableros cada uno, todos con solución única. |
 
@@ -107,7 +106,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **42 games and 26 apps**,
+that holds still is good at: **52 games and 25 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -167,7 +166,17 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Mancala**     | Kalah against the machine or a friend, with the rules a tap away.         |
 | **Tactics**     | Lichess chess puzzles from a pack on the card, at your own rating.        |
 | **Misterios**   | Six short detective cases, in Spanish: question, look, accuse.            |
-| **Ilya**         | Ten games for a small child, in Catalan: pictures, letters, numbers, a mole, memory, sums, mazes, join the dots. |
+| **Ilya**         | Ten games for a small child, in Catalan, each with its own row: pictures, letters, numbers, a mole, memory, sums, mazes, join the dots. |
+| **Dibuixos** | Picture cards for a small child, in Catalan: one big drawing and its name, a tap for the next. |
+| **On es?** | A word in Catalan and four pictures: tap the one that was named. |
+| **Parelles** | A picture and four to choose from: tap the one that is the same. |
+| **Lletres** | A letter, large, beside a thing whose Catalan name starts with it. |
+| **Nombres** | One to six pictures: tap the number there are. |
+| **El Talp** | A mole pops out of a hole and waits to be bopped. No hurry, no losing. |
+| **Memoria** | Pairs face down, 6 to 24 cards, nine themes, for one or two players. |
+| **Sumes** | Counting, adding, taking away, more or less and the missing number, up to 5, 10 or 20. |
+| **Laberint** | A maze made fresh each time, in four sizes, with hints and stars to collect. |
+| **Punts** | Forty-four pictures to join dot by dot, by numbers, letters or in twos. |
 | **Pinta**        | A sheet to draw on with a finger: two pens, stamps, a rubber.                |
 | **Slitherlink**  | Draw one closed loop along the dots from the numbers. 90 boards, one answer. |
 | **Shikaku**      | Cut the grid into rectangles, each holding its own area. 90 boards.          |
@@ -203,7 +212,6 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Music Theory** | Scales, chords and changes in any key, and Euclidean rhythms on a wheel.  |
 | **RPN 12C**     | An RPN financial calculator: time value of money, NPV and IRR.            |
 | **Jukebox**     | A remote for a Plexamp player on your network: cover, pause, skip, volume. |
-| **Marco**       | The photo frame: how often a sleeping reader changes its picture.         |
 
 Don't want all of them? Tap GAMES or APPS at the top of the list on your device and
 untick what you don't play.
