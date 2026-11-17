@@ -40,6 +40,7 @@
 #include "kakuro/KakuroActivity.h"
 #include "kids/KidsActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
+#include "learn/LearnActivity.h"
 #include "logic/LogicActivity.h"
 #include "mancala/MancalaActivity.h"
 #include "markets/MarketsActivity.h"
@@ -125,6 +126,7 @@ constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
     {"THE BATCH", &icon_batch_32, &BatchActivity::create},
     {"DISCOVER", &icon_discover_32, &DiscoverActivity::create},
+    {"APRENDE", &icon_learn_32, &LearnActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
