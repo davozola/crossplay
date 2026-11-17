@@ -979,7 +979,7 @@ int JukeboxActivity::coverSide() const {
   if (view_ == View::Showcase) return std::min(inner, pageBottom() - kShowcaseText - kShowcaseTop);
   switch (config_.look % kLooks) {
     case LookMinimal:
-      return 180;
+      return 248;
     case LookTape:
       return 0;
     case LookEditorial:
@@ -1380,18 +1380,18 @@ void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
 
   // The cover, small and to the left.
   const int side = coverSide();
-  int y = 56;
+  int y = 48;
   if (!idle && drawCover(x, y, side)) {
     coverX_ = static_cast<int16_t>(x);
     coverY_ = static_cast<int16_t>(y);
     coverW_ = static_cast<int16_t>(side);
-    y += side + 22;
+    y += side + 16;
   } else {
     y = 120;
   }
   // The words, hung from a short heavy rule.
   renderer.fillRect(x, y, 56, 8, true);
-  y += 30;
+  y += 24;
   if (idle) {
     renderer.drawText(NOTOSERIF_18_FONT_ID, x, y, silent ? "No answer" : "Silence", true);
     y += renderer.getLineHeight(NOTOSERIF_18_FONT_ID) + 10;
@@ -1407,12 +1407,12 @@ void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
       renderer.drawText(NOTOSERIF_18_FONT_ID, x, y, text.c_str(), true);
       y += lineH;
     }
-    y += 16;
+    y += 8;
     renderer.drawText(
         NOTOSANS_14_FONT_ID, x, y,
         renderer.truncatedText(NOTOSANS_14_FONT_ID, jukebox::drawable(now_.artist).c_str(), inner).c_str(), true,
         kBold);
-    y += 38;
+    y += 36;
     const std::string album = now_.year.empty() ? now_.album : now_.album + ", " + now_.year;
     renderer.drawText(NOTOSANS_12_FONT_ID, x, y,
                       renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(album).c_str(), inner).c_str(),
@@ -1421,9 +1421,9 @@ void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
 
   // From the foot up: the words, the volume, the marks, the hairline.
   const int wordsY = foot - 34;
-  const int volumeY = wordsY - 74;
-  const int marksY = volumeY - 110;
-  const int lineY = marksY - 84;
+  const int volumeY = wordsY - 64;
+  const int marksY = volumeY - 96;
+  const int lineY = marksY - 66;
   progressBar(x, lineY, inner, true);
 
   if (!idleOrSilent(screen, marksY, 90)) {
