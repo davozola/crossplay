@@ -255,7 +255,12 @@ class MemoryMini final : public Mini {
     for (int i = 0; i < game_.count; ++i) {
       if (inside(x, y, g.x + (i % g.cols) * (g.w + g.gap), g.y + (i / g.cols) * (g.h + g.gap), g.w, g.h)) index = i;
     }
-    switch (memory::tap(game_, index)) {
+    // Cards going face down again leave their picture as a shadow under a fast
+    // paint, and a shadow gives the card away: that paint is a clean one.
+    const bool turningDown = game_.peeking || game_.second >= 0;
+    const memory::Tap result = memory::tap(game_, index);
+    if (turningDown) return Did::Clean;
+    switch (result) {
       case memory::Tap::Nothing:
         return Did::Nothing;
       case memory::Tap::Pair:
