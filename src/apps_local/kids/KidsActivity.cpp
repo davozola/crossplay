@@ -75,6 +75,28 @@ void KidsActivity::deal() {
   }
 }
 
+void KidsActivity::did(const kidsmoreui::Did what) {
+  using kidsmoreui::Did;
+  switch (what) {
+    case Did::Nothing:
+      break;
+    case Did::Nudge:
+      haptic_feedback::touchAction();
+      break;
+    case Did::Clean:
+      cleanNext_ = true;
+      requestUpdate();
+      break;
+    case Did::Cheer:
+      requestUpdateAndWait();
+      cheer();
+      break;
+    case Did::Paint:
+      requestUpdate();
+      break;
+  }
+}
+
 void KidsActivity::cheer() {
   haptic_feedback::touchAction(true);
 #if KIDS_HAS_BUZZER
@@ -197,10 +219,31 @@ void KidsActivity::loop() {
       requestUpdate();
       return;
     }
+    if (view_ == View::Mini && mini_ && mini_->back()) {
+      cleanNext_ = true;
+      requestUpdate();
+      return;
+    }
+    mini_.reset();
     view_ = View::Menu;
     advanceAtMs_ = 0;
+    cleanNext_ = true;
     requestUpdate();
     return;
+  }
+
+  if (view_ == View::Mini && mini_) {
+    const uint32_t now = static_cast<uint32_t>(millis());
+    if (mini_->playing()) {
+      int x = 0;
+      int y = 0;
+      if (mappedInput.wasScreenTapped(x, y)) {
+        did(mini_->tap(renderer, x, y, now));
+      } else {
+        did(mini_->tick(now));
+      }
+      return;
+    }
   }
 
   if (view_ == View::Round && advanceAtMs_ != 0 && static_cast<uint32_t>(millis()) - advanceAtMs_ < 0x80000000u) {
@@ -235,6 +278,14 @@ void KidsActivity::route(const fui::ActionEvent& event) {
   const int deck = game_ == kids::Game::Letters ? kids::letterCount() : kids::kPictures;
   switch (event.action) {
     case ui::ActionGame:
+      if (event.value >= kids::kGames && event.value < kids::kGames + kidsmoreui::kGames) {
+        mini_ = kidsmoreui::make(static_cast<kidsmoreui::Which>(event.value - kids::kGames));
+        if (!mini_) return;
+        mini_->open(rng_, mappedInput.hasTouch());
+        view_ = View::Mini;
+        cleanNext_ = true;
+        break;
+      }
       if (event.value < 0 || event.value >= kids::kGames) return;
       open(static_cast<kids::Game>(event.value));
       break;
@@ -279,6 +330,7 @@ void KidsActivity::route(const fui::ActionEvent& event) {
       haptic_feedback::touchAction();
       break;
     default:
+      if (view_ == View::Mini && mini_) did(mini_->action(event.action));
       return;
   }
   requestUpdate();
@@ -306,9 +358,13 @@ void KidsActivity::render(RenderLock&&) {
     case View::Menu: {
       kidsui::MenuModel m;
       m.renderer = &renderer;
+      m.touch = mappedInput.hasTouch();
       kidsui::buildMenu(surface, m);
       break;
     }
+    case View::Mini:
+      if (mini_) mini_->draw(surface, renderer);
+      break;
     case View::MoleSetup:
       moleui::buildSetup(surface, renderer, moleConfig_);
       break;
@@ -345,7 +401,9 @@ void KidsActivity::render(RenderLock&&) {
   toybox::reportOverflow(interactions_, "Ilya");
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  if (view_ == View::MolePlay && !cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) cleanNext_ = true;
+  if ((view_ == View::MolePlay || view_ == View::Mini) && !cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) {
+    cleanNext_ = true;
+  }
   if (cleanNext_) fastPaints_ = 0;
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;

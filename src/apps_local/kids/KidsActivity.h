@@ -5,10 +5,11 @@
 #include "../../activities/Activity.h"
 #include "../ui/ToyboxScreen.h"
 #include "KidsCore.h"
+#include "KidsMore.h"
 #include "KidsScreens.h"
 #include "MoleCore.h"
 
-// ILYA: six games for a three-year-old. Big pictures, one tap at a time, and
+// ILYA: ten games for a small child. Big pictures, one tap at a time, and
 // nothing that can be lost: a wrong tap greys the tile and asks again.
 class KidsActivity final : public Activity {
  public:
@@ -22,12 +23,16 @@ class KidsActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Menu, Card, Round, MoleSetup, MolePlay };
+  enum class View : uint8_t { Menu, Card, Round, MoleSetup, MolePlay, Mini };
 
   void open(kids::Game game);
   void deal();
   void route(const freeink::ui::ActionEvent& event);
   void cheer();
+  void did(kidsmoreui::Did what);
+
+  // MEMORIA, SUMES, LABERINT or PUNTS, while one is open.
+  std::unique_ptr<kidsmoreui::Mini> mini_;
 
   // EL TALP.
   void loopMole();

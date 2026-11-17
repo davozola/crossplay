@@ -167,8 +167,9 @@ constexpr shelf::Item kGames[] = {
     {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create, 2, false, "Seis casos de detective",
      "En castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y "
      "coartada rota."},
-    {"ILYA", &icon_kids_32, &KidsActivity::create, 5, false, "Seis minijuegos en catalán",
-     "Para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas."},
+    {"ILYA", &icon_kids_32, &KidsActivity::create, 5, false, "Diez juegos en catalán",
+     "Para un niño pequeño: dibujos, parejas, letras, números, El Talp, y cuatro juegos con opciones para crecer con "
+     "él: Memoria, Sumes, Laberint y Punts."},
     {"PINTA", &icon_pinta_32, &PaintActivity::create, 5, false, "Pintar con el dedo",
      "Trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras."},
     {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither, 2, false, "Un lazo cerrado entre puntos",

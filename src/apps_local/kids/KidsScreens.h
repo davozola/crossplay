@@ -13,7 +13,7 @@ namespace kidsui {
 namespace fui = freeink::ui;
 
 enum : fui::ActionId {
-  ActionGame = 1,  // value: kids::Game
+  ActionGame = 1,  // value: kids::Game, then the four bigger games after the last of those
   ActionOption,    // value: option index
   ActionNext,
   ActionPrevious,
@@ -44,6 +44,7 @@ struct RoundModel {
 // The mole on the menu is a picture of its own, drawn straight to the panel.
 struct MenuModel {
   GfxRenderer* renderer = nullptr;
+  bool touch = true;  // no button hints along the foot
 };
 
 void buildMenu(toybox::Screen& screen, const MenuModel& model);

@@ -14,3 +14,6 @@ SRC=../../src/apps_local/kids
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -O2 -I$SRC \
   test_mole.cpp $SRC/MoleCore.cpp -o "$BUILD_DIR/test_mole"
 "$BUILD_DIR/test_mole"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -O2 -I$SRC \
+  test_more.cpp $SRC/KidsMoreCore.cpp $SRC/KidsCore.cpp -o "$BUILD_DIR/test_more"
+"$BUILD_DIR/test_more"

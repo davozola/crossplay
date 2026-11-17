@@ -51,7 +51,7 @@ Sticky**. Conserva todo lo del original y añade treinta y cuatro cosas:
 | **Aprende** | Cinco minutos al día: una idea de matemáticas, economía, electrónica o IA, con un ejemplo y una pregunta. Cuarenta lecciones en español, racha diaria y progreso por materia. |
 | **Efemérides** | Qué pasó un día como hoy: un hecho de ciencia, uno de historia y uno de cultura en portada, la lista completa del día detrás, y cada día buscado guardado en la tarjeta. De Wikipedia en español. |
 | **Misterios** | Seis casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
-| **Ilya**        | Seis minijuegos en catalán para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas con cuatro animales. |
+| **Ilya**        | Diez juegos en catalán para un niño pequeño: dibujos, parejas, letras, números, El Talp (un golpea-al-topo sin prisas), y cuatro con página de opciones para que crezcan con él: **Memoria** (de 6 a 24 cartas, nueve temas, uno o dos jugadores), **Sumes** (contar, sumar, restar, más o menos y qué número falta, hasta 5, 10 o 20), **Laberint** (cuatro tamaños, nuevo cada vez, con pistas y estrellas) y **Punts** (44 dibujos para unir, en tres dificultades, con números, letras o de dos en dos). |
 | **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
 | **Slitherlink, Shikaku, Akari, Hashi** | Cuatro puzles de lógica japoneses, 90 tableros cada uno, todos con solución única. |
 
@@ -161,7 +161,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Mancala**     | Kalah against the machine or a friend, with the rules a tap away.         |
 | **Tactics**     | Lichess chess puzzles from a pack on the card, at your own rating.        |
 | **Misterios**   | Six short detective cases, in Spanish: question, look, accuse.            |
-| **Ilya**         | Six games for a three-year-old, in Catalan: pictures, letters, numbers, a mole. |
+| **Ilya**         | Ten games for a small child, in Catalan: pictures, letters, numbers, a mole, memory, sums, mazes, join the dots. |
 | **Pinta**        | A sheet to draw on with a finger: two pens, stamps, a rubber.                |
 | **Slitherlink**  | Draw one closed loop along the dots from the numbers. 90 boards, one answer. |
 | **Shikaku**      | Cut the grid into rectangles, each holding its own area. 90 boards.          |
