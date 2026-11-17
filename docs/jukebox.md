@@ -113,7 +113,7 @@ The firmware's readers run against those captured answers in
 - **The volume bar** takes a touch anywhere along it; the minus and plus
   either side step by five.
 - **Four looks** for the playing page, each a layout of its own. CLASSIC: the
-  cover, the track under it, boxed controls. MINIMAL: no cover and no boxes,
+  cover, the track under it, boxed controls. MINIMAL: a small cover and no boxes,
   the title set large, a hairline for the track, bare marks for the controls.
   TAPE: a cassette whose reels show how far through the track is, the keys of
   a deck and a fader. EDITORIAL: the cover and the track side by side, round
