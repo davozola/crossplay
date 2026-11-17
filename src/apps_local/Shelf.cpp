@@ -211,7 +211,7 @@ constexpr shelf::Item kApps[] = {
      "del firmware."},
     {"WALLPAPERS", &icon_wallpapers_32, &FondosActivity::create, 3, false, "Estampas para el reposo",
      "Estampas japonesas, grabados, láminas de naturaleza y vistas, hechas para esta pantalla. Elige una como fondo de "
-     "reposo, o que cambie sola cada vez que la Sticky se duerme."},
+     "reposo, o que cambie sola cada vez que la Sticky se duerme o cada hora mientras duerme."},
     {"MARCO", &icon_frame_32, &FrameActivity::create, 3, false, "Cambia la foto de reposo sola",
      "El marco de fotos: cada cuánto cambia la imagen de la pantalla de reposo mientras la Sticky duerme. Las fotos "
      "se eligen en Wallpapers."},

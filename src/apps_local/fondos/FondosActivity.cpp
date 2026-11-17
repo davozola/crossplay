@@ -19,6 +19,7 @@
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
+#include "../wake/WakeJobs.h"
 
 #if defined(FONDOS_EMBEDDED)
 extern "C" {
@@ -32,6 +33,9 @@ namespace lab = toyboxlab;
 using fondos::Mode;
 
 namespace {
+
+// The frame interval, as wakejobs numbers it, that means an hour.
+constexpr int kHourly = 3;
 
 enum : fui::ActionId {
   ActionPrevious = 1,
@@ -179,6 +183,7 @@ void FondosActivity::say(const char* message) {
 
 void FondosActivity::useThisOne() {
   say("SAVING IT");
+  wakejobs::setFrameChoice(0);
   clearRotation();
   if (!writePicture(index_, kPinned)) {
     note_ = "THE CARD DID NOT TAKE IT";
@@ -191,10 +196,17 @@ void FondosActivity::useThisOne() {
   note_ = "THIS IS YOUR SLEEP SCREEN NOW";
 }
 
+// Never, every sleep, every hour, and round again to the picture on the page.
 void FondosActivity::toggleEvery() {
-  if (mode_ == Mode::Every) {
-    // Back to one picture: the one on the page.
+  if (mode_ == Mode::Every && wakejobs::frameChoice() == kHourly) {
     useThisOne();
+    return;
+  }
+  if (mode_ == Mode::Every) {
+    // The pictures are on the card already; the timer is all that changes.
+    wakejobs::setFrameChoice(kHourly);
+    wakejobs::setFrameChanges(0);
+    note_ = "A NEW ONE EVERY HOUR WHILE IT SLEEPS";
     return;
   }
   say("COPYING THE PICTURES TO THE CARD");
@@ -211,6 +223,7 @@ void FondosActivity::toggleEvery() {
   // A single pinned picture would win over the folder every time.
   if (Storage.exists(kPinned)) Storage.remove(kPinned);
   useCustomSleep();
+  wakejobs::setFrameChoice(0);
   mode_ = Mode::Every;
   saveState();
   note_ = "A DIFFERENT ONE EVERY TIME IT SLEEPS";
@@ -354,8 +367,10 @@ void FondosActivity::render(RenderLock&&) {
                   isChosen ? "IN USE" : "USE THIS ONE", ActionUse, 0, isChosen, false);
       lab::button(screen, lab::rect(x + inner - arrow, rowY, arrow, rowH), ">", ActionNext, 0, false, false);
       lab::button(screen, lab::rect(x, rowY + rowH + gap, inner, 52),
-                  mode_ == Mode::Every ? "A NEW ONE EVERY SLEEP: ON" : "A NEW ONE EVERY SLEEP: OFF", ActionEvery, 0,
-                  mode_ == Mode::Every, true);
+                  mode_ != Mode::Every                 ? "CHANGE BY ITSELF: NEVER"
+                  : wakejobs::frameChoice() == kHourly ? "CHANGE BY ITSELF: EVERY HOUR"
+                                                       : "CHANGE BY ITSELF: EVERY SLEEP",
+                  ActionEvery, 0, mode_ == Mode::Every, true);
     }
   }
 
