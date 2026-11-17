@@ -109,6 +109,20 @@ class ShelfFolderActivity final : public Activity {
   bool favouritesOnly = false;
   bool stars[kMaxRowsPerPage] = {};
 
+  // The catalogue: which tab is up, the items it lists in order, and the item
+  // whose sheet is open (-1 for none).
+  static constexpr int kMaxListed = 80;
+  int tab = 0;
+  int listed[kMaxListed] = {};
+  int listedCount = 0;
+  int sheetItem = -1;
+  // The sheet's picture, inflated once when the sheet opens.
+  std::unique_ptr<uint8_t[]> sheetPicture;
+  void rebuildList();
+  void setTab(int to);
+  void openSheet(int item);
+  void closeSheet();
+
   toybox::Interactions interactions;
   bool interactionsReady = false;
 };

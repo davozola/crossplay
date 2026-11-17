@@ -38,6 +38,7 @@
 
 #include <Icon.h>
 
+#include <cstdint>
 #include <memory>
 
 #include "../components/themes/BaseTheme.h"  // UIIcon
@@ -61,6 +62,14 @@ struct Item {
   // 1735 icons Lucide ships rather than a growing enum.
   const freeink::Icon* icon;
   std::unique_ptr<Activity> (*create)(GfxRenderer&, MappedInputManager&);
+  // Which of its folder's kinds it is: the tab it is listed under.
+  uint8_t category;
+  // Whether it needs the network for what it is for.
+  bool online;
+  // One line under the title on the list, and a sentence or two for the sheet
+  // a long press opens. In Spanish, like the reader they are written for.
+  const char* blurb;
+  const char* about;
 };
 
 // A titled list of items. Note what is absent: a Folder cannot contain a
@@ -87,6 +96,9 @@ struct Folder {
   // bar is the only way into PLAYER, where it is changed. False elsewhere,
   // where it would be a face with no job.
   bool showsDeviceName;
+  // The kinds its items are sorted into, in tab order.
+  const char* const* tabs;
+  int tabCount;
 };
 
 const Folder* folders();
@@ -149,6 +161,8 @@ int shownRowFor(int folder, int item);
 
 // The folder's favourites, as item indices in the order they were chosen:
 // fills `out` (room for shelf::kFavouriteSlots) and returns how many.
+// The items last opened, newest first, shown ones only; at most `max`.
+int recents(int folder, int* out, int max);
 int favourites(int folder, int* out);
 bool isFavourite(int folder, int item);
 void toggleFavourite(int folder, int item);

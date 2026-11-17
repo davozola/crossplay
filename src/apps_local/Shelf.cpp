@@ -82,73 +82,156 @@ namespace {
 // Icons come from tools_local/toybox/icons.txt via Lucide. Picked for silhouette
 // rather than literalness: a crown, a hull, a grid and a card suit share no
 // shape, so a row is scannable before the label is read.
+// The kinds a folder sorts its items into, in the order of their tabs. An
+// item's `category` is an index into its folder's list; the folder screen adds
+// a tab before them (the favourites and what was last opened) and one after
+// (everything).
+constexpr const char* kGameTabs[] = {"TABLERO", "CARTAS", "LOGICA", "PALABRAS", "GRUPO", "ILYA"};
+constexpr const char* kAppTabs[] = {"INFO", "LEER", "APRENDER", "UTIL"};
+
 constexpr shelf::Item kGames[] = {
-    {"CHESS", &icon_chess_32, &ChessActivity::create},
-    {"BATTLESHIP", &icon_battleship_32, &BattleshipActivity::create},
-    {"CONNECTIONS", &icon_connections_32, &ConnectionsActivity::create},
-    {"SOLITAIRE", &icon_solitaire_32, &SolitaireActivity::create},
-    {"HEARTS", &icon_hearts_32, &HeartsActivity::create},
-    {"D&DIAGRAMS", &icon_dungeon_32, &DungeonActivity::create},
-    {"INSIDER", &icon_insider_32, &InsiderActivity::create},
-    {"JAIPUR", &icon_jaipur_32, &JaipurActivity::create},
-    {"SEA SALT", &icon_seasalt_32, &SeaSaltActivity::create},
-    {"MURDLE", &icon_murdle_32, &MurdleActivity::create},
-    {"CHECKERS", &icon_checkers_32, &CheckersActivity::create},
-    {"CONNECT FOUR", &icon_connectfour_32, &ConnectFourActivity::create},
-    {"YAHTZEE", &icon_yahtzee_32, &YahtzeeActivity::create},
-    {"KNUCKLEBONES", &icon_knucklebones_32, &KnucklebonesActivity::create},
-    {"MINESWEEPER", &icon_minesweeper_32, &MinesweeperActivity::create},
-    {"SUDOKU", &icon_sudoku_32, &SudokuActivity::create},
-    {"PICROSS", &icon_picross_32, &PicrossActivity::create},
-    {"TOY BATTLE", &icon_toybattle_32, &ToyBattleActivity::create},
-    {"FOREHEAD", &icon_forehead_32, &ForeheadActivity::create},
-    {"TRIVIA", &icon_trivia_32, &TriviaActivity::create},
-    {"WAVELENGTH", &icon_wavelength_32, &WavelengthActivity::create},
-    {"GO", &icon_go_32, &GoActivity::create},
-    {"HEX", &icon_hex_32, &HexActivity::create},
-    {"UNDERHAND", &icon_underhand_32, &UnderhandActivity::create},
-    {"WORDLE", &icon_wordle_32, &WordleActivity::create},
-    {"TAK", &icon_tak_32, &TakActivity::create},
-    {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create},
-    {"KAKURO", &icon_kakuro_32, &KakuroActivity::create},
-    {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create},
-    {"HIVE", &icon_hive_32, &HiveActivity::create},
-    {"TRIPLES", &icon_triples_32, &TriplesActivity::create},
-    {"MANCALA", &icon_mancala_32, &MancalaActivity::create},
-    {"TACTICS", &icon_tactics_32, &TacticsActivity::create},
-    {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create},
-    {"ILYA", &icon_kids_32, &KidsActivity::create},
-    {"PINTA", &icon_pinta_32, &PaintActivity::create},
-    {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither},
-    {"SHIKAKU", &icon_shikaku_32, &LogicActivity::createShikaku},
-    {"AKARI", &icon_akari_32, &LogicActivity::createAkari},
-    {"HASHI", &icon_hashi_32, &LogicActivity::createHashi},
+    {"CHESS", &icon_chess_32, &ChessActivity::create, 0, false, "Ajedrez: máquina o a dos",
+     "Un motor de ajedrez completo en el dispositivo, con varios niveles, o un tablero para jugar entre dos personas."},
+    {"BATTLESHIP", &icon_battleship_32, &BattleshipActivity::create, 0, false, "Hundir la flota",
+     "Coloca tu flota y da caza a la del rival, contra el dispositivo."},
+    {"CONNECTIONS", &icon_connections_32, &ConnectionsActivity::create, 3, false, "Agrupa 16 palabras en 4 temas",
+     "La cuadrícula diaria de palabras: encuentra los cuatro grupos de cuatro. Con archivo de tableros anteriores. En "
+     "inglés."},
+    {"SOLITAIRE", &icon_solitaire_32, &SolitaireActivity::create, 1, false, "El solitario clásico",
+     "Klondike con la pantalla en horizontal, que es la forma que tiene una mesa de solitario."},
+    {"HEARTS", &icon_hearts_32, &HeartsActivity::create, 1, false, "Corazones: esquiva las bazas",
+     "Evita llevarte bazas: cada corazón cuesta un punto y la dama de picas, trece. Contra tres rivales del "
+     "dispositivo."},
+    {"D&DIAGRAMS", &icon_dungeon_32, &DungeonActivity::create, 2, false, "Nonogramas de mazmorras",
+     "Un nonograma cuyas pistas dibujan una mazmorra: paredes, monstruos y tesoros. Sesenta y cuatro tableros."},
+    {"INSIDER", &icon_insider_32, &InsiderActivity::create, 4, false, "Fiesta: hay un infiltrado",
+     "Para una mesa y un solo dispositivo: se adivina una palabra a preguntas mientras alguien, que ya la sabe, guía "
+     "sin delatarse."},
+    {"JAIPUR", &icon_jaipur_32, &JaipurActivity::create, 1, false, "Mercaderes, para dos",
+     "El juego de mercaderes para dos: compra, vende y hazte con los camellos. Contra el dispositivo."},
+    {"SEA SALT", &icon_seasalt_32, &SeaSaltActivity::create, 1, false, "Parejas de cartas y apuesta",
+     "Colecciona parejas de cartas y decide cuándo plantarte: STOP o ÚLTIMA OPORTUNIDAD."},
+    {"MURDLE", &icon_murdle_32, &MurdleActivity::create, 2, false, "Deduce quién, dónde y con qué",
+     "Un misterio en cuadrícula lógica: cruzas pistas hasta saber quién fue, dónde y con qué. Nunca hay que adivinar."},
+    {"CHECKERS", &icon_checkers_32, &CheckersActivity::create, 0, false, "Damas inglesas",
+     "Damas con captura obligatoria, que el propio tablero te señala. Contra el dispositivo o a dos."},
+    {"CONNECT FOUR", &icon_connectfour_32, &ConnectFourActivity::create, 0, false, "Cuatro en raya vertical",
+     "Deja caer una ficha y alinea cuatro. Siete columnas, un toque cada una."},
+    {"YAHTZEE", &icon_yahtzee_32, &YahtzeeActivity::create, 1, false, "Dados: 13 casillas, 3 tiradas",
+     "El juego de dados de las trece casillas, con tres tiradas por turno y las reglas del comodín completas."},
+    {"KNUCKLEBONES", &icon_knucklebones_32, &KnucklebonesActivity::create, 1, false, "Dados que suman y destruyen",
+     "El juego de dados de Cult of the Lamb: los dados iguales multiplican y los tuyos eliminan los del rival."},
+    {"MINESWEEPER", &icon_minesweeper_32, &MinesweeperActivity::create, 2, false, "Buscaminas",
+     "Toca para destapar, mantén para marcar una bandera y toca un número completo para abrir sus vecinas."},
+    {"SUDOKU", &icon_sudoku_32, &SudokuActivity::create, 2, false, "Sudoku generado y graduado",
+     "Tableros generados en el dispositivo y clasificados por la técnica que exigen, no por el número de pistas."},
+    {"PICROSS", &icon_picross_32, &PicrossActivity::create, 2, false, "Rellena y sale un dibujo",
+     "Nonogramas: rellena casillas según las pistas de filas y columnas hasta que aparece la imagen."},
+    {"TOY BATTLE", &icon_toybattle_32, &ToyBattleActivity::create, 0, false, "Bases, caminos y medallas",
+     "Nueve tableros de bases y caminos: ocupa regiones y gana medallas. Contra el dispositivo."},
+    {"FOREHEAD", &icon_forehead_32, &ForeheadActivity::create, 4, false, "Pantalla en la frente, 60 s",
+     "Te pones la pantalla en la frente y los demás te dan pistas a gritos para que adivines la palabra. Sesenta "
+     "segundos."},
+    {"TRIVIA", &icon_trivia_32, &TriviaActivity::create, 3, false, "50.000 preguntas de Jeopardy",
+     "Preguntas de 42 años de Jeopardy, para leer en voz alta o jugar a solas. En inglés."},
+    {"WAVELENGTH", &icon_wavelength_32, &WavelengthActivity::create, 4, false, "Una pista y a discutir",
+     "Hay un punto oculto en un espectro entre dos extremos; alguien da una pista y el resto discute dónde cae."},
+    {"GO", &icon_go_32, &GoActivity::create, 0, false, "Go en 9x9, 13x13 o 19x19",
+     "Contra el dispositivo o con alguien al lado. Cuenta el territorio por ti al acabar."},
+    {"HEX", &icon_hex_32, &HexActivity::create, 0, false, "Une tus dos orillas",
+     "Sin capturas y sin empates: gana quien conecta primero sus dos lados del tablero."},
+    {"UNDERHAND", &icon_underhand_32, &UnderhandActivity::create, 1, false, "Cartas: soborna e invoca",
+     "El juego de cartas de culto de 2017: administra recursos, soborna, sacrifica, esquiva a la policía e invoca a un "
+     "dios."},
+    {"WORDLE", &icon_wordle_32, &WordleActivity::create, 3, false, "La palabra del día en 6",
+     "La palabra del día en seis intentos, con todos los días anteriores en un archivo. En inglés."},
+    {"TAK", &icon_tak_32, &TakActivity::create, 0, false, "Un camino de lado a lado",
+     "El juego de Playtak, de 4x4 a 6x6, contra la máquina o a dos."},
+    {"INNER CLOCK", &icon_innerclock_32, &InnerClockActivity::create, 4, false, "Cuenta segundos de cabeza",
+     "Toca, cuenta los segundos de cabeza y vuelve a tocar: te dice a cuántas centésimas te has quedado."},
+    {"KAKURO", &icon_kakuro_32, &KakuroActivity::create, 2, false, "Sumas cruzadas",
+     "De 5x5 a 9x9, cada tablero con una única solución demostrada. Sin adivinar."},
+    {"MASTERMIND", &icon_mastermind_32, &MastermindActivity::create, 2, false, "Descifra el código de formas",
+     "A solas contra el dispositivo, en tres niveles."},
+    {"HIVE", &icon_hive_32, &HiveActivity::create, 0, false, "Insectos sin tablero",
+     "Rodea a la reina rival con tus insectos. Contra el dispositivo, en tres niveles, o a dos."},
+    {"TRIPLES", &icon_triples_32, &TriplesActivity::create, 2, false, "Desliza fichas: 1 y 2 hacen 3",
+     "En un tablero de 4x4: el 1 y el 2 suman 3 y las parejas se doblan. Entra una ficha nueva en cada movimiento."},
+    {"MANCALA", &icon_mancala_32, &MancalaActivity::create, 0, false, "Kalah: siembra y captura",
+     "Contra la máquina, en tres niveles, o entre dos; de 3 a 6 semillas por hoyo y las reglas a un toque."},
+    {"TACTICS", &icon_tactics_32, &TacticsActivity::create, 0, false, "Problemas de ajedrez",
+     "Problemas de Lichess desde un paquete en la tarjeta: la dificultad sigue tu nivel, con pistas, reto diario y "
+     "estadísticas."},
+    {"MISTERIOS", &icon_mystery_32, &MysteryActivity::create, 2, false, "Seis casos de detective",
+     "En castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y "
+     "coartada rota."},
+    {"ILYA", &icon_kids_32, &KidsActivity::create, 5, false, "Seis minijuegos en catalán",
+     "Para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas."},
+    {"PINTA", &icon_pinta_32, &PaintActivity::create, 5, false, "Pintar con el dedo",
+     "Trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras."},
+    {"SLITHERLINK", &icon_slither_32, &LogicActivity::createSlither, 2, false, "Un lazo cerrado entre puntos",
+     "Dibuja un único lazo siguiendo los números de cada casilla. Noventa tableros con solución única."},
+    {"SHIKAKU", &icon_shikaku_32, &LogicActivity::createShikaku, 2, false, "Corta en rectángulos",
+     "Cada rectángulo contiene un número, que es su área. Noventa tableros."},
+    {"AKARI", &icon_akari_32, &LogicActivity::createAkari, 2, false, "Ilumina todas las casillas",
+     "Coloca bombillas hasta iluminar cada casilla sin que dos se vean entre sí. Noventa tableros."},
+    {"HASHI", &icon_hashi_32, &LogicActivity::createHashi, 2, false, "Une las islas con puentes",
+     "Conecta todas las islas en una sola pieza con el número de puentes que pide cada una. Noventa tableros."},
 };
 constexpr shelf::Item kApps[] = {
-    {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
-    {"THE BATCH", &icon_batch_32, &BatchActivity::create},
-    {"DISCOVER", &icon_discover_32, &DiscoverActivity::create},
-    {"APRENDE", &icon_learn_32, &LearnActivity::create},
-    {"EFEMERIDES", &icon_history_32, &HistoryActivity::create},
-    {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
-    {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
-    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
-    {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create},
+    {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create, 1, true, "La portada de Hacker News",
+     "La portada en una letra de lectura; los artículos que abres se guardan en la tarjeta para leerlos sin red."},
+    {"THE BATCH", &icon_batch_32, &BatchActivity::create, 1, true, "El boletín semanal de IA",
+     "El boletín de DeepLearning.AI noticia a noticia, con archivo desde el primer número, favoritos y lectura sin red "
+     "de lo ya abierto."},
+    {"DISCOVER", &icon_discover_32, &DiscoverActivity::create, 1, true, "Lo nuevo de GitHub",
+     "Repositorios nuevos con más estrellas, filtrados por tema, lenguaje y antigüedad; con ficha, README y lista de "
+     "guardados."},
+    {"APRENDE", &icon_learn_32, &LearnActivity::create, 2, false, "Una lección de 5 min al día",
+     "Una idea de matemáticas, economía, electrónica o IA con un ejemplo y una pregunta. Cuarenta lecciones y racha "
+     "diaria."},
+    {"EFEMERIDES", &icon_history_32, &HistoryActivity::create, 0, true, "Qué pasó un día como hoy",
+     "Un hecho de ciencia, uno de historia y uno de cultura en portada, y la lista completa del día detrás. De "
+     "Wikipedia en español."},
+    {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create, 1, true, "Tu lista de lectura pendiente",
+     "Tu cola de Instapaper sincronizada en los dos sentidos. Se empareja a través de un servidor del autor original "
+     "del firmware."},
+    {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create, 3, false, "El fondo de reposo",
+     "Elige una imagen o un conjunto de ellas para la pantalla de reposo, y cada cuánto cambia con el marco de fotos."},
+    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create, 1, false, "50.000 artículos sin internet",
+     "Cincuenta mil artículos en la tarjeta, que se leen como un libro. En inglés."},
+    {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create, 3, false, "Calculadora de teclas grandes",
+     "Con teclas del tamaño de un pulgar y el historial de las cuentas que ya has hecho."},
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
-    {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
-    {"HOY", &icon_hoy_32, &TodayActivity::create},
-    {"CASA", &icon_casa_32, &CasaActivity::create},
-    {"RELOJ", &icon_clock_32, &ClockActivity::create},
-    {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create},
-    {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create},
-    {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create},
-    {"WEATHER", &icon_weather_32, &WeatherActivity::create},
-    {"NAVAL WEATHER", &icon_naval_32, &NavalActivity::create},
-    {"MARKETS", &icon_markets_32, &MarketsActivity::create},
-    {"FM-1 GUIAS", &icon_fmlab_32, &FmGuideActivity::create},
-    {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create},
-    {"RPN 12C", &icon_rpn_32, &RpnActivity::create},
+    {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create, 3, false, "Listas para marcar",
+     "Listas que tachas con una mano, guardadas como archivos de texto en la tarjeta."},
+    {"HOY", &icon_hoy_32, &TodayActivity::create, 0, true, "El día en una página",
+     "Una página para dejar en el soporte, en diez estilos que se cambian deslizando. Tocar cada parte abre su app."},
+    {"CASA", &icon_casa_32, &CasaActivity::create, 0, false, "Temperatura y humedad",
+     "Con el sensor de la propia Sticky, leído cada tres segundos, y las últimas 24 horas en una gráfica."},
+    {"RELOJ", &icon_clock_32, &ClockActivity::create, 0, false, "Reloj de mesa, siete esferas",
+     "En vertical u horizontal, en claro u oscuro: trazo, paletas, esfera, anillos, matriz, segmentos y palabras."},
+    {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create, 3, false, "Temporizador de concentración",
+     "Sesiones de trabajo y descanso; pita al acabar cada una."},
+    {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create, 3, false, "Reloj de ajedrez",
+     "Dos relojes para un tablero entre los dos; cada uno toca su mitad de la pantalla."},
+    {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create, 3, false, "Libreta para el dedo",
+     "Páginas para escribir y dibujar; cada una se guarda también como imagen."},
+    {"WEATHER", &icon_weather_32, &WeatherActivity::create, 0, true, "Previsión para tus ciudades",
+     "De Open-Meteo, hasta seis ciudades, con tableros de tres y de cinco y actualización automática."},
+    {"NAVAL WEATHER", &icon_naval_32, &NavalActivity::create, 0, true, "Viento, oleaje y agua",
+     "El parte marítimo de los sitios guardados en Weather: viento en nudos, olas, mar de fondo y temperatura del "
+     "agua."},
+    {"MARKETS", &icon_markets_32, &MarketsActivity::create, 0, true, "Tres valores y tu cartera",
+     "Tres valores a elegir en un panel para la mesa, búsqueda por ticker o nombre, detalle de cada uno y una "
+     "cartera."},
+    {"FM-1 GUIAS", &icon_fmlab_32, &FmGuideActivity::create, 2, false, "Guías de firmwares de la FM-1",
+     "Guías por capítulos, con el panel dibujado, de cuatro firmwares de la comunidad para la M-VAVE FM-1."},
+    {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create, 2, false, "Escalas, acordes y ritmos",
+     "Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda."},
+    {"RPN 12C", &icon_rpn_32, &RpnActivity::create, 3, false, "Calculadora financiera RPN",
+     "Al estilo de la HP-12C: pila de cuatro niveles, n, i, PV, PMT, FV, NPV e IRR."},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
@@ -158,8 +241,10 @@ constexpr shelf::Item kApps[] = {
 // Neither folder shows the player bar: the name it leads to is for playing
 // against a second reader in the room, and this fork runs on one.
 constexpr shelf::Folder kFolders[] = {
-    {"Games", UIIcon::Games, &icon_games_32, kGames, static_cast<int>(sizeof(kGames) / sizeof(shelf::Item)), false},
-    {"Apps", UIIcon::Apps, &icon_apps_32, kApps, static_cast<int>(sizeof(kApps) / sizeof(shelf::Item)), false},
+    {"Games", UIIcon::Games, &icon_games_32, kGames, static_cast<int>(sizeof(kGames) / sizeof(shelf::Item)), false,
+     kGameTabs, static_cast<int>(sizeof(kGameTabs) / sizeof(kGameTabs[0]))},
+    {"Apps", UIIcon::Apps, &icon_apps_32, kApps, static_cast<int>(sizeof(kApps) / sizeof(shelf::Item)), false, kAppTabs,
+     static_cast<int>(sizeof(kAppTabs) / sizeof(kAppTabs[0]))},
 };
 
 constexpr int kFolderCount = static_cast<int>(sizeof(kFolders) / sizeof(kFolders[0]));
@@ -167,6 +252,27 @@ constexpr int kFolderCount = static_cast<int>(sizeof(kFolders) / sizeof(kFolders
 // An item with no icon draws a blank gutter and nothing says so. Caught at
 // compile time rather than in a test, because a test can be forgotten and this
 // cannot: a new row without an icon does not build.
+// Sorting into tabs must not lose anything: every item names a kind its folder
+// has, so it is on exactly one of the kind tabs, and every kind has something
+// in it, so no tab opens empty. The last tab lists the whole folder besides.
+constexpr bool everyItemHasItsTab() {
+  for (const auto& folder : kFolders) {
+    for (int i = 0; i < folder.count; ++i) {
+      const shelf::Item& item = folder.items[i];
+      if (item.category >= folder.tabCount) return false;
+      if (item.blurb == nullptr || item.blurb[0] == '\0' || item.about == nullptr || item.about[0] == '\0')
+        return false;
+    }
+    for (int tab = 0; tab < folder.tabCount; ++tab) {
+      bool used = false;
+      for (int i = 0; i < folder.count; ++i) used = used || folder.items[i].category == tab;
+      if (!used) return false;
+    }
+  }
+  return true;
+}
+static_assert(everyItemHasItsTab(), "a shelf item is in no tab, has no description, or a tab is empty");
+
 constexpr bool everyItemHasAnIcon() {
   for (const auto& folder : kFolders) {
     for (int i = 0; i < folder.count; ++i) {
@@ -531,6 +637,24 @@ int shownItem(const int folder, const int row) {
   if (folder < 0 || folder >= kFolderCount) return -1;
   ensureHiddenLoaded();
   return orderedItemIn(hiddenItems, recentItems, kFolders[folder].count, row, titlesOf(folder));
+}
+
+int recents(const int folder, int* out, const int max) {
+  if (folder < 0 || folder >= kFolderCount) return 0;
+  ensureHiddenLoaded();
+  const shelf::Folder& self = kFolders[folder];
+  int n = 0;
+  for (size_t r = recentItems.size(); r > 0 && n < max; --r) {
+    const std::string& title = recentItems.at(r - 1);
+    if (hiddenItems.contains(title.c_str())) continue;
+    for (int i = 0; i < self.count; ++i) {
+      if (title == self.items[i].title) {
+        out[n++] = i;
+        break;
+      }
+    }
+  }
+  return n;
 }
 
 int shownRowFor(const int folder, const int item) {
