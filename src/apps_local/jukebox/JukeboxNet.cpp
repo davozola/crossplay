@@ -193,23 +193,26 @@ int art(const Config& config, const Now& now, const int size, const char* path) 
   return 200;
 }
 
-int server(const Config& config, const Now& now, const std::string& url, std::string& body) {
+int server(const Config& config, const std::string& serverId, const char* method, const std::string& url,
+           std::string& body) {
   body.clear();
-  if (url.compare(0, 8, "https://") != 0 || now.serverBase.empty() ||
-      url.compare(0, now.serverBase.size(), now.serverBase) != 0 || heapTooLow()) {
-    return 0;
+  // Only ever a server this account listed, at the address it listed.
+  bool known = false;
+  for (const Config::Server& s : config.servers) {
+    known = known || (!s.base.empty() && url.compare(0, s.base.size(), s.base) == 0);
   }
+  if (url.compare(0, 8, "https://") != 0 || !known || heapTooLow()) return 0;
   freeink::SecureHttpClient http;
   http.setCACert(roots());
-  http.setTimeout(15000);
+  http.setTimeout(20000);
   if (!http.begin(url)) return 0;
   identify(http, config);
   http.addHeader("Accept", "application/json");
-  http.addHeader("X-Plex-Token", config.tokenFor(now.serverId));
-  const int status = http.sendRequest("GET", std::string());
+  http.addHeader("X-Plex-Token", config.tokenFor(serverId));
+  const int status = http.sendRequest(method, std::string());
   if (status > 0) body = http.getString();
   http.end();
-  LOG_INF(kTag, "server %s -> %d (verified TLS)", forLog(url).c_str(), status);
+  LOG_INF(kTag, "server %s %s -> %d (verified TLS)", method, forLog(url).c_str(), status);
   return status > 0 ? status : 0;
 }
 
@@ -234,7 +237,8 @@ int account(const Config&, const char* method, const std::string& url, std::stri
     return 200;
   }
   body = R"([{"name":"Demo Server","product":"Plex Media Server","platform":"Linux","clientIdentifier":"demo-server",
-    "provides":"server","accessToken":"demo-server-token","connections":[]},
+    "provides":"server","accessToken":"demo-server-token",
+    "connections":[{"protocol":"https","uri":"https://demo.invalid:32400","local":true,"relay":false}]},
    {"name":"Living Room","product":"Plexamp","platform":"Android","clientIdentifier":"demo-player-1",
     "provides":"client,player,pubsub-player","connections":[{"protocol":"http","address":"192.168.0.20","port":32500,"local":true}]},
    {"name":"Kitchen","product":"Plexamp","platform":"Linux","clientIdentifier":"demo-player-2",
@@ -252,6 +256,12 @@ int player(const Config&, const std::string& host, const std::string& url, std::
     if (url.find("/skipNext?") != std::string::npos) {
       demo.track = (demo.track + 1) % kDemoTrackCount;
       demo.timeMs = 0;
+    }
+    if (url.find("/playMedia?") != std::string::npos || url.find("/skipTo?") != std::string::npos) {
+      demo.playing = true;
+      demo.timeMs = 0;
+      const int key = numberAfter(url, "metadata%2F");
+      demo.track = key >= 100 ? (key - 100) % kDemoTrackCount : 0;
     }
     if (url.find("/skipPrevious?") != std::string::npos) {
       demo.track = (demo.track + kDemoTrackCount - 1) % kDemoTrackCount;
@@ -297,7 +307,44 @@ int art(const Config&, const Now& now, int, const char* path) {
   return 200;
 }
 
-int server(const Config&, const Now&, const std::string&, std::string& body) {
+int server(const Config&, const std::string&, const char* method, const std::string& url, std::string& body) {
+  auto has = [&](const char* part) { return url.find(part) != std::string::npos; };
+  if (method[0] == 'P') {
+    body = R"({"MediaContainer":{"playQueueID":7,"playQueueSelectedMetadataItemID":"100"}})";
+    return 200;
+  }
+  if (has("/library/sections") && !has("/library/sections/")) {
+    body =
+        R"({"MediaContainer":{"Directory":[{"key":"1","type":"artist","title":"Music"},{"key":"2","type":"show","title":"Shows"}]}})";
+    return 200;
+  }
+  if (has("recentlyAdded") || has("/library/metadata/a")) {
+    body = R"({"MediaContainer":{"totalSize":3,"Metadata":[
+      {"ratingKey":"b1","type":"album","title":"Made-Up Sessions","parentTitle":"The Demo Quartet","year":2021,"leafCount":9},
+      {"ratingKey":"b2","type":"album","title":"Placeholder Hours","parentTitle":"Example & Sons","year":2019,"leafCount":11},
+      {"ratingKey":"b3","type":"album","title":"Fixtures, Vol. 2","parentTitle":"Sample Orchestra","year":2024,"leafCount":7}]}})";
+    return 200;
+  }
+  if (has("type=8")) {
+    body = R"({"MediaContainer":{"totalSize":3,"Metadata":[
+      {"ratingKey":"a1","type":"artist","title":"The Demo Quartet"},{"ratingKey":"a2","type":"artist","title":"Example & Sons"},
+      {"ratingKey":"a3","type":"artist","title":"Sample Orchestra"}]}})";
+    return 200;
+  }
+  if (has("/playlists")) {
+    body = R"({"MediaContainer":{"totalSize":2,"Metadata":[
+      {"ratingKey":"p1","type":"playlist","title":"All Music","leafCount":412},
+      {"ratingKey":"p2","type":"playlist","title":"Sunday Morning","leafCount":23}]}})";
+    return 200;
+  }
+  if (has("/children")) {
+    body = R"({"MediaContainer":{"Metadata":[
+      {"ratingKey":"100","type":"track","title":"Paper Lanterns","duration":215000},
+      {"ratingKey":"101","type":"track","title":"Second Thoughts","duration":187000},
+      {"ratingKey":"102","type":"track","title":"A Song With a Considerably Longer Title Than Fits","duration":302000},
+      {"ratingKey":"103","type":"track","title":"Closing Time at the Fixture Shop","duration":244000}]}})";
+    return 200;
+  }
   body = R"({"MediaContainer":{"playQueueTotalCount":3,"playQueueSelectedItemID":)" + std::to_string(10 + demo.track) +
          R"(,"Metadata":[)";
   for (int i = 0; i < kDemoTrackCount; ++i) {

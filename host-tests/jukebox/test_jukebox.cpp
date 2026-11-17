@@ -150,6 +150,99 @@ int main() {
     check(parseTimeline(xml.data(), xml.size(), now) && now.queueId == "333", "the timeline names its queue");
   }
 
+  // --- the library, as the server really answers ---
+  {
+    std::vector<Entry> entries;
+    int total = 0;
+    std::string json = slurp("fixtures/sections.json");
+    check(parseEntries(json.data(), json.size(), entries, total), "the libraries read");
+    check(entries.size() == 2 && entries[0].kind == Kind::Library, "the two music libraries, and not the one of shows");
+    check(entries[1].title == "Music" && entries[1].key == "1", "a library's name and section");
+
+    entries.clear();
+    json = slurp("fixtures/albums_recent.json");
+    check(parseEntries(json.data(), json.size(), entries, total) && entries.size() == 2 && total == 2, "recent albums");
+    check(entries[0].kind == Kind::Album && entries[0].key == "10298" && entries[0].detail == "Various Artists" &&
+              entries[0].count == 71,
+          "an album: its key, who it is by, how many tracks");
+
+    entries.clear();
+    json = slurp("fixtures/artists.json");
+    check(parseEntries(json.data(), json.size(), entries, total) && entries.size() == 1 &&
+              entries[0].kind == Kind::Artist && entries[0].key == "10192",
+          "artists");
+
+    entries.clear();
+    json = slurp("fixtures/playlists.json");
+    check(parseEntries(json.data(), json.size(), entries, total) && entries.size() == 6 && total == 8,
+          "a page of playlists, and how many there are in all");
+    check(entries[0].kind == Kind::Playlist && entries[0].key == "926" && entries[0].count == 2, "a playlist");
+    check(drawable(entries[0].title) == "Tracks", "a heart the panel cannot draw is left out of its name");
+    check(drawable("Fran\xC3\xA7oise \xE2\x80\x94 d\xC3\xA9j\xC3\xA0") ==
+              "Fran\xC3\xA7oise \xE2\x80\x94 d\xC3\xA9j\xC3\xA0",
+          "accents and a dash are kept");
+
+    entries.clear();
+    json = slurp("fixtures/album_tracks.json");
+    check(parseEntries(json.data(), json.size(), entries, total) && entries.size() == 6, "an album's tracks");
+    check(entries[0].kind == Kind::Track && entries[0].key == "10299" && entries[0].title.empty() &&
+              entries[0].detail == "0:29",
+          "a track: its key, its length, and that it may have no title");
+
+    check(
+        recentUrl("https://h:32400", "1", 8, 8) ==
+            "https://h:32400/library/sections/1/recentlyAdded?type=9&X-Plex-Container-Start=8&X-Plex-Container-Size=8",
+        "a page of recent albums");
+    check(childrenUrl("https://h:32400", "10298") == "https://h:32400/library/metadata/10298/children", "children");
+    Entry album;
+    album.kind = Kind::Album;
+    album.key = "10298";
+    check(
+        makeQueueUrl("https://h:32400", "srv", album, false) ==
+            "https://h:32400/playQueues?type=audio&repeat=0&continuous=0&own=1&shuffle=0&uri=server%3A%2F%2Fsrv%2Fcom."
+            "plexapp.plugins.library%2Flibrary%2Fmetadata%2F10298",
+        "the queue asked for an album, exactly as the tested request");
+    Entry list;
+    list.kind = Kind::Playlist;
+    list.key = "925";
+    check(makeQueueUrl("https://h:32400", "srv", list, true).find("&shuffle=1&playlistID=925") != std::string::npos,
+          "and for a playlist, shuffled");
+    json = slurp("fixtures/playqueue_created.json");
+    std::string queueId;
+    std::string firstKey;
+    check(parseMadeQueue(json.data(), json.size(), queueId, firstKey) && queueId == "335" && firstKey == "10299",
+          "the queue the server made, and where it starts");
+    check(
+        playMediaExtra("https://192-168-1-9.abc.plex.direct:32400", "srv", "tok", "335", "10299") ==
+            "&providerIdentifier=com.plexapp.plugins.library&machineIdentifier=srv&protocol=https&address=192-168-1-9."
+            "abc.plex.direct&port=32400&containerKey=%2FplayQueues%2F335%3Fown%3D1&key=%2Flibrary%2Fmetadata%2F10299"
+            "&offset=0&token=tok",
+        "what the player is told, exactly as the tested request");
+    check(skipToExtra("9253") == "&key=%2Flibrary%2Fmetadata%2F9253", "a jump within the queue");
+  }
+  {
+    const std::string json = slurp("fixtures/resources.json");
+    std::vector<Device> devices;
+    parseResources(json.data(), json.size(), devices);
+    for (const Device& d : devices) {
+      if (d.server) {
+        check(d.base == "https://192-168-1-131.0123456789abcdef0123456789abcdef.plex.direct:32400",
+              "a server's address on this network, not its public one or a relay");
+      }
+    }
+    Config c;
+    c.servers.push_back({"srv1", "t1", "https://a:32400"});
+    c.servers.push_back({"srv2", "t2", ""});
+    Config back;
+    unpack(pack(c), back);
+    check(back.servers.size() == 2 && back.servers[0].base == "https://a:32400" && back.servers[1].token == "t2" &&
+              back.servers[1].base.empty(),
+          "a server keeps its address");
+    unpack("server=old tok\n", back);
+    check(back.servers.size() == 1 && back.servers[0].token == "tok" && back.servers[0].base.empty(),
+          "settings from before addresses were kept still read");
+  }
+
   // --- a player describing itself ---
   {
     const std::string xml = slurp("fixtures/player_resources.xml");
@@ -197,8 +290,9 @@ int main() {
     c.playerId = "pid";
     c.playerHost = "192.168.1.135";
     c.playerPort = 32501;
-    c.servers.push_back({"srv1", "t1"});
-    c.servers.push_back({"srv2", "t2"});
+    c.look = 2;
+    c.servers.push_back({"srv1", "t1", ""});
+    c.servers.push_back({"srv2", "t2", ""});
     Config back;
     unpack(pack(c), back);
     check(back.token == "tok" && back.clientId == "crossplay-1" && back.playerName == c.playerName, "account and name");
@@ -206,6 +300,7 @@ int main() {
     check(back.servers.size() == 2 && back.tokenFor("srv2") == "t2", "a server's own token");
     check(back.tokenFor("unknown") == "tok", "an unknown server falls back to the account's");
     check(back.signedIn() && back.hasPlayer(), "signed in, with a player");
+    check(back.look == 2, "and the look chosen");
     Config empty;
     unpack("", empty);
     check(!empty.signedIn() && !empty.hasPlayer() && empty.playerPort == kPlayerPort, "an empty file is a fresh start");

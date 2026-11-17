@@ -28,8 +28,8 @@ class JukeboxActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Welcome, Linking, Players, Playing, Showcase, Queue, Menu, Unlink, Notice, Busy };
-  enum class Step : uint8_t { None, PinCreate, Players, Adopt, Connect, Queue };
+  enum class View : uint8_t { Welcome, Linking, Players, Playing, Showcase, Queue, Browse, Menu, Unlink, Notice, Busy };
+  enum class Step : uint8_t { None, PinCreate, Players, Adopt, Connect, Queue, Browse, Start };
   // Whether a command has ever been taken by this player, as far as this
   // sitting knows.
   enum class Control : uint8_t { Untried, Works, Failed };
@@ -48,6 +48,11 @@ class JukeboxActivity final : public Activity {
   void doAdopt();
   void doConnect();
   void doQueue();
+  void doBrowse();
+  void doStart();
+  const jukebox::Config::Server* browseServer();
+  void openLevel(uint8_t what, const std::string& key, const std::string& title, int count);
+  void buildBrowse(toybox::Screen& screen);
   void askAddress();
 
   bool poll(bool withMetadata);
@@ -70,6 +75,9 @@ class JukeboxActivity final : public Activity {
   void buildNotice(toybox::Screen& screen);
   int pageBottom() const;
   int coverSide() const;
+  int coverArea() const;
+  void fillDisc(int cx, int cy, int radius, bool black);
+  void ringAt(int cx, int cy, int radius, bool black);
 
   jukebox::Config config_;
   jukebox::Pin pin_;
@@ -82,6 +90,25 @@ class JukeboxActivity final : public Activity {
 
   jukebox::Now now_;
   jukebox::Queue queue_;
+  int queueFirst_ = 0;  // the first row the queue page drew, and where
+  int16_t queueRowsY_ = 0;
+  int16_t queueRows_ = 0;
+
+  // Where the library is being looked at: each step down is a level.
+  struct Level {
+    uint8_t what = 0;
+    std::string key;
+    std::string title;
+    int page = 0;
+    int count = 0;
+  };
+  std::vector<Level> trail_;
+  std::vector<jukebox::Entry> entries_;
+  int entriesTotal_ = 0;
+  // What is about to be started: an album or a playlist, perhaps from one track.
+  jukebox::Entry startWhat_;
+  std::string startTrack_;
+  bool startShuffled_ = false;
   uint32_t nowAtMs_ = 0;
   uint32_t lastPollMs_ = 0;
   uint32_t lastPaintMs_ = 0;
@@ -105,6 +132,10 @@ class JukeboxActivity final : public Activity {
   int16_t barX_ = 0;
   int16_t barY_ = 0;
   int16_t barW_ = 0;
+  // And where a touch sets the volume.
+  int16_t volumeX_ = 0;
+  int16_t volumeY_ = 0;
+  int16_t volumeW_ = 0;
   // Where the cover sits on the playing page: a tap there opens it large.
   int16_t coverX_ = 0;
   int16_t coverY_ = 0;

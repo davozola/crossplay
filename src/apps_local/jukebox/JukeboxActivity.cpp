@@ -47,6 +47,14 @@ enum : fui::ActionId {
   ActionRepeat,
   ActionMenu,
   ActionQueue,
+  ActionLook,
+
+  ActionBrowse,
+  ActionBrowseRow,   // value: the row on this page
+  ActionBrowsePage,  // value: -1 or +1
+  ActionBrowseUp,
+  ActionStart,  // value: 1 for shuffled
+
   ActionBackToPlayer,
   ActionChangePlayer,
   ActionUnlink,
@@ -86,6 +94,13 @@ constexpr int kCoverTop = 44;
 constexpr int kShowcaseTop = 16;
 constexpr int kShowcaseText = 190;
 constexpr int kQueueWindow = 5;
+// The playing page's three looks.
+enum : uint8_t { LookClassic, LookRecord, LookPoster, kLooks };
+constexpr const char* kLookNames[kLooks] = {"CLASSIC", "RECORD", "POSTER"};
+constexpr int kBrowseRows = 6;
+constexpr int kBrowseRowH = 70;
+// What a level of the library shows.
+enum : uint8_t { LevelRoot, LevelRecent, LevelArtists, LevelPlaylists, LevelArtist, LevelAlbum, LevelPlaylist };
 
 uint32_t ms() { return static_cast<uint32_t>(millis()); }
 
@@ -253,7 +268,7 @@ void JukeboxActivity::doPlayers() {
   players_.reserve(devices.size());
   config_.servers.clear();
   for (const jukebox::Device& d : devices) {
-    if (d.server && !d.token.empty() && config_.servers.size() < 8) config_.servers.push_back({d.id, d.token});
+    if (d.server && !d.token.empty() && config_.servers.size() < 8) config_.servers.push_back({d.id, d.token, d.base});
     // Only Plexamp, and only where it gave an address on this network.
     if (d.player && d.product == "Plexamp" && !d.host.empty()) players_.push_back(d);
   }
@@ -330,14 +345,161 @@ void JukeboxActivity::doAdopt() {
 
 void JukeboxActivity::doQueue() {
   std::string body;
-  const int status =
-      jukebox::net::server(config_, now_, jukebox::queueUrl(now_.serverBase, now_.queueId, kQueueWindow * 2), body);
+  // The address the player gave for the server is used only for a server the
+  // account has listed too.
+  for (jukebox::Config::Server& s : config_.servers) {
+    if (s.id == now_.serverId && s.base.empty()) s.base = now_.serverBase;
+  }
+  const int status = jukebox::net::server(config_, now_.serverId, "GET",
+                                          jukebox::queueUrl(now_.serverBase, now_.queueId, kQueueWindow * 2), body);
   if (status != 200 || !jukebox::parseQueue(body.data(), body.size(), queue_)) {
     notice("NO QUEUE", "THE SERVER DID NOT GIVE THE QUEUE OVER A VERIFIED CONNECTION. THE CONTROLS STILL WORK.",
            View::Playing);
     return;
   }
   view_ = View::Queue;
+}
+
+// --- The library ---------------------------------------------------------------
+
+// The server to browse: the one the music is coming from, else the first the
+// account listed with an address on this network.
+const jukebox::Config::Server* JukeboxActivity::browseServer() {
+  bool any = false;
+  for (const jukebox::Config::Server& s : config_.servers) any = any || !s.base.empty();
+  if (!any) {
+    // Settings from before addresses were kept: ask the account once more.
+    std::string body;
+    std::vector<jukebox::Device> devices;
+    devices.reserve(8);
+    if (jukebox::net::account(config_, "GET", jukebox::resourcesUrl(), body) == 200 &&
+        jukebox::parseResources(body.data(), body.size(), devices)) {
+      config_.servers.clear();
+      for (const jukebox::Device& d : devices) {
+        if (d.server && !d.token.empty() && config_.servers.size() < 8)
+          config_.servers.push_back({d.id, d.token, d.base});
+      }
+      saveConfig();
+    }
+  }
+  const jukebox::Config::Server* first = nullptr;
+  for (const jukebox::Config::Server& s : config_.servers) {
+    if (s.base.empty()) continue;
+    if (s.id == now_.serverId) return &s;
+    if (first == nullptr) first = &s;
+  }
+  return first;
+}
+
+void JukeboxActivity::openLevel(const uint8_t what, const std::string& key, const std::string& title, const int count) {
+  Level level;
+  level.what = what;
+  level.key = key;
+  level.title = title;
+  level.count = count;
+  trail_.push_back(level);
+  request(Step::Browse, "READING THE LIBRARY");
+}
+
+void JukeboxActivity::doBrowse() {
+  const jukebox::Config::Server* server = browseServer();
+  if (server == nullptr || trail_.empty()) {
+    trail_.clear();
+    notice("NO SERVER", "YOUR PLEX ACCOUNT LISTED NO MEDIA SERVER WITH AN ADDRESS ON THIS NETWORK.", View::Menu);
+    return;
+  }
+  Level& level = trail_.back();
+  entries_.clear();
+  entries_.reserve(32);
+  entriesTotal_ = 0;
+  std::string url;
+  switch (level.what) {
+    case LevelRoot:
+      url = jukebox::librariesUrl(server->base);
+      break;
+    case LevelRecent:
+      url = jukebox::recentUrl(server->base, level.key, level.page * kBrowseRows, kBrowseRows);
+      break;
+    case LevelArtists:
+      url = jukebox::artistsUrl(server->base, level.key, level.page * kBrowseRows, kBrowseRows);
+      break;
+    case LevelPlaylists:
+      url = jukebox::playlistsUrl(server->base, level.page * kBrowseRows, kBrowseRows);
+      break;
+    case LevelArtist:
+    case LevelAlbum:
+      url = jukebox::childrenUrl(server->base, level.key);
+      break;
+    default:
+      // A playlist is a page with two buttons; there is nothing to read.
+      view_ = View::Browse;
+      return;
+  }
+  std::string body;
+  const int status = jukebox::net::server(config_, server->id, "GET", url, body);
+  if (status != 200 || !jukebox::parseEntries(body.data(), body.size(), entries_, entriesTotal_)) {
+    trail_.pop_back();
+    notice("THE LIBRARY DID NOT ANSWER", "THE MEDIA SERVER COULD NOT BE READ OVER A VERIFIED CONNECTION. IS IT ON?",
+           trail_.empty() ? View::Menu : View::Browse);
+    return;
+  }
+  if (level.what == LevelRoot) {
+    // Each music library becomes two doors, and the playlists a third.
+    std::vector<jukebox::Entry> doors;
+    doors.reserve(entries_.size() * 2 + 1);
+    for (const jukebox::Entry& library : entries_) {
+      jukebox::Entry door = library;
+      door.count = LevelRecent;
+      door.detail = "Recently added albums";
+      doors.push_back(door);
+      door.count = LevelArtists;
+      door.detail = "Artists";
+      doors.push_back(door);
+    }
+    jukebox::Entry lists;
+    lists.kind = jukebox::Kind::Library;
+    lists.title = "Playlists";
+    lists.count = LevelPlaylists;
+    doors.push_back(lists);
+    entries_ = doors;
+    entriesTotal_ = static_cast<int>(entries_.size());
+  }
+  view_ = View::Browse;
+}
+
+// Asks the server for a queue and tells the player to play it.
+void JukeboxActivity::doStart() {
+  const jukebox::Config::Server* server = browseServer();
+  if (server == nullptr) {
+    notice("NO SERVER", "THE MEDIA SERVER COULD NOT BE FOUND.", View::Browse);
+    return;
+  }
+  std::string body;
+  std::string queueId;
+  std::string firstKey;
+  const int made = jukebox::net::server(
+      config_, server->id, "POST", jukebox::makeQueueUrl(server->base, server->id, startWhat_, startShuffled_), body);
+  if (made != 200 || !jukebox::parseMadeQueue(body.data(), body.size(), queueId, firstKey)) {
+    notice("COULD NOT START IT", "THE MEDIA SERVER DID NOT MAKE A QUEUE FOR THAT.", View::Browse);
+    return;
+  }
+  const std::string extra = jukebox::playMediaExtra(server->base, server->id, config_.tokenFor(server->id), queueId,
+                                                    startTrack_.empty() ? firstKey : startTrack_);
+  const int status = jukebox::net::player(
+      config_, config_.playerHost,
+      jukebox::commandUrl(config_.playerHost, config_.playerPort, "playMedia", commandId_++, extra.c_str()), body);
+  control_ = status == 200 ? Control::Works : Control::Failed;
+  if (status != 200) {
+    notice("THE PLAYER DID NOT TAKE IT", "THE QUEUE WAS MADE BUT THE PLAYER DID NOT START IT. IS PLEXAMP OPEN?",
+           View::Browse);
+    return;
+  }
+  // The player needs a moment to fetch the queue before it says what it plays.
+  delay(1200);
+  poll(true);
+  lastPollMs_ = ms();
+  trail_.clear();
+  view_ = View::Playing;
 }
 
 void JukeboxActivity::doConnect() {
@@ -494,12 +656,86 @@ void JukeboxActivity::act(const fui::ActionId action, const int value) {
         command("setParameters", now_.repeat == 0 ? "&repeat=2" : now_.repeat == 2 ? "&repeat=1" : "&repeat=0");
       }
       break;
+    case ActionLook:
+      config_.look = static_cast<uint8_t>((config_.look + 1) % kLooks);
+      saveConfig();
+      // The record's label is a smaller cover than the others'.
+      artWanted_ = !now_.thumb.empty() && coverKey() != artFor_;
+      requestUpdate();
+      break;
     case ActionMenu:
       view_ = View::Menu;
       requestUpdate();
       break;
     case ActionQueue:
       request(Step::Queue, "READING THE QUEUE");
+      break;
+    case ActionBrowse:
+      trail_.clear();
+      openLevel(LevelRoot, "", "Library", 0);
+      break;
+    case ActionBrowseUp:
+      if (trail_.size() <= 1) {
+        trail_.clear();
+        view_ = config_.hasPlayer() ? View::Playing : View::Menu;
+        requestUpdate();
+      } else {
+        trail_.pop_back();
+        request(Step::Browse, "READING THE LIBRARY");
+      }
+      break;
+    case ActionBrowsePage:
+      if (!trail_.empty()) {
+        Level& level = trail_.back();
+        const bool local = level.what == LevelRoot || level.what == LevelArtist || level.what == LevelAlbum;
+        const int pages = (entriesTotal_ + kBrowseRows - 1) / kBrowseRows;
+        const int to = level.page + value;
+        if (to < 0 || to >= pages) break;
+        level.page = to;
+        if (local) {
+          requestUpdate();
+        } else {
+          request(Step::Browse, "READING THE LIBRARY");
+        }
+      }
+      break;
+    case ActionBrowseRow:
+      if (!trail_.empty()) {
+        const Level level = trail_.back();
+        const bool local = level.what == LevelRoot || level.what == LevelArtist || level.what == LevelAlbum;
+        const int index = (local ? level.page * kBrowseRows : 0) + value;
+        if (index < 0 || index >= static_cast<int>(entries_.size())) break;
+        const jukebox::Entry entry = entries_[static_cast<size_t>(index)];
+        if (level.what == LevelRoot) {
+          openLevel(static_cast<uint8_t>(entry.count), entry.key,
+                    entry.detail.empty() ? entry.title : entry.title + ": " + entry.detail, 0);
+        } else if (entry.kind == jukebox::Kind::Artist) {
+          openLevel(LevelArtist, entry.key, entry.title, 0);
+        } else if (entry.kind == jukebox::Kind::Album) {
+          openLevel(LevelAlbum, entry.key, entry.title, entry.count);
+        } else if (entry.kind == jukebox::Kind::Playlist) {
+          openLevel(LevelPlaylist, entry.key, entry.title, entry.count);
+        } else if (entry.kind == jukebox::Kind::Track && level.what == LevelAlbum) {
+          // The album, from this track on.
+          startWhat_ = jukebox::Entry{};
+          startWhat_.kind = jukebox::Kind::Album;
+          startWhat_.key = level.key;
+          startTrack_ = entry.key;
+          startShuffled_ = false;
+          request(Step::Start, "STARTING IT");
+        }
+      }
+      break;
+    case ActionStart:
+      if (!trail_.empty() && config_.hasPlayer()) {
+        const Level& level = trail_.back();
+        startWhat_ = jukebox::Entry{};
+        startWhat_.kind = level.what == LevelPlaylist ? jukebox::Kind::Playlist : jukebox::Kind::Album;
+        startWhat_.key = level.key;
+        startTrack_.clear();
+        startShuffled_ = value != 0;
+        request(Step::Start, "STARTING IT");
+      }
       break;
     case ActionBackToPlayer:
       view_ = config_.hasPlayer() ? View::Playing : View::Players;
@@ -552,6 +788,12 @@ void JukeboxActivity::loop() {
       case Step::Queue:
         doQueue();
         break;
+      case Step::Browse:
+        doBrowse();
+        break;
+      case Step::Start:
+        doStart();
+        break;
       case Step::None:
         break;
     }
@@ -581,6 +823,9 @@ void JukeboxActivity::loop() {
       case View::Showcase:
       case View::Queue:
         act(ActionBackToPlayer, 0);
+        break;
+      case View::Browse:
+        act(ActionBrowseUp, 0);
         break;
       case View::Players:
         if (config_.hasPlayer()) {
@@ -618,6 +863,32 @@ void JukeboxActivity::loop() {
       std::snprintf(extra, sizeof(extra), "&offset=%ld", offset % 100000000L);
       command("seekTo", extra);
       return;
+    }
+    // The volume bar: a touch along it is a volume.
+    if (view_ == View::Playing && volumeW_ > 0 && tapY >= volumeY_ && tapY <= volumeY_ + kVolumeRow &&
+        tapX >= volumeX_ - 10 && tapX <= volumeX_ + volumeW_ + 10) {
+      int to = (tapX - volumeX_) * 100 / volumeW_;
+      to = to < 0 ? 0 : to > 100 ? 100 : to;
+      char extra[24];
+      std::snprintf(extra, sizeof(extra), "&volume=%d", to % 1000);
+      command("setParameters", extra);
+      return;
+    }
+    // The head of the playing page: the next look.
+    if (view_ == View::Playing && tapY < kCoverTop - 4) {
+      act(ActionLook, 0);
+      return;
+    }
+    // A row of the queue: the player jumps to it.
+    if (view_ == View::Queue && queueRows_ > 0 && tapY >= queueRowsY_ && (now_.can & jukebox::CanPlayPause)) {
+      const int row = (tapY - queueRowsY_) / 52;
+      const int index = queueFirst_ + row;
+      if (row < queueRows_ && index < static_cast<int>(queue_.items.size()) && index != queue_.current) {
+        view_ = View::Playing;
+        command("skipTo", jukebox::skipToExtra(queue_.items[static_cast<size_t>(index)].key).c_str());
+        poll(true);
+        return;
+      }
     }
     // The cover opens large, and the large cover closes on any tap.
     if (view_ == View::Showcase) {
@@ -662,11 +933,21 @@ uint32_t JukeboxActivity::coverKey() const {
   return jukebox::artHash(now_.serverId, now_.thumb) ^ (static_cast<uint32_t>(coverSide()) * 2654435761u);
 }
 
+// The square the cover has on the playing page: what is left between the
+// head and the track's name.
+int JukeboxActivity::coverArea() const {
+  const int inner = renderer.getScreenWidth() - 2 * toybox::kMargin;
+  const int room = pageBottom() - kControlsHeight - kTrackHeight - 10 - kCoverTop;
+  return std::max(120, std::min(inner, room));
+}
+
+// The cover itself, which is what the server is asked for: the whole square,
+// or the label in the middle of the record.
 int JukeboxActivity::coverSide() const {
   const int inner = renderer.getScreenWidth() - 2 * toybox::kMargin;
   if (view_ == View::Showcase) return std::min(inner, pageBottom() - kShowcaseText - kShowcaseTop);
-  const int room = pageBottom() - kControlsHeight - kTrackHeight - 10 - kCoverTop;
-  return std::max(120, std::min(inner, room));
+  const int area = coverArea();
+  return config_.look % kLooks == LookRecord ? (area * 46 / 100) & ~1 : area;
 }
 
 void JukeboxActivity::buildWelcome(toybox::Screen& screen) {
@@ -771,6 +1052,11 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
   const int inner = width - toybox::kMargin * 2;
   const bool silent = misses_ >= kQuietAfter;
   const bool idle = now_.state == State::Stopped || now_.trackKey.empty();
+  const uint8_t look = config_.look % kLooks;
+  // POSTER is the page in negative: white on black, the buttons white tiles.
+  const bool dark = look == LookPoster;
+  const bool ink = !dark;
+  if (dark) renderer.fillRect(0, 0, width, renderer.getScreenHeight(), true);
 
   // The rows are placed from the foot up, and the cover takes what is left.
   const int foot = pageBottom();
@@ -784,47 +1070,88 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
   const int barY = transportY - kProgressRow;
   const int textY = barY - kTrackHeight;
 
-  // The head: which player, and what it is doing.
+  auto caption = [&](const int cx, const int cy, const int w, const char* text, const fui::TextAlign align) {
+    lab::caption(screen, cx, cy, w, text, align, ink ? fui::Color::Black : fui::Color::White);
+  };
+
+  // The head: which player, and what it is doing. A touch on it changes the look.
   const int headY = 10;
   const char* state = silent                           ? "NO ANSWER"
                       : now_.state == State::Playing   ? "PLAYING"
                       : now_.state == State::Paused    ? "PAUSED"
                       : now_.state == State::Buffering ? "LOADING"
                                                        : "IDLE";
-  lab::caption(screen, x, headY + 6, inner, state, fui::TextAlign::Right);
+  caption(x, headY + 6, inner, state, fui::TextAlign::Right);
   const std::string player =
       renderer.truncatedText(NOTOSANS_12_FONT_ID, config_.playerName.c_str(), inner - 130, kBold);
-  renderer.drawText(NOTOSANS_12_FONT_ID, x, headY, player.c_str(), true, kBold);
-  if (jukebox::net::kDemo) lab::caption(screen, x, headY + 6, inner, "DEMO DATA", fui::TextAlign::Center);
+  renderer.drawText(NOTOSANS_12_FONT_ID, x, headY, player.c_str(), ink, kBold);
+  if (jukebox::net::kDemo) caption(x, headY + 6, inner, "DEMO DATA", fui::TextAlign::Center);
 
-  // The cover.
+  // The cover, in this look's way.
   const int artTop = kCoverTop;
+  const int area = coverArea();
   const int side = coverSide();
-  const int artX = x + (inner - side) / 2;
-  coverX_ = static_cast<int16_t>(artX);
+  const int areaX = x + (inner - area) / 2;
+  const int artX = areaX + (area - side) / 2;
+  const int artY = artTop + (area - side) / 2;
+  coverX_ = static_cast<int16_t>(areaX);
   coverY_ = static_cast<int16_t>(artTop);
-  coverW_ = static_cast<int16_t>(side);
-  const bool drawn = !idle && drawCover(artX, artTop, side);
-  if (!drawn) {
-    renderer.drawRoundedRect(artX, artTop, side, side, 2, 10, true);
+  coverW_ = static_cast<int16_t>(area);
+  bool drawn = false;
+  if (look == LookRecord) {
+    // A record: the black disc, its grooves, and the cover as the label.
+    const int cx = areaX + area / 2;
+    const int cy = artTop + area / 2;
+    const int radius = area / 2;
+    fillDisc(cx, cy, radius, true);
+    for (int groove = radius - 10; groove > side / 2 + 12; groove -= 14) ringAt(cx, cy, groove, false);
+    fillDisc(cx, cy, side / 2 + 6, false);
+    drawn = !idle && drawCover(artX, artY, side);
+    // Everything of the square label outside its circle goes back to black.
+    const int label = side / 2;
+    for (int dy = -label - 6; dy <= label + 6; ++dy) {
+      const int inside = dy < -label || dy > label
+                             ? 0
+                             : static_cast<int>(std::lround(std::sqrt(static_cast<float>(label * label - dy * dy))));
+      const int reach = label + 6;
+      renderer.fillRect(cx - reach, cy + dy, reach - inside, 1, true);
+      renderer.fillRect(cx + inside, cy + dy, reach - inside + 1, 1, true);
+    }
+    ringAt(cx, cy, label, false);
+    fillDisc(cx, cy, 7, true);
+    fillDisc(cx, cy, 4, false);
+    if (!drawn && !idle) drawn = true;  // a blank label is still a record
+  } else {
+    // A cover is black on white, so on the black page it gets its white first.
+    if (dark && !idle && artFor_ != 0 && artFor_ == coverKey()) renderer.fillRect(artX, artY, side, side, false);
+    drawn = !idle && drawCover(artX, artY, side);
+  }
+  if (!drawn || (idle && look == LookRecord)) {
+    if (look != LookRecord) renderer.drawRoundedRect(areaX, artTop, area, area, 2, 10, ink);
     const char* head = silent && idle ? "PLAYER NOT ANSWERING" : idle ? "NOTHING PLAYING" : "NO COVER";
-    lab::label(screen, lab::rect(artX, artTop + side / 2 - 40, side, toybox::kUiCut.inkHeight), head, toybox::kUiFont,
-               toybox::kUiCut);
+    const bool onDisc = look == LookRecord;
+    if (onDisc) renderer.fillRect(areaX + 30, artTop + area / 2 - 52, area - 60, 104, false);
+    lab::label(screen, lab::rect(areaX, artTop + area / 2 - 40, area, toybox::kUiCut.inkHeight), head, toybox::kUiFont,
+               toybox::kUiCut, fui::TextAlign::Center, (ink || onDisc) ? fui::Color::Black : fui::Color::White);
     if (idle) {
-      lab::caption(screen, artX, artTop + side / 2 + 10, side,
-                   silent ? "IS PLEXAMP OPEN, ON THIS NETWORK?" : "START SOMETHING IN PLEXAMP", fui::TextAlign::Center);
+      lab::caption(screen, areaX, artTop + area / 2 + 10, area,
+                   silent ? "IS PLEXAMP OPEN, ON THIS NETWORK?" : "START SOMETHING IN PLEXAMP OR BELOW",
+                   fui::TextAlign::Center, (ink || onDisc) ? fui::Color::Black : fui::Color::White);
     }
   }
 
   // The track.
   if (!idle) {
-    const std::string title = renderer.truncatedText(NOTOSANS_16_FONT_ID, now_.title.c_str(), inner, kBold);
-    renderer.drawText(NOTOSANS_16_FONT_ID, x, textY, title.c_str(), true, kBold);
-    const std::string artist = renderer.truncatedText(NOTOSANS_14_FONT_ID, now_.artist.c_str(), inner);
-    renderer.drawText(NOTOSANS_14_FONT_ID, x, textY + 40, artist.c_str(), true);
-    const std::string album = now_.year.empty() ? now_.album : now_.album + "  \xC2\xB7  " + now_.year;
-    renderer.drawText(NOTOSANS_12_FONT_ID, x, textY + 72,
-                      renderer.truncatedText(NOTOSANS_12_FONT_ID, album.c_str(), inner).c_str(), true);
+    const bool centred = look != LookClassic;
+    auto line = [&](const int font, const std::string& text, const int ly, const EpdFontFamily::Style style) {
+      const std::string fitted = renderer.truncatedText(font, jukebox::drawable(text).c_str(), inner, style);
+      const int lx = centred ? x + (inner - renderer.getTextWidth(font, fitted.c_str(), style)) / 2 : x;
+      renderer.drawText(font, lx, ly, fitted.c_str(), ink, style);
+    };
+    line(NOTOSANS_16_FONT_ID, now_.title, textY, kBold);
+    line(NOTOSANS_14_FONT_ID, now_.artist, textY + 40, EpdFontFamily::REGULAR);
+    line(NOTOSANS_12_FONT_ID, now_.year.empty() ? now_.album : now_.album + "  \xC2\xB7  " + now_.year, textY + 72,
+         EpdFontFamily::REGULAR);
 
     // Where it is. The bar is the seek control when the player takes seeking.
     char at[16];
@@ -836,13 +1163,13 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
     barX_ = static_cast<int16_t>(x + timeW);
     barW_ = static_cast<int16_t>(inner - 2 * timeW);
     barY_ = static_cast<int16_t>(barY + 8);
-    renderer.drawText(NOTOSANS_12_FONT_ID, x, barY, at, true);
+    renderer.drawText(NOTOSANS_12_FONT_ID, x, barY, at, ink);
     renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - renderer.getTextWidth(NOTOSANS_12_FONT_ID, total), barY, total,
-                      true);
-    renderer.drawRoundedRect(barX_, barY_, barW_, 12, 2, 6, true);
+                      ink);
+    renderer.drawRoundedRect(barX_, barY_, barW_, 12, 2, 6, ink);
     if (now_.durationMs > 0) {
       const int fill = static_cast<int>(static_cast<long>(barW_ - 6) * position / now_.durationMs);
-      if (fill > 0) renderer.fillRect(barX_ + 3, barY_ + 3, fill, 6, true);
+      if (fill > 0) renderer.fillRect(barX_ + 3, barY_ + 3, fill, 6, ink);
     }
   } else {
     barW_ = 0;
@@ -878,21 +1205,41 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
   if (can & jukebox::CanPrevious) transport(0, ActionPrevious, 0);
   if (can & jukebox::CanPlayPause) transport(1, ActionPlayPause, now_.state == State::Playing ? 2 : 1);
   if (can & jukebox::CanNext) transport(2, ActionNext, 3);
-  if (can == 0) {
-    lab::caption(screen, x, transportY + transportH / 2 - 8, inner,
-                 silent ? "WAITING FOR THE PLAYER TO ANSWER" : "THIS PLAYER OFFERS NO CONTROLS RIGHT NOW",
-                 fui::TextAlign::Center);
+  if (idle && !silent) {
+    lab::button(screen, lab::rect(x, transportY, inner, transportH), "BROWSE THE LIBRARY", ActionBrowse, 0, true,
+                false);
+  } else if (can == 0) {
+    caption(x, transportY + transportH / 2 - 8, inner,
+            silent ? "WAITING FOR THE PLAYER TO ANSWER" : "THIS PLAYER OFFERS NO CONTROLS RIGHT NOW",
+            fui::TextAlign::Center);
   }
 
+  // The volume: a bar to touch anywhere along, and a step either side of it.
+  volumeW_ = 0;
   if ((can & jukebox::CanVolume) && now_.volume >= 0) {
-    const int side2 = 96;
-    lab::button(screen, lab::rect(x, volumeY, side2, volumeH), "-", ActionVolume, -kVolumeStep, false, false);
-    lab::button(screen, lab::rect(x + inner - side2, volumeY, side2, volumeH), "+", ActionVolume, kVolumeStep, false,
+    const int step = 62;
+    lab::button(screen, lab::rect(x, volumeY, step, volumeH), "-", ActionVolume, -kVolumeStep, false, false);
+    lab::button(screen, lab::rect(x + inner - step, volumeY, step, volumeH), "+", ActionVolume, kVolumeStep, false,
                 false);
-    char volume[24];
-    std::snprintf(volume, sizeof(volume), "VOLUME %d", now_.volume % 1000);
-    lab::label(screen, lab::rect(x + side2, volumeY, inner - 2 * side2, volumeH), volume, toybox::kUiFont,
-               toybox::kUiCut);
+    const int numberW = 70;
+    volumeX_ = static_cast<int16_t>(x + step + 14);
+    volumeW_ = static_cast<int16_t>(inner - 2 * step - 28 - numberW);
+    volumeY_ = static_cast<int16_t>(volumeY);
+    const int trackY = volumeY + volumeH / 2 - 9;
+    renderer.drawRoundedRect(volumeX_, trackY, volumeW_, 18, 2, 9, ink);
+    const int fill = (volumeW_ - 8) * std::min(100, now_.volume) / 100;
+    if (fill > 0)
+      renderer.fillRoundedRect(volumeX_ + 4, trackY + 4, std::max(fill, 10), 10, 5, ink ? Color::Black : Color::White);
+    // The knob, so it reads as something to move.
+    const int knobX = volumeX_ + 4 + fill;
+    fillDisc(knobX, trackY + 9, 13, ink);
+    fillDisc(knobX, trackY + 9, 8, !ink);
+    char volume[toybox::kIntChars + 1];
+    std::snprintf(volume, sizeof(volume), "%d", now_.volume % 1000);
+    const int numberX = volumeX_ + volumeW_ + 16;
+    renderer.drawText(NOTOSANS_14_FONT_ID,
+                      numberX + (numberW - renderer.getTextWidth(NOTOSANS_14_FONT_ID, volume, kBold)) / 2,
+                      volumeY + volumeH / 2 - renderer.getLineHeight(NOTOSANS_14_FONT_ID) / 2, volume, ink, kBold);
   }
 
   const int cell = (inner - 3 * gap) / 4;
@@ -919,6 +1266,32 @@ void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
   shownRepeat_ = now_.repeat;
   shownSilent_ = silent;
   lastPaintMs_ = ms();
+}
+
+void JukeboxActivity::fillDisc(const int cx, const int cy, const int radius, const bool black) {
+  for (int dy = -radius; dy <= radius; ++dy) {
+    const int half = static_cast<int>(std::lround(std::sqrt(static_cast<float>(radius * radius - dy * dy))));
+    renderer.fillRect(cx - half, cy + dy, half * 2 + 1, 1, black);
+  }
+}
+
+// A thin circle, for a record's grooves.
+void JukeboxActivity::ringAt(const int cx, const int cy, const int radius, const bool black) {
+  int px = radius;
+  int py = 0;
+  int err = 1 - radius;
+  while (px >= py) {
+    const int xs[8] = {px, py, -py, -px, -px, -py, py, px};
+    const int ys[8] = {py, px, px, py, -py, -px, -px, -py};
+    for (int i = 0; i < 8; ++i) renderer.fillRect(cx + xs[i], cy + ys[i], 1, 1, black);
+    ++py;
+    if (err < 0) {
+      err += 2 * py + 1;
+    } else {
+      --px;
+      err += 2 * (py - px) + 1;
+    }
+  }
 }
 
 // The saved cover, when it is this track's at this size. False when there is
@@ -991,15 +1364,14 @@ void JukeboxActivity::buildShowcase(toybox::Screen& screen) {
   lastPaintMs_ = ms();
 }
 
-// What comes next, as the server has it. To look at, for now: jumping to a
-// track from here waits until that command has been tried on a real player.
+// What comes next, as the server has it. A touch on a row jumps to it.
 void JukeboxActivity::buildQueue(toybox::Screen& screen) {
   lab::chrome(screen, "QUEUE");
   const int x = toybox::kMargin;
   const int inner = screen.device().width - toybox::kMargin * 2;
   int y = toybox::kChromeHeight + 10;
-  char count[toybox::kIntChars * 2 + 24];
-  std::snprintf(count, sizeof(count), "%d TRACKS IN THE QUEUE", queue_.total % 100000);
+  char count[toybox::kIntChars * 2 + 40];
+  std::snprintf(count, sizeof(count), "%d TRACKS. TOUCH ONE TO JUMP TO IT", queue_.total % 100000);
   lab::caption(screen, x, y, inner, count);
   y += toybox::kTileCut.inkHeight + 10;
   const int rowH = 52;
@@ -1009,6 +1381,9 @@ void JukeboxActivity::buildQueue(toybox::Screen& screen) {
   int first = queue_.current > 2 ? queue_.current - 2 : 0;
   const int count2 = static_cast<int>(queue_.items.size());
   if (first + room > count2) first = std::max(0, count2 - room);
+  queueFirst_ = first;
+  queueRowsY_ = static_cast<int16_t>(y);
+  queueRows_ = static_cast<int16_t>(std::min(room, count2 - first));
   for (int i = first; i < count2 && i < first + room; ++i) {
     const jukebox::QueueItem& item = queue_.items[static_cast<size_t>(i)];
     const bool current = i == queue_.current;
@@ -1018,16 +1393,92 @@ void JukeboxActivity::buildQueue(toybox::Screen& screen) {
     if (current) renderer.fillRect(x, y + 4, 6, rowH - 10, true);
     const int tx = x + 16;
     const int tw = inner - 16 - lengthW - 12;
-    renderer.drawText(NOTOSANS_12_FONT_ID, tx, y,
-                      renderer.truncatedText(NOTOSANS_12_FONT_ID, item.title.c_str(), tw, kBold).c_str(), true, kBold);
+    renderer.drawText(
+        NOTOSANS_12_FONT_ID, tx, y,
+        renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(item.title).c_str(), tw, kBold).c_str(), true,
+        kBold);
     renderer.drawText(NOTOSANS_12_FONT_ID, tx, y + 24,
-                      renderer.truncatedText(NOTOSANS_12_FONT_ID, item.artist.c_str(), tw).c_str(), true);
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(item.artist).c_str(), tw).c_str(),
+                      true);
     renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - lengthW, y, length, true);
     y += rowH;
   }
   if (queue_.items.empty()) lab::paragraph(screen, x, y, inner, "THE SERVER GAVE AN EMPTY QUEUE.", 2);
   lab::button(screen, lab::rect(x, pageBottom() - buttonH, inner, buttonH), "BACK TO THE MUSIC", ActionBackToPlayer, 0,
               true, false);
+}
+
+// One level of the library: a list to step into, or an album or playlist to start.
+void JukeboxActivity::buildBrowse(toybox::Screen& screen) {
+  lab::chrome(screen, "LIBRARY");
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - toybox::kMargin * 2;
+  int y = toybox::kChromeHeight + 8;
+  if (trail_.empty()) return;
+  const Level& level = trail_.back();
+  const bool local = level.what == LevelRoot || level.what == LevelArtist || level.what == LevelAlbum;
+  const std::string title =
+      renderer.truncatedText(NOTOSANS_14_FONT_ID, jukebox::drawable(level.title).c_str(), inner, kBold);
+  renderer.drawText(NOTOSANS_14_FONT_ID, x, y, title.c_str(), true, kBold);
+  y += 40;
+
+  const bool startable = level.what == LevelAlbum || level.what == LevelPlaylist;
+  if (startable) {
+    const int half = (inner - 8) / 2;
+    lab::button(screen, lab::rect(x, y, half, 64), "PLAY", ActionStart, 0, true, false);
+    lab::button(screen, lab::rect(x + half + 8, y, half, 64), "SHUFFLE", ActionStart, 1, false, false);
+    y += 64 + 12;
+    if (level.what == LevelPlaylist) {
+      char count[toybox::kIntChars + 24];
+      std::snprintf(count, sizeof(count), "%d TRACKS", level.count % 1000000);
+      lab::caption(screen, x, y, inner, count);
+    }
+  }
+
+  const int buttonH = 56;
+  const int footY = pageBottom() - buttonH;
+  const int rows = std::min(kBrowseRows, (footY - 8 - y) / kBrowseRowH);
+  const int first = local ? level.page * kBrowseRows : 0;
+  for (int row = 0; row < rows && first + row < static_cast<int>(entries_.size()); ++row) {
+    const jukebox::Entry& entry = entries_[static_cast<size_t>(first + row)];
+    lab::button(screen, lab::rect(x, y, inner, kBrowseRowH - 6), "", ActionBrowseRow, row, false, false);
+    std::string name = jukebox::drawable(entry.title);
+    if (name.empty()) name = entry.kind == jukebox::Kind::Track ? "Untitled track" : "Untitled";
+    std::string detail = jukebox::drawable(entry.detail);
+    if (entry.kind == jukebox::Kind::Playlist && entry.count > 0) detail = std::to_string(entry.count) + " tracks";
+    const int detailW =
+        entry.kind == jukebox::Kind::Track ? renderer.getTextWidth(NOTOSANS_12_FONT_ID, detail.c_str()) : 0;
+    const bool twoLines = !detail.empty() && entry.kind != jukebox::Kind::Track;
+    renderer.drawText(
+        NOTOSANS_12_FONT_ID, x + 14, y + (twoLines ? 3 : 18),
+        renderer.truncatedText(NOTOSANS_12_FONT_ID, name.c_str(), inner - 28 - detailW - 10, kBold).c_str(), true,
+        kBold);
+    if (twoLines) {
+      renderer.drawText(NOTOSANS_12_FONT_ID, x + 14, y + 31,
+                        renderer.truncatedText(NOTOSANS_12_FONT_ID, detail.c_str(), inner - 28).c_str(), true);
+    } else if (detailW > 0) {
+      renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - 14 - detailW, y + 18, detail.c_str(), true);
+    }
+    y += kBrowseRowH;
+  }
+  if (entries_.empty() && level.what != LevelPlaylist) lab::caption(screen, x, y + 10, inner, "NOTHING HERE");
+
+  // The foot: up a level, and the pages when there is more than one.
+  const int pages = (entriesTotal_ + kBrowseRows - 1) / kBrowseRows;
+  const int third = (inner - 16) / 3;
+  lab::button(screen, lab::rect(x, footY, third, buttonH), "BACK", ActionBrowseUp, 0, false, false);
+  if (pages > 1) {
+    if (level.page > 0) {
+      lab::button(screen, lab::rect(x + third + 8, footY, third, buttonH), "<", ActionBrowsePage, -1, false, false);
+    }
+    if (level.page + 1 < pages) {
+      lab::button(screen, lab::rect(x + 2 * (third + 8), footY, third, buttonH), ">", ActionBrowsePage, 1, false,
+                  false);
+    }
+    char page[toybox::kIntChars * 2 + 8];
+    std::snprintf(page, sizeof(page), "%d / %d", (level.page + 1) % 100000, pages % 100000);
+    lab::caption(screen, x, footY - 22, inner, page, fui::TextAlign::Right);
+  }
 }
 
 void JukeboxActivity::buildMenu(toybox::Screen& screen) {
@@ -1057,6 +1508,12 @@ void JukeboxActivity::buildMenu(toybox::Screen& screen) {
     row("PLAYER", "None chosen");
   }
   row("PLEX ACCOUNT", config_.signedIn() ? "Linked" : "Not linked");
+  if (config_.hasPlayer()) {
+    char look[40];
+    std::snprintf(look, sizeof(look), "LOOK: %s", kLookNames[config_.look % kLooks]);
+    lab::button(screen, lab::rect(x, y, inner, 52), look, ActionLook, 0, false, true);
+    y += 60;
+  }
   if (jukebox::net::kDemo) lab::caption(screen, x, y, inner, "SIMULATOR: A MADE-UP ACCOUNT AND PLAYER");
 
   const int buttonH = 58;
@@ -1064,6 +1521,10 @@ void JukeboxActivity::buildMenu(toybox::Screen& screen) {
   lab::button(screen, lab::rect(x, by, inner, buttonH), "UNLINK AND ERASE", ActionUnlink, 0, false, false);
   by -= buttonH + 8;
   lab::button(screen, lab::rect(x, by, inner, buttonH), "CHANGE PLAYER", ActionChangePlayer, 0, false, false);
+  if (config_.hasPlayer()) {
+    by -= buttonH + 8;
+    lab::button(screen, lab::rect(x, by, inner, buttonH), "BROWSE THE LIBRARY", ActionBrowse, 0, false, false);
+  }
   if (config_.hasPlayer()) {
     by -= buttonH + 8;
     lab::button(screen, lab::rect(x, by, inner, buttonH), "BACK TO THE MUSIC", ActionBackToPlayer, 0, true, false);
@@ -1139,6 +1600,9 @@ void JukeboxActivity::render(RenderLock&&) {
       break;
     case View::Queue:
       buildQueue(screen);
+      break;
+    case View::Browse:
+      buildBrowse(screen);
       break;
     case View::Menu:
       buildMenu(screen);

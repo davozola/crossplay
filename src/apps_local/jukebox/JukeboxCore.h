@@ -48,6 +48,8 @@ struct Device {
   std::string token;  // a server's own token; empty for a player
   bool server = false;
   bool player = false;
+  // A server: where it answers on this network, "https://host:32400".
+  std::string base;
   // A player: where it listens, when it gave a local address.
   std::string host;
   int port = 0;
@@ -118,6 +120,43 @@ struct Queue {
 std::string queueUrl(const std::string& serverBase, const std::string& queueId, int window);
 bool parseQueue(const char* json, size_t len, Queue& out);
 
+// --- The library, and starting something from it -------------------------------
+
+enum class Kind : uint8_t { Library, Artist, Album, Track, Playlist };
+struct Entry {
+  Kind kind = Kind::Album;
+  std::string key;  // a library's section, or the item's ratingKey
+  std::string title;
+  std::string detail;  // who it is by, how long, how many
+  int count = 0;       // tracks in an album or a playlist, when the server says
+};
+// The music libraries of a server.
+std::string librariesUrl(const std::string& serverBase);
+// A page of a library's newest albums, of its artists, or of the playlists.
+std::string recentUrl(const std::string& serverBase, const std::string& section, int start, int size);
+std::string artistsUrl(const std::string& serverBase, const std::string& section, int start, int size);
+std::string playlistsUrl(const std::string& serverBase, int start, int size);
+// An artist's albums, or an album's tracks.
+std::string childrenUrl(const std::string& serverBase, const std::string& key);
+// The entries of any of those answers, appended; `total` is how many the
+// server has in all, when it says. Libraries that are not music are left out.
+bool parseEntries(const char* json, size_t len, std::vector<Entry>& out, int& total);
+
+// Asks the server (with POST) for a queue of an album or a playlist.
+std::string makeQueueUrl(const std::string& serverBase, const std::string& serverId, const Entry& what, bool shuffle);
+// The queue it made, and the track it would start on.
+bool parseMadeQueue(const char* json, size_t len, std::string& queueId, std::string& firstKey);
+// What follows commandUrl(..., "playMedia", ...) to start `trackKey` of that
+// queue. It names the server and carries the server's token, which is how a
+// Plex player is told where to fetch from.
+std::string playMediaExtra(const std::string& serverBase, const std::string& serverId, const std::string& serverToken,
+                           const std::string& queueId, const std::string& trackKey);
+// And what follows "skipTo", to jump to a track of the queue already playing.
+std::string skipToExtra(const std::string& trackKey);
+
+// Text with what the panel's faces cannot draw (emoji, mostly) taken out.
+std::string drawable(const std::string& text);
+
 // The server's own resizer, so the reader never holds a full-size cover.
 // A player's own account of itself, from its /resources: its name and its
 // identifier. For a player reached by a typed address, which plex.tv never
@@ -135,10 +174,12 @@ struct Config {
   std::string playerId;
   std::string playerHost;
   int playerPort = kPlayerPort;
+  uint8_t look = 0;  // which of the playing page's looks
   // Servers the account can reach, for the token their art needs.
   struct Server {
     std::string id;
     std::string token;
+    std::string base;  // "https://host:32400", for browsing when nothing is playing
   };
   std::vector<Server> servers;
 
