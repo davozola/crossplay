@@ -28,9 +28,12 @@ constexpr int16_t kToolH = 56;
 constexpr int16_t kNibPanelH = 150;
 constexpr int16_t kNibRowH = 96;
 constexpr char kInkSpeedPath[] = "/.crosspoint/handwriting-ink.cfg";
-constexpr int kInkSpeeds = 4;
+constexpr int kInkSpeeds = 5;
 // Frames of drive for each fast-ink level; level 0 is the panel's own waveform.
-constexpr uint8_t kInkFrames[kInkSpeeds] = {0, 20, 10, 5};
+// Measured on a Sticky: a frame is about 20 ms and a refresh costs about 83 ms
+// besides, so these are roughly 280, 180, 140 and 120 ms against the factory
+// waveform's 610.
+constexpr uint8_t kInkFrames[kInkSpeeds] = {0, 10, 5, 3, 2};
 
 // The controller's waveform table for fast ink, built for a number of frames.
 // One phase of one group: a pixel going black is driven black for `frames`, one
