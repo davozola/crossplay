@@ -23,7 +23,15 @@ constexpr int KEYBOARD_PANEL_PADDING = 4;
 constexpr int BUTTON_KEY_HEIGHT = 42;
 constexpr int BUTTON_KEYBOARD_HINT_GAP = 4;
 
-int keyboardGap(const ThemeMetrics& metrics) { return std::max(metrics.keyboardKeySpacing, KEYBOARD_MIN_GAP); }
+// FORK CHANGE: on a touch panel a key's size matters more than the space
+// around it, since a touch between two keys goes to the nearer one anyway. A
+// hairline of ground is kept so the keys still read as separate.
+constexpr int TOUCH_KEY_GAP = 2;
+
+int keyboardGap(const ThemeMetrics& metrics) {
+  if (gpio.hasTouch()) return TOUCH_KEY_GAP;
+  return std::max(metrics.keyboardKeySpacing, KEYBOARD_MIN_GAP);
+}
 
 // FORK CHANGE: on a touch panel the keys grow until the keyboard takes half the
 // page, rather than staying at the theme's height and leaving the page above
