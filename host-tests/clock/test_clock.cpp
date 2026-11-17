@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 #include "ClockCore.h"
 
@@ -90,6 +91,22 @@ int main() {
   check(!std::strcmp(monthEs(1), "ENE") && !std::strcmp(monthEs(12), "DIC") && !std::strcmp(monthEs(0), "ENE"),
         "months");
   for (int f = 0; f < kFaces; ++f) check(faceName(f)[0] != 0, "faces are named", f);
+
+  // The clock of clocks: a hand that points down is met by one pointing back
+  // up, or the stroke would stop in the middle of a dial. Not the other way:
+  // with two hands a dial, the waist of an 8 cannot also reach down.
+  for (int d = 0; d < 10; ++d) {
+    const Dial* dials = dialsOf(d);
+    for (int i = 0; i < 6; ++i) {
+      for (const Hand hand : {dials[i].a, dials[i].b}) {
+        if (hand == Down && i < 4) {
+          const Dial below = dials[i + 2];
+          check(below.a == Up || below.b == Up, "a stroke down is met from below", d * 10 + i);
+        }
+        check(!(hand == Up && i < 2) && !(hand == Down && i >= 4), "no stroke leaves the numeral", d * 10 + i);
+      }
+    }
+  }
 
   if (failures == 0) std::printf("clock: all tests passed\n");
   return failures == 0 ? 0 : 1;

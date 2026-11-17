@@ -30,6 +30,19 @@ class ClockActivity final : public Activity {
   void changeFace(int by);
   clockfaces::Moment now() const;
 
+  // Reads which way up the device is and turns the face to match; true when
+  // that changed anything.
+  bool followGravity(uint32_t nowMs);
+
+  // How the face is turned: by the device's own sense of down, or held.
+  enum class Turn : uint8_t { Auto = 0, Tall = 1, Wide = 2 };
+  Turn turn_ = Turn::Auto;
+  bool flipped_ = false;  // lying on its other long edge
+  uint8_t leaning_ = 0;   // the pose the sensor last read, and for how many reads
+  uint8_t leaningFor_ = 0;
+  uint32_t gravityAtMs_ = 0;
+  const char* note_ = nullptr;  // said on the strip instead of the how-to
+
   int face_ = 0;
   bool wide_ = false;
   bool dark_ = false;

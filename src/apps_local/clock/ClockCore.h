@@ -8,7 +8,7 @@
 
 namespace clockcore {
 
-constexpr int kFaces = 7;
+constexpr int kFaces = 9;
 const char* faceName(int face);
 
 // One stroke of a numeral, in a box 1 wide and 1.6 tall with y downwards.
@@ -36,6 +36,18 @@ struct Words {
   const char* tail;  // "Y VEINTE", "EN PUNTO"
 };
 Words wordsEs(int hour, int minute);
+
+// A clock made of clocks: each numeral is six small dials, two across and
+// three down, whose two hands are set so that together they draw it. A hand
+// points Up, Right, Down or Left; a dial with nothing to draw rests both hands
+// on the diagonal.
+enum Hand : uint8_t { Up = 0, Right = 1, Down = 2, Left = 3, Rest = 4 };
+struct Dial {
+  Hand a;
+  Hand b;
+};
+// The six dials of digit 0..9, row by row.
+const Dial* dialsOf(int digit);
 
 const char* weekdayEs(int weekday);  // 0 is Sunday: "DOM"
 const char* monthEs(int month);      // 1-based: "ENE"
