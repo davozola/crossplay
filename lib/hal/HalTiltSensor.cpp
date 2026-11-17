@@ -13,16 +13,6 @@ bool HalTiltSensor::readGyro(float& gx, float& gy, float& gz) const {
   return true;
 }
 
-bool HalTiltSensor::readGravity(float& ax, float& ay, float& az) const {
-  if (!_available || !_isAwake || (millis() - _wakeMs) < WAKE_STABILIZE_MS) return false;
-  Imu::Sample sample;
-  if (!_sdkImu.read(sample)) return false;
-  ax = sample.ax;
-  ay = sample.ay;
-  az = sample.az;
-  return true;
-}
-
 void HalTiltSensor::begin() {
   _available = _sdkImu.begin();
   if (_available) {
@@ -78,11 +68,10 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
 
   // State machine: wake up or sleep based on the enabled flag
-  const bool wanted = mode != CrossPointTiltPageTurn::TILT_OFF || _held;
-  if (wanted && !_isAwake) {
+  if ((mode != CrossPointTiltPageTurn::TILT_OFF) && !_isAwake) {
     _isAwake = wake();
     return;
-  } else if (!wanted && _isAwake) {
+  } else if ((mode == CrossPointTiltPageTurn::TILT_OFF) && _isAwake) {
     _isAwake = !deepSleep();
     return;
   }
