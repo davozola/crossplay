@@ -22,6 +22,7 @@ enum : fui::ActionId {
   ActionDismiss,
   ActionDay,  // value: day index, to open its sheet
   ActionAuto,
+  ActionBoardOpen,   // value: saved place index, to open it full screen
   ActionChooseAuto,  // value: minutes, 0 for off
 };
 
@@ -91,6 +92,31 @@ void buildCities(toybox::Screen& screen, const CitiesModel& model);
 void buildResults(toybox::Screen& screen, const ResultsModel& model);
 void buildStatus(toybox::Screen& screen, const StatusModel& model);
 void buildAutoPicker(toybox::Screen& screen, int currentMinutes);
+
+// A saved city's cached forecast, as much of it as a tile on the board shows.
+struct BoardCard {
+  bool have = false;
+  bool day = true;
+  int16_t code = 0;
+  float temp = 0;
+  float max = 0;
+  float min = 0;
+  int8_t precip = 0;
+  bool hasDay = false;
+  char time[6] = "";  // "HH:MM" the forecast is from
+};
+
+// Several cities at once: the first `size` saved ones, a tile each.
+struct BoardModel {
+  const weather::Place* places = nullptr;
+  const BoardCard* cards = nullptr;
+  int count = 0;  // saved places
+  int size = 3;   // tiles on the page: 3 or 5
+  bool fahrenheit = false;
+  int autoMinutes = 0;
+  FaceSwap faces;
+};
+void buildBoard(toybox::Screen& screen, const BoardModel& model);
 
 // The sky glyph in a `size` square centred on (cx, cy).
 void skyIcon(toybox::Screen& screen, weather::Sky sky, bool day, int cx, int cy, int size);
