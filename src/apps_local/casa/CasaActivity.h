@@ -31,8 +31,9 @@ class CasaActivity final : public Activity {
   bool hasNow_ = false;
   bool sleepLogging_ = false;
   uint32_t lastMeasureMs_ = 0;
-  int shownTenths_ = 0;
-  int shownHum_ = 0;
+  // The reading the page on the panel was drawn from.
+  int shownTempCenti_ = 0;
+  int shownHumCenti_ = 0;
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;
