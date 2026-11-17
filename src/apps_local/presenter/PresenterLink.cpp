@@ -99,13 +99,13 @@ bool begin(const char* name, const uint8_t batteryPercent) {
   return true;
 }
 
+// Leaves the stack standing. The library's own teardown fails the heap check on
+// this build and stops the device; the restart that follows
+// every use of the radio is what gives the memory back, and it drops the
+// connection too.
 void end() {
   if (!started) return;
-  BLEDevice::deinit(false);
-  started = false;
-  linked = false;
-  hid = nullptr;
-  input = nullptr;
+  BLEDevice::stopAdvertising();
 }
 
 State state() {
