@@ -979,6 +979,7 @@ int JukeboxActivity::coverSide() const {
   if (view_ == View::Showcase) return std::min(inner, pageBottom() - kShowcaseText - kShowcaseTop);
   switch (config_.look % kLooks) {
     case LookMinimal:
+      return 180;
     case LookTape:
       return 0;
     case LookEditorial:
@@ -1366,7 +1367,7 @@ void JukeboxActivity::buildClassic(toybox::Screen& screen) {
   smallRow(screen, smallY, kSmallRow);
 }
 
-// MINIMAL: no cover and no boxes. The title set large, a hairline for the
+// MINIMAL: no boxes. A small cover, the title set large, a hairline for the
 // track, bare marks for the controls, words along the foot.
 void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
   const int width = screen.device().width;
@@ -1377,10 +1378,20 @@ void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
   const bool silent = misses_ >= kQuietAfter;
   headLine(screen);
 
+  // The cover, small and to the left.
+  const int side = coverSide();
+  int y = 56;
+  if (!idle && drawCover(x, y, side)) {
+    coverX_ = static_cast<int16_t>(x);
+    coverY_ = static_cast<int16_t>(y);
+    coverW_ = static_cast<int16_t>(side);
+    y += side + 22;
+  } else {
+    y = 120;
+  }
   // The words, hung from a short heavy rule.
-  int y = 120;
   renderer.fillRect(x, y, 56, 8, true);
-  y += 34;
+  y += 30;
   if (idle) {
     renderer.drawText(NOTOSERIF_18_FONT_ID, x, y, silent ? "No answer" : "Silence", true);
     y += renderer.getLineHeight(NOTOSERIF_18_FONT_ID) + 10;
@@ -1389,7 +1400,8 @@ void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
   } else {
     std::vector<std::string> lines;
     lines.reserve(4);
-    toyboxserif::wrap(renderer, NOTOSERIF_18_FONT_ID, jukebox::drawable(now_.title).c_str(), inner, 3, lines);
+    toyboxserif::wrap(renderer, NOTOSERIF_18_FONT_ID, jukebox::drawable(now_.title).c_str(), inner, coverW_ > 0 ? 2 : 3,
+                      lines);
     const int lineH = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
     for (const std::string& text : lines) {
       renderer.drawText(NOTOSERIF_18_FONT_ID, x, y, text.c_str(), true);
