@@ -23,6 +23,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
+#include "../ui/ToyboxSerif.h"
 #include "../ui/ToyboxTheme.h"
 #include "JukeboxNet.h"
 
@@ -95,8 +96,9 @@ constexpr int kShowcaseTop = 16;
 constexpr int kShowcaseText = 190;
 constexpr int kQueueWindow = 5;
 // The playing page's three looks.
-enum : uint8_t { LookClassic, LookRecord, LookPoster, kLooks };
-constexpr const char* kLookNames[kLooks] = {"CLASSIC", "RECORD", "POSTER"};
+enum : uint8_t { LookClassic, LookMinimal, LookTape, LookEditorial, kLooks };
+constexpr const char* kLookNames[kLooks] = {"CLASSIC", "MINIMAL", "TAPE", "EDITORIAL"};
+enum : int { GlyphPrevious, GlyphPlay, GlyphPause, GlyphNext };
 constexpr int kBrowseRows = 6;
 constexpr int kBrowseRowH = 70;
 // What a level of the library shows.
@@ -357,6 +359,8 @@ void JukeboxActivity::doQueue() {
            View::Playing);
     return;
   }
+  // The page that lists what is next can use this answer too.
+  queueFor_ = now_.queueId + "/" + now_.trackKey;
   view_ = View::Queue;
 }
 
@@ -549,6 +553,8 @@ bool JukeboxActivity::poll(const bool withMetadata) {
 
 void JukeboxActivity::fetchArt() {
   artWanted_ = false;
+  // A look with no cover asks for none.
+  if (coverSide() <= 0) return;
   const uint32_t key = coverKey();
   artFor_ = 0;
   Storage.mkdir(kDir);
@@ -591,6 +597,29 @@ void JukeboxActivity::tick() {
     fetchArt();
     requestUpdate();
     return;
+  }
+  // The look that lists what is next reads the queue once a track.
+  if (view_ == View::Playing && config_.look % kLooks == LookEditorial && misses_ == 0 && !now_.queueId.empty() &&
+      !now_.serverBase.empty() && !now_.trackKey.empty()) {
+    const std::string want = now_.queueId + "/" + now_.trackKey;
+    if (queueFor_ != want) {
+      // Marked first: a server that does not answer is not asked again for this track.
+      queueFor_ = want;
+      for (jukebox::Config::Server& s : config_.servers) {
+        if (s.id == now_.serverId && s.base.empty()) s.base = now_.serverBase;
+      }
+      std::string body;
+      jukebox::Queue fresh;
+      if (jukebox::net::server(config_, now_.serverId, "GET",
+                               jukebox::queueUrl(now_.serverBase, now_.queueId, kQueueWindow * 2), body) == 200 &&
+          jukebox::parseQueue(body.data(), body.size(), fresh)) {
+        queue_ = fresh;
+      } else {
+        queue_ = jukebox::Queue{};
+      }
+      requestUpdate();
+      return;
+    }
   }
   const uint32_t now = ms();
   const bool silent = misses_ >= kQuietAfter;
@@ -865,7 +894,7 @@ void JukeboxActivity::loop() {
       return;
     }
     // The volume bar: a touch along it is a volume.
-    if (view_ == View::Playing && volumeW_ > 0 && tapY >= volumeY_ && tapY <= volumeY_ + kVolumeRow &&
+    if (view_ == View::Playing && volumeW_ > 0 && tapY >= volumeY_ - 6 && tapY <= volumeY_ + volumeH_ + 6 &&
         tapX >= volumeX_ - 10 && tapX <= volumeX_ + volumeW_ + 10) {
       int to = (tapX - volumeX_) * 100 / volumeW_;
       to = to < 0 ? 0 : to > 100 ? 100 : to;
@@ -873,6 +902,16 @@ void JukeboxActivity::loop() {
       std::snprintf(extra, sizeof(extra), "&volume=%d", to % 1000);
       command("setParameters", extra);
       return;
+    }
+    // What is next, on the look that lists it: a touch jumps there.
+    if (view_ == View::Playing && nextRows_ > 0 && tapY >= nextY_ && (now_.can & jukebox::CanPlayPause)) {
+      const int row = (tapY - nextY_) / 58;
+      const int index = nextFirst_ + row;
+      if (row < nextRows_ && index < static_cast<int>(queue_.items.size())) {
+        command("skipTo", jukebox::skipToExtra(queue_.items[static_cast<size_t>(index)].key).c_str());
+        poll(true);
+        return;
+      }
     }
     // The head of the playing page: the next look.
     if (view_ == View::Playing && tapY < kCoverTop - 4) {
@@ -933,21 +972,22 @@ uint32_t JukeboxActivity::coverKey() const {
   return jukebox::artHash(now_.serverId, now_.thumb) ^ (static_cast<uint32_t>(coverSide()) * 2654435761u);
 }
 
-// The square the cover has on the playing page: what is left between the
-// head and the track's name.
-int JukeboxActivity::coverArea() const {
-  const int inner = renderer.getScreenWidth() - 2 * toybox::kMargin;
-  const int room = pageBottom() - kControlsHeight - kTrackHeight - 10 - kCoverTop;
-  return std::max(120, std::min(inner, room));
-}
-
-// The cover itself, which is what the server is asked for: the whole square,
-// or the label in the middle of the record.
+// The cover as this look draws it, which is the size the server is asked for:
+// 0 for a look with no cover at all.
 int JukeboxActivity::coverSide() const {
   const int inner = renderer.getScreenWidth() - 2 * toybox::kMargin;
   if (view_ == View::Showcase) return std::min(inner, pageBottom() - kShowcaseText - kShowcaseTop);
-  const int area = coverArea();
-  return config_.look % kLooks == LookRecord ? (area * 46 / 100) & ~1 : area;
+  switch (config_.look % kLooks) {
+    case LookMinimal:
+    case LookTape:
+      return 0;
+    case LookEditorial:
+      return 208;
+    default: {
+      const int room = pageBottom() - kControlsHeight - kTrackHeight - 10 - kCoverTop;
+      return std::max(120, std::min(inner, room));
+    }
+  }
 }
 
 void JukeboxActivity::buildWelcome(toybox::Screen& screen) {
@@ -1046,226 +1086,632 @@ void JukeboxActivity::buildPlayers(toybox::Screen& screen) {
   lab::button(screen, lab::rect(x + half + 8, by, half, buttonH), "TYPE ADDRESS", ActionTypeAddress, 0, false, true);
 }
 
-void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
-  const int width = screen.device().width;
-  const int x = toybox::kMargin;
-  const int inner = width - toybox::kMargin * 2;
-  const bool silent = misses_ >= kQuietAfter;
-  const bool idle = now_.state == State::Stopped || now_.trackKey.empty();
-  const uint8_t look = config_.look % kLooks;
-  // POSTER is the page in negative: white on black, the buttons white tiles.
-  const bool dark = look == LookPoster;
-  const bool ink = !dark;
-  if (dark) renderer.fillRect(0, 0, width, renderer.getScreenHeight(), true);
+// --- The playing page, in four looks --------------------------------------------
+//
+// Each look is its own page, not a skin over one: they share what the player
+// reports and the pieces below, and nothing of their layout.
 
-  // The rows are placed from the foot up, and the cover takes what is left.
-  const int foot = pageBottom();
-  const int smallH = kSmallRow;
-  const int volumeH = kVolumeRow;
-  const int transportH = kTransportRow;
-  const int gap = kRowGap;
-  const int smallY = foot - smallH;
-  const int volumeY = smallY - gap - volumeH;
-  const int transportY = volumeY - gap - transportH;
-  const int barY = transportY - kProgressRow;
-  const int textY = barY - kTrackHeight;
+// A place to touch with nothing drawn for it.
+void JukeboxActivity::zone(toybox::Screen& screen, const int x, const int y, const int w, const int h,
+                           const fui::ActionId action, const int value) {
+  fui::ButtonProps props;
+  props.label = "";
+  props.action = action;
+  props.value = static_cast<int16_t>(value);
+  props.styles.explicitlySet = true;
+  props.minTouchSize = 0;
+  screen.button(props, lab::rect(x, y, w, h));
+}
 
-  auto caption = [&](const int cx, const int cy, const int w, const char* text, const fui::TextAlign align) {
-    lab::caption(screen, cx, cy, w, text, align, ink ? fui::Color::Black : fui::Color::White);
+// Previous, play, pause or next, centred on (cx, cy) and `r` tall each way.
+void JukeboxActivity::glyph(const int cx, const int cy, const int r, const int kind, const bool black) {
+  auto triangle = [&](const int left, const int dir) {
+    const int xs[3] = {left, left, left + dir * (r + r / 2)};
+    const int ys[3] = {cy - r, cy + r, cy};
+    renderer.fillPolygon(xs, ys, 3, black);
   };
+  const int bar = std::max(4, r / 3);
+  if (kind == GlyphPrevious) {
+    renderer.fillRect(cx - r - bar, cy - r, bar, 2 * r, black);
+    triangle(cx + r, -1);
+  } else if (kind == GlyphPlay) {
+    triangle(cx - r / 2 - 2, 1);
+  } else if (kind == GlyphPause) {
+    const int w = std::max(6, r * 3 / 5);
+    renderer.fillRect(cx - w - w / 3, cy - r, w, 2 * r, black);
+    renderer.fillRect(cx + w / 3, cy - r, w, 2 * r, black);
+  } else {
+    triangle(cx - r, 1);
+    renderer.fillRect(cx + r, cy - r, bar, 2 * r, black);
+  }
+}
 
-  // The head: which player, and what it is doing. A touch on it changes the look.
-  const int headY = 10;
-  const char* state = silent                           ? "NO ANSWER"
-                      : now_.state == State::Playing   ? "PLAYING"
-                      : now_.state == State::Paused    ? "PAUSED"
-                      : now_.state == State::Buffering ? "LOADING"
-                                                       : "IDLE";
-  caption(x, headY + 6, inner, state, fui::TextAlign::Right);
+// What the player takes right now: nothing while it is not answering.
+uint16_t JukeboxActivity::canNow() const { return misses_ >= kQuietAfter ? 0 : now_.can; }
+bool JukeboxActivity::idleNow() const { return now_.state == State::Stopped || now_.trackKey.empty(); }
+
+const char* JukeboxActivity::stateWord() const {
+  if (misses_ >= kQuietAfter) return "NO ANSWER";
+  switch (now_.state) {
+    case State::Playing:
+      return "PLAYING";
+    case State::Paused:
+      return "PAUSED";
+    case State::Buffering:
+      return "LOADING";
+    default:
+      return "IDLE";
+  }
+}
+
+// The line across the top of every look: which player, what it is doing. A
+// touch on it is the next look.
+void JukeboxActivity::headLine(toybox::Screen& screen) {
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - 2 * toybox::kMargin;
+  lab::caption(screen, x, 16, inner, stateWord(), fui::TextAlign::Right);
   const std::string player =
       renderer.truncatedText(NOTOSANS_12_FONT_ID, config_.playerName.c_str(), inner - 130, kBold);
-  renderer.drawText(NOTOSANS_12_FONT_ID, x, headY, player.c_str(), ink, kBold);
-  if (jukebox::net::kDemo) caption(x, headY + 6, inner, "DEMO DATA", fui::TextAlign::Center);
+  renderer.drawText(NOTOSANS_12_FONT_ID, x, 10, player.c_str(), true, kBold);
+  if (jukebox::net::kDemo) lab::caption(screen, x, 16, inner, "DEMO DATA", fui::TextAlign::Center);
+}
 
-  // The cover, in this look's way.
-  const int artTop = kCoverTop;
-  const int area = coverArea();
-  const int side = coverSide();
-  const int areaX = x + (inner - area) / 2;
-  const int artX = areaX + (area - side) / 2;
-  const int artY = artTop + (area - side) / 2;
-  coverX_ = static_cast<int16_t>(areaX);
-  coverY_ = static_cast<int16_t>(artTop);
-  coverW_ = static_cast<int16_t>(area);
-  bool drawn = false;
-  if (look == LookRecord) {
-    // A record: the black disc, its grooves, and the cover as the label.
-    const int cx = areaX + area / 2;
-    const int cy = artTop + area / 2;
-    const int radius = area / 2;
-    fillDisc(cx, cy, radius, true);
-    for (int groove = radius - 10; groove > side / 2 + 12; groove -= 14) ringAt(cx, cy, groove, false);
-    fillDisc(cx, cy, side / 2 + 6, false);
-    drawn = !idle && drawCover(artX, artY, side);
-    // Everything of the square label outside its circle goes back to black.
-    const int label = side / 2;
-    for (int dy = -label - 6; dy <= label + 6; ++dy) {
-      const int inside = dy < -label || dy > label
-                             ? 0
-                             : static_cast<int>(std::lround(std::sqrt(static_cast<float>(label * label - dy * dy))));
-      const int reach = label + 6;
-      renderer.fillRect(cx - reach, cy + dy, reach - inside, 1, true);
-      renderer.fillRect(cx + inside, cy + dy, reach - inside + 1, 1, true);
-    }
-    ringAt(cx, cy, label, false);
-    fillDisc(cx, cy, 7, true);
-    fillDisc(cx, cy, 4, false);
-    if (!drawn && !idle) drawn = true;  // a blank label is still a record
-  } else {
-    // A cover is black on white, so on the black page it gets its white first.
-    if (dark && !idle && artFor_ != 0 && artFor_ == coverKey()) renderer.fillRect(artX, artY, side, side, false);
-    drawn = !idle && drawCover(artX, artY, side);
-  }
-  if (!drawn || (idle && look == LookRecord)) {
-    if (look != LookRecord) renderer.drawRoundedRect(areaX, artTop, area, area, 2, 10, ink);
-    const char* head = silent && idle ? "PLAYER NOT ANSWERING" : idle ? "NOTHING PLAYING" : "NO COVER";
-    const bool onDisc = look == LookRecord;
-    if (onDisc) renderer.fillRect(areaX + 30, artTop + area / 2 - 52, area - 60, 104, false);
-    lab::label(screen, lab::rect(areaX, artTop + area / 2 - 40, area, toybox::kUiCut.inkHeight), head, toybox::kUiFont,
-               toybox::kUiCut, fui::TextAlign::Center, (ink || onDisc) ? fui::Color::Black : fui::Color::White);
-    if (idle) {
-      lab::caption(screen, areaX, artTop + area / 2 + 10, area,
-                   silent ? "IS PLEXAMP OPEN, ON THIS NETWORK?" : "START SOMETHING IN PLEXAMP OR BELOW",
-                   fui::TextAlign::Center, (ink || onDisc) ? fui::Color::Black : fui::Color::White);
-    }
-  }
-
-  // The track.
-  if (!idle) {
-    const bool centred = look != LookClassic;
-    auto line = [&](const int font, const std::string& text, const int ly, const EpdFontFamily::Style style) {
-      const std::string fitted = renderer.truncatedText(font, jukebox::drawable(text).c_str(), inner, style);
-      const int lx = centred ? x + (inner - renderer.getTextWidth(font, fitted.c_str(), style)) / 2 : x;
-      renderer.drawText(font, lx, ly, fitted.c_str(), ink, style);
-    };
-    line(NOTOSANS_16_FONT_ID, now_.title, textY, kBold);
-    line(NOTOSANS_14_FONT_ID, now_.artist, textY + 40, EpdFontFamily::REGULAR);
-    line(NOTOSANS_12_FONT_ID, now_.year.empty() ? now_.album : now_.album + "  \xC2\xB7  " + now_.year, textY + 72,
-         EpdFontFamily::REGULAR);
-
-    // Where it is. The bar is the seek control when the player takes seeking.
-    char at[16];
-    char total[16];
-    const int32_t position = positionNow();
-    jukebox::formatTime(position, at, sizeof(at));
-    jukebox::formatTime(now_.durationMs, total, sizeof(total));
-    const int timeW = 64;
-    barX_ = static_cast<int16_t>(x + timeW);
-    barW_ = static_cast<int16_t>(inner - 2 * timeW);
-    barY_ = static_cast<int16_t>(barY + 8);
-    renderer.drawText(NOTOSANS_12_FONT_ID, x, barY, at, ink);
-    renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - renderer.getTextWidth(NOTOSANS_12_FONT_ID, total), barY, total,
-                      ink);
-    renderer.drawRoundedRect(barX_, barY_, barW_, 12, 2, 6, ink);
-    if (now_.durationMs > 0) {
-      const int fill = static_cast<int>(static_cast<long>(barW_ - 6) * position / now_.durationMs);
-      if (fill > 0) renderer.fillRect(barX_ + 3, barY_ + 3, fill, 6, ink);
-    }
-  } else {
-    barW_ = 0;
-  }
-
-  // Only what this player says it takes is drawn.
-  const uint16_t can = silent ? 0 : now_.can;
-  const int third = (inner - 2 * gap) / 3;
-  auto transport = [&](const int slot, const fui::ActionId action, const int glyph) {
-    const int bx = x + slot * (third + gap);
-    lab::button(screen, lab::rect(bx, transportY, third, transportH), "", action, 0, false, false);
-    const int cx = bx + third / 2;
-    const int cy = transportY + transportH / 2;
-    const int r = 18;
-    auto triangle = [&](const int left, const int dir) {
-      const int xs[3] = {left, left, left + dir * (r + 8)};
-      const int ys[3] = {cy - r, cy + r, cy};
-      renderer.fillPolygon(xs, ys, 3, true);
-    };
-    if (glyph == 0) {  // previous
-      renderer.fillRect(cx - r - 6, cy - r, 6, 2 * r, true);
-      triangle(cx + r + 4, -1);
-    } else if (glyph == 1) {  // play
-      triangle(cx - r / 2 - 4, 1);
-    } else if (glyph == 2) {  // pause
-      renderer.fillRect(cx - 16, cy - r, 11, 2 * r, true);
-      renderer.fillRect(cx + 5, cy - r, 11, 2 * r, true);
-    } else {  // next
-      triangle(cx - r - 4, 1);
-      renderer.fillRect(cx + r, cy - r, 6, 2 * r, true);
-    }
-  };
-  if (can & jukebox::CanPrevious) transport(0, ActionPrevious, 0);
-  if (can & jukebox::CanPlayPause) transport(1, ActionPlayPause, now_.state == State::Playing ? 2 : 1);
-  if (can & jukebox::CanNext) transport(2, ActionNext, 3);
-  if (idle && !silent) {
-    lab::button(screen, lab::rect(x, transportY, inner, transportH), "BROWSE THE LIBRARY", ActionBrowse, 0, true,
-                false);
-  } else if (can == 0) {
-    caption(x, transportY + transportH / 2 - 8, inner,
-            silent ? "WAITING FOR THE PLAYER TO ANSWER" : "THIS PLAYER OFFERS NO CONTROLS RIGHT NOW",
-            fui::TextAlign::Center);
-  }
-
-  // The volume: a bar to touch anywhere along, and a step either side of it.
+// The volume as a bar to touch anywhere along, with a knob. `steps` adds the
+// minus and plus at its ends.
+void JukeboxActivity::volumeBar(toybox::Screen& screen, const int x, const int y, const int w, const int h,
+                                const bool steps, const bool slim) {
   volumeW_ = 0;
-  if ((can & jukebox::CanVolume) && now_.volume >= 0) {
+  if (!(canNow() & jukebox::CanVolume) || now_.volume < 0) return;
+  int left = x;
+  int width = w;
+  if (steps) {
     const int step = 62;
-    lab::button(screen, lab::rect(x, volumeY, step, volumeH), "-", ActionVolume, -kVolumeStep, false, false);
-    lab::button(screen, lab::rect(x + inner - step, volumeY, step, volumeH), "+", ActionVolume, kVolumeStep, false,
-                false);
-    const int numberW = 70;
-    volumeX_ = static_cast<int16_t>(x + step + 14);
-    volumeW_ = static_cast<int16_t>(inner - 2 * step - 28 - numberW);
-    volumeY_ = static_cast<int16_t>(volumeY);
-    const int trackY = volumeY + volumeH / 2 - 9;
-    renderer.drawRoundedRect(volumeX_, trackY, volumeW_, 18, 2, 9, ink);
-    const int fill = (volumeW_ - 8) * std::min(100, now_.volume) / 100;
-    if (fill > 0)
-      renderer.fillRoundedRect(volumeX_ + 4, trackY + 4, std::max(fill, 10), 10, 5, ink ? Color::Black : Color::White);
-    // The knob, so it reads as something to move.
-    const int knobX = volumeX_ + 4 + fill;
-    fillDisc(knobX, trackY + 9, 13, ink);
-    fillDisc(knobX, trackY + 9, 8, !ink);
-    char volume[toybox::kIntChars + 1];
-    std::snprintf(volume, sizeof(volume), "%d", now_.volume % 1000);
-    const int numberX = volumeX_ + volumeW_ + 16;
-    renderer.drawText(NOTOSANS_14_FONT_ID,
-                      numberX + (numberW - renderer.getTextWidth(NOTOSANS_14_FONT_ID, volume, kBold)) / 2,
-                      volumeY + volumeH / 2 - renderer.getLineHeight(NOTOSANS_14_FONT_ID) / 2, volume, ink, kBold);
+    lab::button(screen, lab::rect(x, y, step, h), "-", ActionVolume, -kVolumeStep, false, false);
+    lab::button(screen, lab::rect(x + w - step, y, step, h), "+", ActionVolume, kVolumeStep, false, false);
+    left += step + 14;
+    width -= 2 * step + 28;
   }
+  const int numberW = 62;
+  volumeX_ = static_cast<int16_t>(left);
+  volumeW_ = static_cast<int16_t>(width - numberW - 8);
+  volumeY_ = static_cast<int16_t>(y);
+  volumeH_ = static_cast<int16_t>(h);
+  const int cy = y + h / 2;
+  const int travel = volumeW_ - 8;
+  const int fill = travel * std::min(100, now_.volume) / 100;
+  if (slim) {
+    renderer.fillRect(volumeX_, cy - 1, volumeW_, 2, true);
+    renderer.fillRect(volumeX_, cy - 3, fill + 4, 6, true);
+  } else {
+    renderer.drawRoundedRect(volumeX_, cy - 9, volumeW_, 18, 2, 9, true);
+    if (fill > 0) renderer.fillRoundedRect(volumeX_ + 4, cy - 5, std::max(fill, 10), 10, 5, Color::Black);
+  }
+  fillDisc(volumeX_ + 4 + fill, cy, slim ? 10 : 13, true);
+  fillDisc(volumeX_ + 4 + fill, cy, slim ? 5 : 8, false);
+  char volume[toybox::kIntChars + 1];
+  std::snprintf(volume, sizeof(volume), "%d", now_.volume % 1000);
+  const int numberX = volumeX_ + volumeW_ + 14;
+  renderer.drawText(NOTOSANS_14_FONT_ID,
+                    numberX + (numberW - renderer.getTextWidth(NOTOSANS_14_FONT_ID, volume, kBold)) / 2,
+                    cy - renderer.getLineHeight(NOTOSANS_14_FONT_ID) / 2, volume, true, kBold);
+}
 
+// Where the track is, with its two times, and the bar a touch seeks along.
+void JukeboxActivity::progressBar(const int x, const int y, const int w, const bool slim) {
+  barW_ = 0;
+  if (idleNow()) return;
+  char at[16];
+  char total[16];
+  const int32_t position = positionNow();
+  jukebox::formatTime(position, at, sizeof(at));
+  jukebox::formatTime(now_.durationMs, total, sizeof(total));
+  if (slim) {
+    // A hairline the whole width, the times under its ends.
+    barX_ = static_cast<int16_t>(x);
+    barW_ = static_cast<int16_t>(w);
+    barY_ = static_cast<int16_t>(y);
+    renderer.fillRect(x, y + 5, w, 2, true);
+    if (now_.durationMs > 0) {
+      const int fill = static_cast<int>(static_cast<long>(w) * position / now_.durationMs);
+      renderer.fillRect(x, y + 2, fill, 8, true);
+    }
+    renderer.drawText(NOTOSANS_12_FONT_ID, x, y + 18, at, true);
+    renderer.drawText(NOTOSANS_12_FONT_ID, x + w - renderer.getTextWidth(NOTOSANS_12_FONT_ID, total), y + 18, total,
+                      true);
+    return;
+  }
+  const int timeW = 64;
+  barX_ = static_cast<int16_t>(x + timeW);
+  barW_ = static_cast<int16_t>(w - 2 * timeW);
+  barY_ = static_cast<int16_t>(y + 8);
+  renderer.drawText(NOTOSANS_12_FONT_ID, x, y, at, true);
+  renderer.drawText(NOTOSANS_12_FONT_ID, x + w - renderer.getTextWidth(NOTOSANS_12_FONT_ID, total), y, total, true);
+  renderer.drawRoundedRect(barX_, barY_, barW_, 12, 2, 6, true);
+  if (now_.durationMs > 0) {
+    const int fill = static_cast<int>(static_cast<long>(barW_ - 6) * position / now_.durationMs);
+    if (fill > 0) renderer.fillRect(barX_ + 3, barY_ + 3, fill, 6, true);
+  }
+}
+
+// Shuffle, repeat, the queue and the menu, as four buttons along the foot.
+void JukeboxActivity::smallRow(toybox::Screen& screen, const int y, const int h) {
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - 2 * toybox::kMargin;
+  const uint16_t can = canNow();
+  const int gap = kRowGap;
   const int cell = (inner - 3 * gap) / 4;
   if ((can & jukebox::CanShuffle) && now_.shuffle >= 0) {
-    lab::button(screen, lab::rect(x, smallY, cell, smallH), "SHUFFLE", ActionShuffle, 0, now_.shuffle != 0, true);
+    lab::button(screen, lab::rect(x, y, cell, h), "SHUFFLE", ActionShuffle, 0, now_.shuffle != 0, true);
   }
   if ((can & jukebox::CanRepeat) && now_.repeat >= 0) {
-    lab::button(screen, lab::rect(x + cell + gap, smallY, cell, smallH),
+    lab::button(screen, lab::rect(x + cell + gap, y, cell, h),
                 now_.repeat == 1   ? "REPEAT 1"
                 : now_.repeat == 2 ? "REP. ALL"
                                    : "REPEAT",
                 ActionRepeat, 0, now_.repeat != 0, true);
   }
   // The queue lives on the server the track came from; without one there is none to show.
-  if (!silent && !now_.queueId.empty() && !now_.serverBase.empty()) {
-    lab::button(screen, lab::rect(x + 2 * (cell + gap), smallY, cell, smallH), "QUEUE", ActionQueue, 0, false, true);
+  if (can != 0 && !now_.queueId.empty() && !now_.serverBase.empty()) {
+    lab::button(screen, lab::rect(x + 2 * (cell + gap), y, cell, h), "QUEUE", ActionQueue, 0, false, true);
   }
-  lab::button(screen, lab::rect(x + 3 * (cell + gap), smallY, cell, smallH), "MENU", ActionMenu, 0, false, true);
+  lab::button(screen, lab::rect(x + 3 * (cell + gap), y, cell, h), "MENU", ActionMenu, 0, false, true);
+}
 
+// What a look draws where its transport would be when there is nothing to
+// drive. True when it drew, and the transport should not.
+bool JukeboxActivity::idleOrSilent(toybox::Screen& screen, const int y, const int h) {
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - 2 * toybox::kMargin;
+  const bool silent = misses_ >= kQuietAfter;
+  if (idleNow() && !silent) {
+    lab::button(screen, lab::rect(x, y + (h - 80) / 2, inner, 80), "BROWSE THE LIBRARY", ActionBrowse, 0, true, false);
+    return true;
+  }
+  if (canNow() == 0) {
+    lab::caption(screen, x, y + h / 2 - 8, inner,
+                 silent ? "WAITING FOR THE PLAYER TO ANSWER" : "THIS PLAYER OFFERS NO CONTROLS RIGHT NOW",
+                 fui::TextAlign::Center);
+    return true;
+  }
+  return false;
+}
+
+void JukeboxActivity::buildPlaying(toybox::Screen& screen) {
+  coverW_ = 0;
+  barW_ = 0;
+  volumeW_ = 0;
+  nextRows_ = 0;
+  switch (config_.look % kLooks) {
+    case LookMinimal:
+      buildMinimal(screen);
+      break;
+    case LookTape:
+      buildTape(screen);
+      break;
+    case LookEditorial:
+      buildEditorial(screen);
+      break;
+    default:
+      buildClassic(screen);
+      break;
+  }
   shownKey_ = now_.trackKey;
   shownState_ = now_.state;
   shownVolume_ = now_.volume;
   shownShuffle_ = now_.shuffle;
   shownRepeat_ = now_.repeat;
-  shownSilent_ = silent;
+  shownSilent_ = misses_ >= kQuietAfter;
   lastPaintMs_ = ms();
+}
+
+// CLASSIC: the cover, the track under it, and three rows of boxed controls.
+void JukeboxActivity::buildClassic(toybox::Screen& screen) {
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - toybox::kMargin * 2;
+  const bool silent = misses_ >= kQuietAfter;
+  const bool idle = idleNow();
+  const int foot = pageBottom();
+  const int gap = kRowGap;
+  const int smallY = foot - kSmallRow;
+  const int volumeY = smallY - gap - kVolumeRow;
+  const int transportY = volumeY - gap - kTransportRow;
+  const int barY = transportY - kProgressRow;
+  const int textY = barY - kTrackHeight;
+
+  headLine(screen);
+  const int side = coverSide();
+  const int artX = x + (inner - side) / 2;
+  coverX_ = static_cast<int16_t>(artX);
+  coverY_ = static_cast<int16_t>(kCoverTop);
+  coverW_ = static_cast<int16_t>(side);
+  if (idle || !drawCover(artX, kCoverTop, side)) {
+    renderer.drawRoundedRect(artX, kCoverTop, side, side, 2, 10, true);
+    lab::label(screen, lab::rect(artX, kCoverTop + side / 2 - 40, side, toybox::kUiCut.inkHeight),
+               silent && idle ? "PLAYER NOT ANSWERING"
+               : idle         ? "NOTHING PLAYING"
+                              : "NO COVER",
+               toybox::kUiFont, toybox::kUiCut);
+    if (idle) {
+      lab::caption(screen, artX, kCoverTop + side / 2 + 10, side,
+                   silent ? "IS PLEXAMP OPEN, ON THIS NETWORK?" : "START SOMETHING IN PLEXAMP OR BELOW",
+                   fui::TextAlign::Center);
+    }
+  }
+  if (!idle) {
+    auto line = [&](const int font, const std::string& text, const int ly, const EpdFontFamily::Style style) {
+      renderer.drawText(font, x, ly,
+                        renderer.truncatedText(font, jukebox::drawable(text).c_str(), inner, style).c_str(), true,
+                        style);
+    };
+    line(NOTOSANS_16_FONT_ID, now_.title, textY, kBold);
+    line(NOTOSANS_14_FONT_ID, now_.artist, textY + 40, EpdFontFamily::REGULAR);
+    line(NOTOSANS_12_FONT_ID, now_.year.empty() ? now_.album : now_.album + "  \xC2\xB7  " + now_.year, textY + 72,
+         EpdFontFamily::REGULAR);
+  }
+  progressBar(x, barY, inner, false);
+
+  if (!idleOrSilent(screen, transportY, kTransportRow)) {
+    const uint16_t can = canNow();
+    const int third = (inner - 2 * gap) / 3;
+    auto key = [&](const int slot, const fui::ActionId action, const int kind) {
+      const int bx = x + slot * (third + gap);
+      lab::button(screen, lab::rect(bx, transportY, third, kTransportRow), "", action, 0, false, false);
+      glyph(bx + third / 2, transportY + kTransportRow / 2, 18, kind, true);
+    };
+    if (can & jukebox::CanPrevious) key(0, ActionPrevious, GlyphPrevious);
+    if (can & jukebox::CanPlayPause) key(1, ActionPlayPause, now_.state == State::Playing ? GlyphPause : GlyphPlay);
+    if (can & jukebox::CanNext) key(2, ActionNext, GlyphNext);
+  }
+  volumeBar(screen, x, volumeY, inner, kVolumeRow, true, false);
+  smallRow(screen, smallY, kSmallRow);
+}
+
+// MINIMAL: no cover and no boxes. The title set large, a hairline for the
+// track, bare marks for the controls, words along the foot.
+void JukeboxActivity::buildMinimal(toybox::Screen& screen) {
+  const int width = screen.device().width;
+  const int x = 36;
+  const int inner = width - 2 * x;
+  const int foot = pageBottom();
+  const bool idle = idleNow();
+  const bool silent = misses_ >= kQuietAfter;
+  headLine(screen);
+
+  // The words, hung from a short heavy rule.
+  int y = 120;
+  renderer.fillRect(x, y, 56, 8, true);
+  y += 34;
+  if (idle) {
+    renderer.drawText(NOTOSERIF_18_FONT_ID, x, y, silent ? "No answer" : "Silence", true);
+    y += renderer.getLineHeight(NOTOSERIF_18_FONT_ID) + 10;
+    renderer.drawText(NOTOSANS_12_FONT_ID, x, y,
+                      silent ? "Is Plexamp open, on this network?" : "Nothing is playing on this player.", true);
+  } else {
+    std::vector<std::string> lines;
+    lines.reserve(4);
+    toyboxserif::wrap(renderer, NOTOSERIF_18_FONT_ID, jukebox::drawable(now_.title).c_str(), inner, 3, lines);
+    const int lineH = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
+    for (const std::string& text : lines) {
+      renderer.drawText(NOTOSERIF_18_FONT_ID, x, y, text.c_str(), true);
+      y += lineH;
+    }
+    y += 16;
+    renderer.drawText(
+        NOTOSANS_14_FONT_ID, x, y,
+        renderer.truncatedText(NOTOSANS_14_FONT_ID, jukebox::drawable(now_.artist).c_str(), inner).c_str(), true,
+        kBold);
+    y += 38;
+    const std::string album = now_.year.empty() ? now_.album : now_.album + ", " + now_.year;
+    renderer.drawText(NOTOSANS_12_FONT_ID, x, y,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(album).c_str(), inner).c_str(),
+                      true);
+  }
+
+  // From the foot up: the words, the volume, the marks, the hairline.
+  const int wordsY = foot - 34;
+  const int volumeY = wordsY - 74;
+  const int marksY = volumeY - 110;
+  const int lineY = marksY - 84;
+  progressBar(x, lineY, inner, true);
+
+  if (!idleOrSilent(screen, marksY, 90)) {
+    const uint16_t can = canNow();
+    const int cy = marksY + 45;
+    const int third = inner / 3;
+    if (can & jukebox::CanPrevious) {
+      glyph(x + third / 2, cy, 15, GlyphPrevious, true);
+      zone(screen, x, marksY, third, 90, ActionPrevious, 0);
+    }
+    if (can & jukebox::CanPlayPause) {
+      glyph(x + third + third / 2, cy, 26, now_.state == State::Playing ? GlyphPause : GlyphPlay, true);
+      zone(screen, x + third, marksY, third, 90, ActionPlayPause, 0);
+    }
+    if (can & jukebox::CanNext) {
+      glyph(x + 2 * third + third / 2, cy, 15, GlyphNext, true);
+      zone(screen, x + 2 * third, marksY, third, 90, ActionNext, 0);
+    }
+  }
+  volumeBar(screen, x, volumeY, inner, 54, false, true);
+
+  // Words for the rest, the ones that are on underlined.
+  const uint16_t can = canNow();
+  struct Word {
+    const char* text;
+    fui::ActionId action;
+    bool shown;
+    bool on;
+  };
+  const Word words[4] = {
+      {"SHUFFLE", ActionShuffle, (can & jukebox::CanShuffle) && now_.shuffle >= 0, now_.shuffle > 0},
+      {now_.repeat == 1 ? "REPEAT 1" : "REPEAT", ActionRepeat, (can & jukebox::CanRepeat) && now_.repeat >= 0,
+       now_.repeat > 0},
+      {"QUEUE", ActionQueue, can != 0 && !now_.queueId.empty() && !now_.serverBase.empty(), false},
+      {"MENU", ActionMenu, true, false},
+  };
+  const int cell = inner / 4;
+  for (int i = 0; i < 4; ++i) {
+    if (!words[i].shown) continue;
+    const int cx = x + i * cell;
+    const fui::TextAlign align = i == 0   ? fui::TextAlign::Left
+                                 : i == 3 ? fui::TextAlign::Right
+                                          : fui::TextAlign::Center;
+    lab::caption(screen, cx, wordsY + 8, cell, words[i].text, align);
+    if (words[i].on) {
+      const int w = renderer.getTextWidth(toybox::kTileFontId, words[i].text);
+      const int ux = i == 0 ? cx : i == 3 ? cx + cell - w : cx + (cell - w) / 2;
+      renderer.fillRect(ux, wordsY + 8 + toybox::kTileCut.inkHeight + 4, w, 3, true);
+    }
+    zone(screen, cx, wordsY - 10, cell, 44, words[i].action, 0);
+  }
+}
+
+// TAPE: a cassette whose reels show how far through the track is, a counter,
+// the keys of a deck and a fader.
+void JukeboxActivity::buildTape(toybox::Screen& screen) {
+  const int width = screen.device().width;
+  const int x = toybox::kMargin;
+  const int inner = width - 2 * toybox::kMargin;
+  const int foot = pageBottom();
+  const bool idle = idleNow();
+  const bool silent = misses_ >= kQuietAfter;
+  headLine(screen);
+
+  // The shell.
+  // From the foot up: the small row, the fader, the keys, the counter. The
+  // cassette sits in the middle of what is left above them.
+  const int smallY = foot - kSmallRow;
+  const int faderY = smallY - 12 - 58;
+  const int keysY = faderY - 16 - 104;
+  const int counterY = keysY - 52;
+  const int cx0 = 20;
+  const int cw = width - 40;
+  const int ch = 286;
+  const int cy0 = 44 + std::max(0, (counterY - 12 - 44 - ch) / 2);
+  renderer.drawRoundedRect(cx0, cy0, cw, ch, 4, 18, true);
+  for (const int sx : {cx0 + 18, cx0 + cw - 18}) {
+    for (const int sy : {cy0 + 18, cy0 + ch - 18}) {
+      fillDisc(sx, sy, 6, true);
+      renderer.fillRect(sx - 4, sy - 1, 8, 2, false);
+    }
+  }
+  // The label: ruled lines with the track written on them.
+  const int lx = cx0 + 36;
+  const int ly = cy0 + 16;
+  const int lw = cw - 72;
+  const int lh = 126;
+  renderer.drawRoundedRect(lx, ly, lw, lh, 2, 8, true);
+  renderer.fillRect(lx, ly, 44, lh, true);
+  renderer.drawText(toybox::kDisplayFontId, lx + 10, ly + 30, "A", false);
+  const int tx = lx + 58;
+  const int tw = lw - 70;
+  for (int rule = 0; rule < 3; ++rule) renderer.fillRect(tx, ly + 42 + rule * 34, tw, 1, true);
+  if (idle) {
+    renderer.drawText(NOTOSANS_14_FONT_ID, tx, ly + 6, silent ? "No answer" : "Nothing playing", true, kBold);
+  } else {
+    renderer.drawText(
+        NOTOSANS_14_FONT_ID, tx, ly + 6,
+        renderer.truncatedText(NOTOSANS_14_FONT_ID, jukebox::drawable(now_.title).c_str(), tw, kBold).c_str(), true,
+        kBold);
+    renderer.drawText(NOTOSANS_12_FONT_ID, tx, ly + 48,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(now_.artist).c_str(), tw).c_str(),
+                      true);
+    const std::string album = now_.year.empty() ? now_.album : now_.album + ", " + now_.year;
+    renderer.drawText(NOTOSANS_12_FONT_ID, tx, ly + 82,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(album).c_str(), tw).c_str(), true);
+  }
+  // The window and its two reels: the tape goes from the left one to the right.
+  const int wx = cx0 + 84;
+  const int wy = ly + lh + 14;
+  const int ww = cw - 168;
+  const int wh = 92;
+  renderer.drawRoundedRect(wx, wy, ww, wh, 3, 14, true);
+  const int32_t position = positionNow();
+  const int through =
+      now_.durationMs > 0 && !idle ? static_cast<int>(static_cast<long>(100) * position / now_.durationMs) : 0;
+  const int reelY = wy + wh / 2;
+  const int reels[2] = {wx + 58, wx + ww - 58};
+  const int packs[2] = {20 + (100 - through) * 22 / 100, 20 + through * 22 / 100};
+  for (int i = 0; i < 2; ++i) {
+    fillDisc(reels[i], reelY, packs[i], true);
+    fillDisc(reels[i], reelY, 15, false);
+    ringAt(reels[i], reelY, 15, true);
+    // The hub's teeth.
+    for (int tooth = 0; tooth < 6; ++tooth) {
+      const float a = static_cast<float>(tooth) * 1.0471976f + static_cast<float>(through) * 0.2f;
+      renderer.fillRect(reels[i] + static_cast<int>(std::lround(std::cos(a) * 10.0f)) - 2,
+                        reelY + static_cast<int>(std::lround(std::sin(a) * 10.0f)) - 2, 4, 4, true);
+    }
+  }
+  renderer.fillRect(reels[0] + packs[0], reelY + 30, reels[1] - packs[1] - reels[0] - packs[0], 2, true);
+  // The foot of the shell, where the heads reach in.
+  const int fy = cy0 + ch - 34;
+  const int xs[4] = {cx0 + 96, cx0 + cw - 96, cx0 + cw - 70, cx0 + 70};
+  const int ys[4] = {fy, fy, cy0 + ch - 3, cy0 + ch - 3};
+  for (int i = 0; i < 4; ++i) renderer.drawLine(xs[i], ys[i], xs[(i + 1) % 4], ys[(i + 1) % 4], 3, true);
+  for (const int hole : {cx0 + 130, cx0 + cw / 2, cx0 + cw - 130}) fillDisc(hole, fy + 16, 5, true);
+
+  // The counter: where the tape is, as a deck would show it.
+  progressBar(x, counterY + 6, inner, false);
+
+  if (!idleOrSilent(screen, keysY, 104)) {
+    // Deck keys: tall, with a heavy lower edge, the middle one widest.
+    const uint16_t can = canNow();
+    const int gap = 10;
+    const int side = (inner - 2 * gap) * 3 / 10;
+    const int middle = inner - 2 * gap - 2 * side;
+    auto key = [&](const int kx, const int kw, const fui::ActionId action, const int kind, const int r) {
+      renderer.fillRoundedRect(kx, keysY + 8, kw, 96, 10, Color::Black);
+      renderer.fillRoundedRect(kx, keysY, kw, 92, 10, Color::White);
+      renderer.drawRoundedRect(kx, keysY, kw, 92, 3, 10, true);
+      glyph(kx + kw / 2, keysY + 46, r, kind, true);
+      zone(screen, kx, keysY, kw, 104, action, 0);
+    };
+    if (can & jukebox::CanPrevious) key(x, side, ActionPrevious, GlyphPrevious, 16);
+    if (can & jukebox::CanPlayPause) {
+      key(x + side + gap, middle, ActionPlayPause, now_.state == State::Playing ? GlyphPause : GlyphPlay, 24);
+    }
+    if (can & jukebox::CanNext) key(x + side + gap + middle + gap, side, ActionNext, GlyphNext, 16);
+  }
+
+  // The fader, with its scale.
+  volumeBar(screen, x + 4, faderY + 14, inner - 8, 44, false, false);
+  if (volumeW_ > 0) {
+    for (int tick = 0; tick <= 10; ++tick) {
+      const int tx2 = volumeX_ + 4 + (volumeW_ - 8) * tick / 10;
+      renderer.fillRect(tx2, faderY + 2, tick % 5 == 0 ? 3 : 1, tick % 5 == 0 ? 12 : 8, true);
+    }
+  }
+  smallRow(screen, smallY, kSmallRow);
+}
+
+// EDITORIAL: a page laid out like a magazine's. The cover and the track side
+// by side, round controls, and what comes next set as a list below.
+void JukeboxActivity::buildEditorial(toybox::Screen& screen) {
+  const int width = screen.device().width;
+  const int x = toybox::kMargin;
+  const int inner = width - 2 * toybox::kMargin;
+  const int foot = pageBottom();
+  const bool idle = idleNow();
+  const bool silent = misses_ >= kQuietAfter;
+  headLine(screen);
+
+  // The cover on the left, the words beside it.
+  const int side = coverSide();
+  const int top = 48;
+  coverX_ = static_cast<int16_t>(x);
+  coverY_ = static_cast<int16_t>(top);
+  coverW_ = static_cast<int16_t>(side);
+  if (idle || !drawCover(x, top, side)) renderer.drawRect(x, top, side, side, 2, true);
+  const int tx = x + side + 18;
+  const int tw = width - toybox::kMargin - tx;
+  int y = top;
+  renderer.fillRect(tx, y, tw, 6, true);
+  y += 16;
+  lab::caption(screen, tx, y, tw, idle ? "NOTHING PLAYING" : "NOW PLAYING");
+  y += toybox::kTileCut.inkHeight + 12;
+  if (idle) {
+    renderer.drawText(NOTOSANS_12_FONT_ID, tx, y, silent ? "No answer." : "Start something", true);
+    if (!silent) renderer.drawText(NOTOSANS_12_FONT_ID, tx, y + 26, "below or in Plexamp.", true);
+  } else {
+    std::vector<std::string> lines;
+    lines.reserve(4);
+    toyboxserif::wrap(renderer, NOTOSANS_14_FONT_ID, jukebox::drawable(now_.title).c_str(), tw, 3, lines);
+    const int lineH = renderer.getLineHeight(NOTOSANS_14_FONT_ID);
+    for (const std::string& text : lines) {
+      renderer.drawText(NOTOSANS_14_FONT_ID, tx, y, text.c_str(), true, kBold);
+      y += lineH;
+    }
+    y += 6;
+    renderer.drawText(NOTOSANS_12_FONT_ID, tx, y,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(now_.artist).c_str(), tw).c_str(),
+                      true);
+    y += 28;
+    const std::string album = now_.year.empty() ? now_.album : now_.album + ", " + now_.year;
+    if (y + 24 <= top + side) {
+      renderer.drawText(NOTOSANS_12_FONT_ID, tx, y,
+                        renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(album).c_str(), tw).c_str(),
+                        true);
+    }
+  }
+
+  const int barY = top + side + 16;
+  progressBar(x, barY, inner, false);
+
+  // Round controls: the one in the middle solid.
+  const int roundY = barY + 44;
+  const int roundH = 108;
+  if (!idleOrSilent(screen, roundY, roundH)) {
+    const uint16_t can = canNow();
+    const int cy = roundY + roundH / 2;
+    const int centres[3] = {width / 2 - 130, width / 2, width / 2 + 130};
+    if (can & jukebox::CanPrevious) {
+      fillDisc(centres[0], cy, 40, true);
+      fillDisc(centres[0], cy, 36, false);
+      glyph(centres[0] - 2, cy, 14, GlyphPrevious, true);
+      zone(screen, centres[0] - 60, roundY, 120, roundH, ActionPrevious, 0);
+    }
+    if (can & jukebox::CanPlayPause) {
+      fillDisc(centres[1], cy, 52, true);
+      glyph(centres[1] + (now_.state == State::Playing ? 0 : 4), cy, 22,
+            now_.state == State::Playing ? GlyphPause : GlyphPlay, false);
+      zone(screen, centres[1] - 64, roundY, 128, roundH, ActionPlayPause, 0);
+    }
+    if (can & jukebox::CanNext) {
+      fillDisc(centres[2], cy, 40, true);
+      fillDisc(centres[2], cy, 36, false);
+      glyph(centres[2] + 2, cy, 14, GlyphNext, true);
+      zone(screen, centres[2] - 60, roundY, 120, roundH, ActionNext, 0);
+    }
+  }
+  const int volumeY = roundY + roundH + 8;
+  volumeBar(screen, x, volumeY, inner, 50, true, false);
+
+  // Up next: a black band and the tracks that follow, each a touch away.
+  const int smallY = foot - kSmallRow;
+  const int bandY = volumeY + 50 + 14;
+  renderer.fillRect(0, bandY, width, 34, true);
+  lab::caption(screen, x, bandY + 10, inner, "UP NEXT", fui::TextAlign::Left, fui::Color::White);
+  const int rowH = 58;
+  const int listY = bandY + 34 + 10;
+  const int room = (smallY - 8 - listY) / rowH;
+  const bool haveQueue = queueFor_ == now_.queueId + "/" + now_.trackKey && queue_.current >= 0;
+  nextFirst_ = queue_.current + 1;
+  nextY_ = static_cast<int16_t>(listY);
+  const int after = haveQueue ? static_cast<int>(queue_.items.size()) - nextFirst_ : 0;
+  nextRows_ = static_cast<int16_t>(std::max(0, std::min(room, after)));
+  if (haveQueue && queue_.total > 0) {
+    char place[toybox::kIntChars * 2 + 8];
+    std::snprintf(place, sizeof(place), "%d TRACKS", queue_.total % 100000);
+    lab::caption(screen, x, bandY + 10, inner, place, fui::TextAlign::Right, fui::Color::White);
+  }
+  for (int row = 0; row < nextRows_; ++row) {
+    const jukebox::QueueItem& item = queue_.items[static_cast<size_t>(nextFirst_ + row)];
+    const int ry = listY + row * rowH;
+    char length[16];
+    jukebox::formatTime(item.durationMs, length, sizeof(length));
+    const int lengthW = renderer.getTextWidth(NOTOSANS_12_FONT_ID, length);
+    char number[toybox::kIntChars + 1];
+    std::snprintf(number, sizeof(number), "%d", (row + 1) % 100);
+    renderer.drawText(NOTOSANS_14_FONT_ID, x, ry + 4, number, true, kBold);
+    const int nx = x + 34;
+    const int nw = inner - 34 - lengthW - 12;
+    renderer.drawText(
+        NOTOSANS_12_FONT_ID, nx, ry,
+        renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(item.title).c_str(), nw, kBold).c_str(), true,
+        kBold);
+    renderer.drawText(NOTOSANS_12_FONT_ID, nx, ry + 26,
+                      renderer.truncatedText(NOTOSANS_12_FONT_ID, jukebox::drawable(item.artist).c_str(), nw).c_str(),
+                      true);
+    renderer.drawText(NOTOSANS_12_FONT_ID, x + inner - lengthW, ry, length, true);
+    if (row + 1 < nextRows_) renderer.fillRect(nx, ry + rowH - 1, inner - 34, 1, true);
+  }
+  if (nextRows_ == 0) {
+    lab::caption(screen, x, listY + 10, inner,
+                 idle        ? ""
+                 : haveQueue ? "THAT IS THE LAST TRACK OF THE QUEUE"
+                             : "THE QUEUE WILL SHOW HERE");
+  }
+  smallRow(screen, smallY, kSmallRow);
 }
 
 void JukeboxActivity::fillDisc(const int cx, const int cy, const int radius, const bool black) {

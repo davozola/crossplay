@@ -112,9 +112,13 @@ The firmware's readers run against those captured answers in
 
 - **The volume bar** takes a touch anywhere along it; the minus and plus
   either side step by five.
-- **Three looks** for the playing page: CLASSIC, RECORD (the cover as the
-  label of a record) and POSTER (white on black). A touch on the top line of
-  the page, or LOOK in the menu, moves to the next.
+- **Four looks** for the playing page, each a layout of its own. CLASSIC: the
+  cover, the track under it, boxed controls. MINIMAL: no cover and no boxes,
+  the title set large, a hairline for the track, bare marks for the controls.
+  TAPE: a cassette whose reels show how far through the track is, the keys of
+  a deck and a fader. EDITORIAL: the cover and the track side by side, round
+  controls, and the tracks that come next listed below, each a touch away. A
+  touch on the top line of the page, or LOOK in the menu, moves to the next.
 - **QUEUE** shows the tracks around the one playing, read from the media
   server. A touch on a row jumps to it.
 - **BROWSE THE LIBRARY** (in the menu, and on the page when nothing is
