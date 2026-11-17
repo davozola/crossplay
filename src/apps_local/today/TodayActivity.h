@@ -42,8 +42,9 @@ class TodayActivity final : public Activity {
 
   // What happened on a day like this, from what EFEMERIDES keeps on the card.
   void loadEvent();
-  char eventText_[220] = "";
-  int eventYear_ = 0;
+  char eventText_[3][220] = {};
+  int eventYear_[3] = {};
+  int eventCount_ = 0;
 
   // Which of the five faces is up; a swipe changes it and it is kept.
   void setStyle(int style);

@@ -38,7 +38,8 @@ constexpr float kPi = 3.14159265f;
 constexpr EpdFontFamily::Style kBold = EpdFontFamily::BOLD;
 constexpr EpdFontFamily::Style kRegular = EpdFontFamily::REGULAR;
 
-int contentBottom(const toybox::Screen& screen) { return screen.device().height - lab::kBottomReserve - 6 - kFootH; }
+// The page runs to the foot of the panel: a touch device draws no button hints there.
+int contentBottom(const toybox::Screen& screen) { return screen.device().height - 6 - kFootH; }
 
 // A small ring: the degree sign the display face does not have.
 void degree(toybox::Screen& screen, const int x, const int y, const int r) {
@@ -210,6 +211,113 @@ bool quoteOf(const Page& page, const int asset, char* price, const size_t priceC
 // The sea now, or null.
 const nv::Hour* seaNow(const Page& page) {
   return page.data.hasSea ? &page.data.sea.hours[nv::nowIndex(page.data.sea)] : nullptr;
+}
+
+// What happened on days like this one, one event after another for as far as
+// the page goes: the block that takes whatever height a style has left.
+enum class EventLook : uint8_t { Pixel, Reader, Centred };
+
+void eventsBlock(toybox::Screen& screen, const GfxRenderer& r, const Page& page, const int x, int y, const int width,
+                 const int bottom, const EventLook look) {
+  if (page.eventCount == 0) return;
+  const int top = y;
+  const bool pixel = look == EventLook::Pixel;
+  const int bodyFont = pixel ? toybox::kReadingSmallFontId : NOTOSERIF_12_FONT_ID;
+  const int lineH = pixel ? 25 : r.getLineHeight(bodyFont);
+  const int headH = pixel ? 26 : r.getLineHeight(NOTOSANS_12_FONT_ID);
+  bool drawn = false;
+  for (int i = 0; i < page.eventCount; ++i) {
+    const int lines = (bottom - y - headH - (pixel ? 8 : 0)) / lineH;
+    if (lines < 1) break;
+    char year[24];
+    char head[56];
+    history::yearLabel(page.events[i].year, year, sizeof(year));
+    if (pixel) {
+      std::snprintf(head, sizeof(head), i == 0 ? "UN DIA COMO HOY, %s" : "%s", year);
+      const int tabW = r.getTextWidth(toybox::kTileFontId, head) + 16;
+      r.fillRect(x, y, tabW, 22, true);
+      r.drawText(toybox::kTileFontId, x + 8,
+                 y + (22 - toybox::kTileCut.inkHeight) / 2 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight),
+                 head, false);
+    } else {
+      std::snprintf(head, sizeof(head),
+                    i == 0 ? "Un d\xC3\xAD"
+                             "a como hoy, %s"
+                           : "%s",
+                    year);
+      if (look == EventLook::Centred) {
+        textCentre(r, NOTOSANS_12_FONT_ID, x + width / 2, y, head, kBold);
+      } else {
+        text(r, NOTOSANS_12_FONT_ID, x, y, head, kBold);
+      }
+    }
+    y += headH;
+    std::vector<std::string> wrapped;
+    wrapped.reserve(8);
+    toyboxserif::wrap(r, bodyFont, page.events[i].text, width, lines, wrapped);
+    for (size_t k = 0; k < wrapped.size(); ++k) {
+      const int w = r.getTextWidth(bodyFont, wrapped[k].c_str());
+      r.drawText(bodyFont, look == EventLook::Centred ? x + (width - w) / 2 : x, y, wrapped[k].c_str(), true);
+      y += lineH;
+    }
+    y += pixel ? 10 : 6;
+    drawn = true;
+  }
+  if (drawn) zone(screen, 0, top, screen.device().width, bottom - top, Event);
+}
+
+// "Nubes y claros  ·  olas 1,1 m  ·  agua 19°": the sky in words and the water.
+void skyAndSea(const Page& page, char* b, const size_t cap, const bool sky, const bool wind) {
+  int at = 0;
+  b[0] = 0;
+  auto add = [&](const char* piece) {
+    if (at < static_cast<int>(cap) - 40) {
+      at += std::snprintf(b + at, cap - static_cast<size_t>(at), "%s%s", at ? "  \xC2\xB7  " : "", piece);
+    }
+  };
+  char piece[40];
+  if (sky && page.data.hasForecast) add(skyPhrase(wx::skyOf(page.data.forecast.current.code)));
+  if (const nv::Hour* h = seaNow(page)) {
+    if (wind && h->wind >= 0) {
+      std::snprintf(piece, sizeof(piece), "%s %d kn", nv::compass(h->windFrom),
+                    static_cast<int>(std::lround(h->wind)) % 1000);
+      add(piece);
+    }
+    if (h->wave >= 0) {
+      const int tenths = static_cast<int>(std::lround(h->wave * 10)) % 1000;
+      std::snprintf(piece, sizeof(piece), "olas %d,%d m", tenths / 10, tenths % 10);
+      add(piece);
+    }
+    if (h->water > -50) {
+      std::snprintf(piece, sizeof(piece), "agua %d\xC2\xB0", static_cast<int>(std::lround(h->water)) % 1000);
+      add(piece);
+    }
+  }
+}
+
+// The sky in one word, for where a phrase does not fit.
+const char* skyWord(const wx::Sky sky) {
+  switch (sky) {
+    case wx::Sky::Clear:
+      return "despejado";
+    case wx::Sky::PartCloud:
+      return "claros";
+    case wx::Sky::Cloud:
+      return "nublado";
+    case wx::Sky::Fog:
+      return "niebla";
+    case wx::Sky::Drizzle:
+      return "llovizna";
+    case wx::Sky::Rain:
+      return "lluvia";
+    case wx::Sky::Showers:
+      return "chubascos";
+    case wx::Sky::Snow:
+      return "nieve";
+    case wx::Sky::Thunder:
+    default:
+      return "tormenta";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -384,11 +492,12 @@ void classic(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) {
                  fui::Color::DarkGray);
   }
 
-  (void)bottom;
+  rule(screen, 648);
+  eventsBlock(screen, renderer, page, x, 658, inner, bottom, EventLook::Pixel);
   zone(screen, 0, 0, width, 150, Clock);
   zone(screen, 0, 150, width, 258, Weather);
   zone(screen, 0, 408, width, 150, Markets);
-  zone(screen, 0, 558, width, contentBottom(screen) - 558, Sea);
+  zone(screen, 0, 558, width, 90, Sea);
 }
 
 // ---------------------------------------------------------------------------
@@ -625,25 +734,12 @@ void panel(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) {
   }
   y += toybox::kTileCut.inkHeight + 8 + toybox::kUiCut.inkHeight + 6 + toybox::kTileCut.inkHeight + 10;
 
-  // --- A day like this one, when EFEMERIDES has fetched it. ---
-  if (page.eventText[0] != 0 && bottom - y >= 70) {
-    rule(screen, y);
-    y += 10;
-    history::yearLabel(page.eventYear, a, sizeof(a));
-    std::snprintf(b, sizeof(b), "UN DIA COMO HOY, %s", a);
-    const int tabW = renderer.getTextWidth(toybox::kTileFontId, b) + 16;
-    renderer.fillRect(x, y, tabW, 22, true);
-    renderer.drawText(
-        toybox::kTileFontId, x + 8,
-        y + (22 - toybox::kTileCut.inkHeight) / 2 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight), b, false);
-    toyboxserif::draw(renderer, toybox::kReadingSmallFontId, 25, x, y + 24, inner, page.eventText,
-                      (bottom - y - 24) / 25);
-  }
+  rule(screen, y);
+  eventsBlock(screen, renderer, page, x, y + 10, inner, bottom, EventLook::Pixel);
   zone(screen, 0, 0, width, 204, Clock);
   zone(screen, 0, 204, width, 264, Weather);
   zone(screen, 0, 468, width, 112, Markets);
   zone(screen, 0, 580, width, 72, Sea);
-  zone(screen, 0, 652, width, contentBottom(screen) - 652, Event);
 }
 
 // ---------------------------------------------------------------------------
@@ -791,21 +887,8 @@ void paper(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
     y += 8;
   }
 
-  // A day like this one, as the paper's look back.
-  const int eventTop = y;
-  if (page.eventText[0] != 0 && bottom - y >= r.getLineHeight(NOTOSERIF_12_FONT_ID) * 2 + 20) {
-    char year[24];
-    history::yearLabel(page.eventYear, year, sizeof(year));
-    std::snprintf(a, sizeof(a),
-                  "TAL D\xC3\x8D"
-                  "A COMO HOY, %s",
-                  year);
-    text(r, NOTOSANS_12_FONT_ID, x, y, a, kBold);
-    y += r.getLineHeight(NOTOSANS_12_FONT_ID) + 2;
-    const int lines = (bottom - y) / r.getLineHeight(NOTOSERIF_12_FONT_ID);
-    paragraph(r, NOTOSERIF_12_FONT_ID, x, y, inner, page.eventText, lines, false);
-    zone(screen, 0, eventTop, width, bottom - eventTop, Event);
-  }
+  // Days like this one, as the paper's look back.
+  eventsBlock(screen, r, page, x, y, inner, bottom, EventLook::Reader);
 }
 
 // ---------------------------------------------------------------------------
@@ -897,18 +980,8 @@ void calm(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
     zone(screen, 0, seaTop, width, y - seaTop, Sea);
   }
 
-  // A day like this, small, at the foot.
-  if (page.eventText[0] != 0) {
-    const int lh = r.getLineHeight(NOTOSERIF_12_FONT_ID);
-    const int lines = (bottom - y - lh) / lh;
-    if (lines >= 1) {
-      char year[24];
-      history::yearLabel(page.eventYear, year, sizeof(year));
-      textCentre(r, NOTOSANS_12_FONT_ID, cx, y, year, kBold);
-      paragraph(r, NOTOSERIF_12_FONT_ID, 40, y + lh, width - 80, page.eventText, lines > 3 ? 3 : lines, true);
-      zone(screen, 0, y, width, bottom - y, Event);
-    }
-  }
+  // Days like this, small, at the foot.
+  eventsBlock(screen, r, page, 40, y, width - 80, bottom, EventLook::Centred);
 }
 
 // ---------------------------------------------------------------------------
@@ -1068,23 +1141,890 @@ void dials(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   r.fillRect(axis, marketsTop + 10, 1, y - marketsTop - 14, true);
   zone(screen, 0, marketsTop, width, y - marketsTop, Markets);
 
-  // A day like this one.
-  if (page.eventText[0] != 0) {
-    const int lh = r.getLineHeight(NOTOSERIF_12_FONT_ID);
-    const int lines = (bottom - y - 8 - lh) / lh;
-    if (lines >= 1) {
-      r.fillRect(x, y, inner, 1, true);
-      char year[24];
-      history::yearLabel(page.eventYear, year, sizeof(year));
-      std::snprintf(a, sizeof(a),
-                    "Un d\xC3\xAD"
-                    "a como hoy, %s",
-                    year);
-      text(r, NOTOSANS_12_FONT_ID, x, y + 8, a, kBold);
-      paragraph(r, NOTOSERIF_12_FONT_ID, x, y + 8 + lh, inner, page.eventText, lines > 3 ? 3 : lines, false);
-      zone(screen, 0, y, width, bottom - y, Event);
+  r.fillRect(x, y, inner, 1, true);
+  eventsBlock(screen, r, page, x, y + 6, inner, bottom, EventLook::Reader);
+}
+
+// --- Pieces the styles past the fifth share. ---
+
+void disc(const GfxRenderer& r, const int cx, const int cy, const int rad, const Color color) {
+  r.fillRoundedRect(cx - rad, cy - rad, rad * 2, rad * 2, rad, color);
+}
+
+// An arrowhead for a rise or a fall, `size` across.
+void arrowhead(const GfxRenderer& r, const int cx, const int cy, const int size, const bool up) {
+  const int xs[3] = {cx - size / 2, cx + size / 2, cx};
+  const int ys[3] = {up ? cy + size / 3 : cy - size / 3, up ? cy + size / 3 : cy - size / 3,
+                     up ? cy - size / 2 : cy + size / 2};
+  r.fillPolygon(xs, ys, 3, true);
+}
+
+// The last `n` closes of an asset as a line across a box.
+void spark(const GfxRenderer& r, const mk::Quote& q, const int x, const int y, const int w, const int h, int n,
+           const int pen) {
+  if (!q.valid || q.count < 2) return;
+  if (n > q.count) n = q.count;
+  const int first = q.count - n;
+  float lo = q.closes[first];
+  float hi = lo;
+  for (int i = 1; i < n; ++i) {
+    const float v = q.closes[first + i];
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const float span = hi - lo > 0 ? hi - lo : 1;
+  int px = 0;
+  int py = 0;
+  for (int i = 0; i < n; ++i) {
+    const int qx = x + w * i / (n - 1);
+    const int qy = y + h - static_cast<int>(std::lround((q.closes[first + i] - lo) / span * static_cast<float>(h)));
+    if (i > 0) r.drawLine(px, py, qx, qy, pen, true);
+    px = qx;
+    py = qy;
+  }
+  disc(r, px, py, pen + 2, Color::Black);
+}
+
+// A name in capitals, set down as a name: "S&P 500" stays, "BITCOIN" is "Bitcoin".
+void lowerName(const char* name, char* out, const size_t cap) {
+  std::snprintf(out, cap, "%s", name);
+  for (char* c = out + 1; *c != 0; ++c) {
+    if (*c >= 'A' && *c <= 'Z' && c[-1] != ' ' && c[-1] != '&' && c[-1] != '/') *c = static_cast<char>(*c + 32);
+  }
+}
+
+void upper(char* s) {
+  for (; *s != 0; ++s) {
+    if (*s >= 'a' && *s <= 'z') *s = static_cast<char>(*s - 32);
+  }
+}
+
+// A price with its move under it, the sign as an arrowhead. Centred in
+// `width` when that is not zero. Two lines of `font`, less four pixels.
+void priceMove(const GfxRenderer& r, const int font, const int x, const int y, const char* price, const char* change,
+               const double pct, const int width) {
+  const char* amount = change[0] == '-' || change[0] == '+' ? change + 1 : change;
+  const int lineH = r.getLineHeight(font);
+  const int moveW = 16 + r.getTextWidth(font, amount, kBold);
+  const int px = width > 0 ? x + (width - r.getTextWidth(font, price)) / 2 : x;
+  const int mx = width > 0 ? x + (width - moveW) / 2 : x;
+  text(r, font, px, y, price);
+  arrowhead(r, mx + 6, y + lineH - 4 + lineH / 2 + 2, 12, pct >= 0);
+  text(r, font, mx + 16, y + lineH - 4, amount, kBold);
+}
+
+// How far round its month the moon is, 0 at new and 0.5 at full.
+float moonPhase(const Page& page) {
+  struct tm copy = page.now;
+  const time_t t = mktime(&copy);
+  const double months = (static_cast<double>(t) - 947182440.0) / 2551442.8;
+  return static_cast<float>(months - std::floor(months));
+}
+
+const char* moonName(const float p) {
+  static constexpr const char* kNames[8] = {"luna nueva", "luna creciente",   "cuarto creciente", "gibosa creciente",
+                                            "luna llena", "gibosa menguante", "cuarto menguante", "luna menguante"};
+  return kNames[static_cast<int>(p * 8 + 0.5f) % 8];
+}
+
+// The moon as it stands tonight: a ring, with the part in shadow inked.
+void moon(const GfxRenderer& r, const int cx, const int cy, const int rad, const float p) {
+  const float c = std::cos(2 * kPi * p);
+  for (int dy = -rad; dy <= rad; ++dy) {
+    const float w = std::sqrt(static_cast<float>(rad * rad - dy * dy));
+    const float t = w * c;
+    // Waxing, the light grows from the right; waning, it leaves from the right.
+    const float from = p < 0.5f ? -w : -t;
+    const float to = p < 0.5f ? t : w;
+    if (to > from) {
+      r.fillRect(cx + static_cast<int>(std::lround(from)), cy + dy,
+                 static_cast<int>(std::lround(to)) - static_cast<int>(std::lround(from)), 1, true);
     }
   }
+  arc(r, cx, cy, rad, 0, 360, 2);
+}
+
+bool isDaytime(const Page& page) {
+  if (page.data.hasForecast) return page.data.forecast.current.isDay;
+  return !page.clockSet || (page.now.tm_hour >= 7 && page.now.tm_hour < 20);
+}
+
+// "9° a 17°", today's low and high.
+void tempRange(const Page& page, char* out, const size_t cap) {
+  out[0] = 0;
+  if (!page.data.hasForecast || page.data.forecast.dayCount == 0) return;
+  const wx::Day& day = page.data.forecast.days[0];
+  std::snprintf(out, cap, "%d\xC2\xB0 a %d\xC2\xB0", wx::displayTemp(day.min, page.data.fahrenheit),
+                wx::displayTemp(day.max, page.data.fahrenheit));
+}
+
+int rainToday(const Page& page) {
+  return page.data.hasForecast && page.data.forecast.dayCount > 0 ? page.data.forecast.days[0].precip : 0;
+}
+
+// ---------------------------------------------------------------------------
+// 6. CARTEL: a poster. The hour stacked on the minute in the heaviest pen the
+// page can carry, and everything else in one narrow column beside them.
+// ---------------------------------------------------------------------------
+void poster(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
+  const todaystore::Snapshot& d = page.data;
+  const int width = screen.device().width;
+  const int x = 18;
+  const int inner = width - x * 2;
+  const int bottom = contentBottom(screen);
+  char a[48];
+  char b[120];
+
+  // The numerals: two rows of two.
+  const float boxW = 128;
+  const float pen = 22;
+  const int boxH = static_cast<int>(boxW * clockcore::kNumeralHeight);
+  const int top = 20;
+  const int digits[4] = {page.now.tm_hour / 10, page.now.tm_hour % 10, page.now.tm_min / 10, page.now.tm_min % 10};
+  for (int i = 0; i < 4; ++i) {
+    const float nx = static_cast<float>(x + (i % 2) * (static_cast<int>(boxW) + 14));
+    const float ny = static_cast<float>(top + (i / 2) * (boxH + 20));
+    if (page.clockSet) {
+      clockfaces::drawNumeral(r, digits[i], nx, ny, boxW, pen);
+    } else {
+      r.fillRect(static_cast<int>(nx) + 20, static_cast<int>(ny) + boxH / 2 - 10, static_cast<int>(boxW) - 40, 20,
+                 true);
+    }
+  }
+  const int numeralsBottom = top + boxH * 2 + 20;
+  const int colX = x + static_cast<int>(boxW) * 2 + 14 + 22;
+  const int colW = x + inner - colX;
+  zone(screen, 0, 0, colX - 10, numeralsBottom + 8, Clock);
+
+  // The column: a black block to hang it from, then the day and the weather.
+  int y = top;
+  r.fillRect(colX, y, colW, 12, true);
+  y += 24;
+  if (page.clockSet) {
+    std::snprintf(a, sizeof(a), "%s", kWeekdays[page.now.tm_wday % 7]);
+    upper(a);
+    // Accented capitals are not in every face: the weekday's own letters are kept when it has any.
+    text(r, NOTOSANS_14_FONT_ID, colX, y,
+         page.now.tm_wday == 3 || page.now.tm_wday == 6 ? kWeekdays[page.now.tm_wday] : a, kBold);
+    y += r.getLineHeight(NOTOSANS_14_FONT_ID);
+    std::snprintf(a, sizeof(a), "%d %.3s", page.now.tm_mday, kMonths[page.now.tm_mon % 12]);
+    text(r, NOTOSANS_18_FONT_ID, colX, y, a, kBold);
+    y += r.getLineHeight(NOTOSANS_18_FONT_ID) + 10;
+  }
+  r.fillRect(colX, y, colW, 3, true);
+  y += 14;
+  const int weatherTop = y;
+  if (d.hasForecast) {
+    const wx::Sky sky = wx::skyOf(d.forecast.current.code);
+    weatherui::skyIcon(screen, sky, isDaytime(page), colX + 40, y + 36, 80);
+    y += 84;
+    std::snprintf(a, sizeof(a), "%d\xC2\xB0", wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
+    // The temperature in the clock's own numerals, to stand up to the hour.
+    const int temp = wx::displayTemp(d.forecast.current.temp, d.fahrenheit);
+    const int shown = temp < 0 ? -temp : temp;
+    float nx = static_cast<float>(colX);
+    if (temp < 0) {
+      r.fillRect(colX, y + 36, 18, 8, true);
+      nx += 26;
+    }
+    const float tb = 44;
+    if (shown >= 10) {
+      clockfaces::drawNumeral(r, (shown / 10) % 10, nx, static_cast<float>(y), tb, 8);
+      nx += tb + 6;
+    }
+    clockfaces::drawNumeral(r, shown % 10, nx, static_cast<float>(y), tb, 8);
+    nx += tb + 6;
+    disc(r, static_cast<int>(nx) + 8, y + 10, 9, Color::Black);
+    disc(r, static_cast<int>(nx) + 8, y + 10, 4, Color::White);
+    y += static_cast<int>(tb * clockcore::kNumeralHeight) + 10;
+    text(r, NOTOSANS_12_FONT_ID, colX, y, skyWord(sky), kBold);
+    y += r.getLineHeight(NOTOSANS_12_FONT_ID);
+    tempRange(page, a, sizeof(a));
+    text(r, NOTOSANS_12_FONT_ID, colX, y, a);
+    y += r.getLineHeight(NOTOSANS_12_FONT_ID);
+    std::snprintf(a, sizeof(a), "lluvia %d %%", rainToday(page) % 1000);
+    text(r, NOTOSANS_12_FONT_ID, colX, y, a);
+  } else {
+    paragraph(r, NOTOSANS_12_FONT_ID, colX, y, colW, "sin previsi\xC3\xB3n", 2, false);
+  }
+  zone(screen, colX - 10, weatherTop, width - colX + 10, numeralsBottom + 8 - weatherTop, Weather);
+
+  // Markets: three columns, the change set large.
+  y = numeralsBottom + 16;
+  const int marketsTop = y;
+  r.fillRect(x, y, inner, 6, true);
+  y += 16;
+  const int cellW = inner / 3;
+  for (int i = 0; i < mk::kAssets; ++i) {
+    const int cxl = x + cellW * i;
+    char price[24];
+    char change[16];
+    double pct = 0;
+    text(r, NOTOSANS_12_FONT_ID, cxl, y, mk::infoOf(static_cast<mk::Asset>(i)).name, kBold);
+    if (quoteOf(page, i, price, sizeof(price), change, sizeof(change), pct)) {
+      const int ly = y + r.getLineHeight(NOTOSANS_12_FONT_ID);
+      arrowhead(r, cxl + 9, ly + r.getLineHeight(NOTOSANS_16_FONT_ID) / 2 + 2, 18, pct >= 0);
+      text(r, NOTOSANS_16_FONT_ID, cxl + 24, ly, change[0] == '-' || change[0] == '+' ? change + 1 : change, kBold);
+      text(r, NOTOSANS_12_FONT_ID, cxl, ly + r.getLineHeight(NOTOSANS_16_FONT_ID), price);
+    }
+    if (i > 0) r.fillRect(cxl - 10, y + 4, 1, 86, true);
+  }
+  y += r.getLineHeight(NOTOSANS_12_FONT_ID) * 2 + r.getLineHeight(NOTOSANS_16_FONT_ID) + 6;
+  zone(screen, 0, marketsTop, width, y - marketsTop, Markets);
+
+  // The sea on one line between rules.
+  skyAndSea(page, b, sizeof(b), false, true);
+  if (b[0] != 0) {
+    r.fillRect(x, y, inner, 3, true);
+    text(r, NOTOSANS_12_FONT_ID, x, y + 7, b, kBold);
+    zone(screen, 0, y, width, r.getLineHeight(NOTOSANS_12_FONT_ID) + 12, Sea);
+    y += r.getLineHeight(NOTOSANS_12_FONT_ID) + 12;
+  }
+  r.fillRect(x, y, inner, 3, true);
+  eventsBlock(screen, r, page, x, y + 8, inner, bottom, EventLook::Reader);
+}
+
+// ---------------------------------------------------------------------------
+// 7. HORIZONTE: the day as a landscape. The sun or the moon stands where the
+// hour puts it, the sky is the weather, the three ridges are the three markets
+// over the last weeks, and the sea runs as high as the sea does.
+// ---------------------------------------------------------------------------
+void horizon(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
+  const todaystore::Snapshot& d = page.data;
+  const int width = screen.device().width;
+  const int x = 20;
+  const int inner = width - x * 2;
+  const int bottom = contentBottom(screen);
+  const int horizonY = 372;
+  const int seaBottom = 470;
+  char a[48];
+  char b[120];
+  const wx::Sky sky = d.hasForecast ? wx::skyOf(d.forecast.current.code) : wx::Sky::Clear;
+  const bool day = isDaytime(page);
+
+  // The path across the sky, dotted, and the sun or the moon on it.
+  const int hour = page.clockSet ? page.now.tm_hour * 60 + page.now.tm_min : 12 * 60;
+  // Day runs 7 to 20, night the rest; either way left to right.
+  float part = day ? static_cast<float>(hour - 7 * 60) / (13.0f * 60)
+                   : static_cast<float>((hour + 4 * 60) % 1440) / (11.0f * 60);
+  if (part < 0.03f) part = 0.03f;
+  if (part > 0.97f) part = 0.97f;
+  const int pathR = 196;
+  const int pathBase = 264;
+  const int pathRise = 62;
+  const int pcx = width / 2;
+  for (int k = 0; k <= 30; ++k) {
+    const float ang = kPi * static_cast<float>(k) / 30.0f;
+    r.fillRect(pcx - static_cast<int>(std::lround(pathR * std::cos(ang))),
+               pathBase - static_cast<int>(std::lround(pathRise * std::sin(ang))), 2, 2, true);
+  }
+  const float ang = kPi * part;
+  const int sx = pcx - static_cast<int>(std::lround(pathR * std::cos(ang)));
+  const int sy = pathBase - static_cast<int>(std::lround(pathRise * std::sin(ang)));
+  if (day) {
+    disc(r, sx, sy, 40, Color::White);
+    for (int k = 0; k < 16; ++k) spoke(r, sx, sy, k * 22.5f, 32, k % 2 == 0 ? 46 : 40, 3);
+    disc(r, sx, sy, 24, Color::Black);
+    disc(r, sx, sy, 20, Color::White);
+    r.fillRectDither(sx - 12, sy - 12, 24, 24, Color::LightGray);
+  } else {
+    disc(r, sx, sy, 30, Color::White);
+    moon(r, sx, sy, 24, page.clockSet ? moonPhase(page) : 0.25f);
+  }
+
+  // The hour and the day, top left; the weather in words, top right.
+  const float boxW = 50;
+  numerals(r, page, static_cast<float>(x), 24, boxW, 5);
+  int ty = 24 + static_cast<int>(boxW * clockcore::kNumeralHeight) + 12;
+  if (page.clockSet) {
+    std::snprintf(b, sizeof(b), "%s %d de %s", kWeekdays[page.now.tm_wday % 7], page.now.tm_mday,
+                  kMonths[page.now.tm_mon % 12]);
+    text(r, NOTOSANS_12_FONT_ID, x, ty, b, kBold);
+  }
+  zone(screen, 0, 0, 290, ty + 34, Clock);
+  if (d.hasForecast) {
+    std::snprintf(a, sizeof(a), "%d\xC2\xB0", wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
+    textRight(r, NOTOSANS_18_FONT_ID, x + inner, 20, a, kBold);
+    int wy = 20 + r.getLineHeight(NOTOSANS_18_FONT_ID);
+    textRight(r, NOTOSANS_12_FONT_ID, x + inner, wy, skyPhrase(sky), kBold);
+    wy += r.getLineHeight(NOTOSANS_12_FONT_ID);
+    tempRange(page, a, sizeof(a));
+    textRight(r, NOTOSANS_12_FONT_ID, x + inner, wy, a);
+    wy += r.getLineHeight(NOTOSANS_12_FONT_ID);
+    std::snprintf(a, sizeof(a), "lluvia %d %%", rainToday(page) % 1000);
+    textRight(r, NOTOSANS_12_FONT_ID, x + inner, wy, a);
+  }
+
+  // The weather itself: clouds for cloud, strokes for rain, dots for snow, bars for fog.
+  auto cloud = [&](const int cx, const int cy, const int s) {
+    const int lumps[4][3] = {
+        {-s, 0, s * 6 / 10}, {0, -s * 4 / 10, s * 8 / 10}, {s, 0, s * 6 / 10}, {0, s * 2 / 10, s * 6 / 10}};
+    for (const auto& l : lumps) disc(r, cx + l[0], cy + l[1], l[2] + 3, Color::Black);
+    r.fillRect(cx - s, cy + s * 2 / 10, s * 2, s * 4 / 10 + 3, true);
+    for (const auto& l : lumps) disc(r, cx + l[0], cy + l[1], l[2], Color::White);
+    r.fillRect(cx - s, cy + s * 2 / 10, s * 2, s * 4 / 10, false);
+  };
+  const bool wet =
+      sky == wx::Sky::Drizzle || sky == wx::Sky::Rain || sky == wx::Sky::Showers || sky == wx::Sky::Thunder;
+  const int clouds = sky == wx::Sky::Clear || sky == wx::Sky::Fog ? 0 : (sky == wx::Sky::PartCloud ? 2 : 3);
+  const int cloudAt[3][3] = {{120, 226, 30}, {388, 234, 26}, {300, 206, 22}};
+  if (wet || sky == wx::Sky::Snow) {
+    for (int k = 0; k < 26; ++k) {
+      const int rx = 60 + (k * 97) % 380;
+      const int ry = 262 + (k * 53) % 90;
+      if (sky == wx::Sky::Snow) {
+        disc(r, rx, ry, 3, Color::Black);
+      } else {
+        r.drawLine(rx, ry, rx - 7, ry + 18, 2, true);
+      }
+    }
+  }
+  for (int k = 0; k < clouds; ++k) cloud(cloudAt[k][0], cloudAt[k][1], cloudAt[k][2]);
+  if (sky == wx::Sky::Fog) {
+    for (int k = 0; k < 5; ++k) r.fillRectDither(40 + (k % 2) * 60, 230 + k * 22, 340, 6, Color::DarkGray);
+  }
+  zone(screen, 290, 0, width - 290, 170, Weather);
+  zone(screen, 0, 170, width, 80, Weather);
+
+  // The ridges: the furthest an outline, the middle one pale, the nearest dark.
+  const int ridgeBase[3] = {horizonY, horizonY, horizonY};
+  const int ridgeMax[3] = {58, 82, 106};
+  const int order[3] = {0, 1, 2};  // nearest first in the data, drawn furthest first below
+  for (int layer = 2; layer >= 0; --layer) {
+    const mk::Quote& q = d.quotes[order[layer]];
+    if (!q.valid || q.count < 2) continue;
+    const int n = q.count < 60 ? q.count : 60;
+    const int first = q.count - n;
+    float lo = q.closes[first];
+    float hi = lo;
+    for (int i = 1; i < n; ++i) {
+      const float v = q.closes[first + i];
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    const float span = hi - lo > 0 ? hi - lo : 1;
+    int prevTop = 0;
+    for (int px = 0; px < width; px += 2) {
+      const float at = static_cast<float>(px) * static_cast<float>(n - 1) / static_cast<float>(width - 2);
+      const int i = static_cast<int>(at);
+      const float frac = at - static_cast<float>(i);
+      const float v = q.closes[first + i] + (i + 1 < n ? (q.closes[first + i + 1] - q.closes[first + i]) * frac : 0);
+      const int h = 24 + static_cast<int>(std::lround((v - lo) / span * static_cast<float>(ridgeMax[2 - layer] - 24)));
+      const int topY = ridgeBase[layer] - h;
+      r.fillRect(px, topY, 2, h, false);
+      if (layer == 1) r.fillRectDither(px, topY, 2, h, Color::LightGray);
+      if (layer == 0) r.fillRectDither(px, topY, 2, h, Color::DarkGray);
+      // The crest, inked: a step between columns is drawn as its riser.
+      if (px > 0) {
+        const int from = prevTop < topY ? prevTop : topY;
+        const int span2 = prevTop < topY ? topY - prevTop : prevTop - topY;
+        r.fillRect(px, from, 2, span2 + 2, true);
+      } else {
+        r.fillRect(px, topY, 2, 2, true);
+      }
+      prevTop = topY;
+    }
+  }
+  zone(screen, 0, 250, width, horizonY - 250, Markets);
+
+  // The sea: lines of swell, taller for taller waves and longer as they near.
+  r.fillRect(0, horizonY, width, 3, true);
+  const nv::Hour* h = seaNow(page);
+  float amp = h != nullptr && h->wave >= 0 ? 1.5f + h->wave * 3.0f : 2.5f;
+  if (amp > 9) amp = 9;
+  for (int row = 0; row < 7; ++row) {
+    const int wy = horizonY + 12 + row * 13;
+    const float length = 26.0f + row * 9.0f;
+    const float a2 = amp * (0.5f + row * 0.1f);
+    int px0 = 0;
+    int py0 = wy;
+    for (int px = 0; px <= width; px += 6) {
+      const int py =
+          wy + static_cast<int>(std::lround(a2 * std::sin(2 * kPi * (static_cast<float>(px) / length) + row * 1.3f)));
+      if (px > 0) r.drawLine(px0, py0, px, py, row > 3 ? 2 : 1, true);
+      px0 = px;
+      py0 = py;
+    }
+  }
+  zone(screen, 0, horizonY, width, seaBottom - horizonY, Sea);
+
+  // Under the picture, what it shows: the ridges by name, then the sea.
+  int y = seaBottom;
+  r.fillRect(0, y, width, 3, true);
+  y += 10;
+  const int cellW = inner / 3;
+  for (int i = 0; i < mk::kAssets; ++i) {
+    const int cxl = x + cellW * i;
+    char price[24];
+    char change[16];
+    double pct = 0;
+    // The swatch says which ridge.
+    r.drawRect(cxl, y + 6, 14, 14, 2, true);
+    if (i == 0) r.fillRectDither(cxl + 2, y + 8, 10, 10, Color::DarkGray);
+    if (i == 1) r.fillRectDither(cxl + 2, y + 8, 10, 10, Color::LightGray);
+    lowerName(mk::infoOf(static_cast<mk::Asset>(i)).name, a, sizeof(a));
+    text(r, NOTOSANS_12_FONT_ID, cxl + 20, y, a, kBold);
+    if (quoteOf(page, i, price, sizeof(price), change, sizeof(change), pct)) {
+      priceMove(r, NOTOSANS_12_FONT_ID, cxl + 20, y + r.getLineHeight(NOTOSANS_12_FONT_ID) - 4, price, change, pct, 0);
+    }
+  }
+  zone(screen, 0, seaBottom, width, r.getLineHeight(NOTOSANS_12_FONT_ID) * 3 + 8, Markets);
+  y += r.getLineHeight(NOTOSANS_12_FONT_ID) * 3 - 2;
+  skyAndSea(page, b, sizeof(b), false, true);
+  if (b[0] != 0) {
+    r.fillRect(x, y, inner, 1, true);
+    textCentre(r, NOTOSANS_12_FONT_ID, width / 2, y + 4, b);
+    zone(screen, 0, y, width, r.getLineHeight(NOTOSANS_12_FONT_ID) + 8, Sea);
+    y += r.getLineHeight(NOTOSANS_12_FONT_ID) + 8;
+  }
+  r.fillRect(x, y, inner, 1, true);
+  eventsBlock(screen, r, page, x, y + 6, inner, bottom, EventLook::Reader);
+}
+
+// ---------------------------------------------------------------------------
+// 8. MOSAICO: tiles, each its own size for what it holds. The rain tile fills
+// like a glass, the markets carry their last weeks as a line.
+// ---------------------------------------------------------------------------
+void mosaic(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
+  const todaystore::Snapshot& d = page.data;
+  const int width = screen.device().width;
+  const int m = 12;
+  const int gap = 10;
+  const int inner = width - m * 2;
+  const int bottom = contentBottom(screen);
+  const int labelH = r.getLineHeight(NOTOSANS_12_FONT_ID);
+  char a[48];
+  char b[120];
+  auto tile = [&](const int tx, const int ty, const int tw, const int th) {
+    r.drawRoundedRect(tx, ty, tw, th, 3, 18, true);
+  };
+  auto tag = [&](const int tx, const int ty, const char* s) { r.drawText(toybox::kTileFontId, tx, ty, s, true); };
+
+  // The hour, across the top.
+  int y = m;
+  const int timeH = 196;
+  tile(m, y, inner, timeH);
+  const float boxW = 78;
+  const int timeW = numerals(r, page, 0, 0, boxW, 11, false);
+  numerals(r, page, static_cast<float>((width - timeW) / 2), static_cast<float>(y + 16), boxW, 11);
+  if (page.clockSet) {
+    std::snprintf(b, sizeof(b), "%s %d de %s", kWeekdays[page.now.tm_wday % 7], page.now.tm_mday,
+                  kMonths[page.now.tm_mon % 12]);
+    textCentre(r, NOTOSANS_14_FONT_ID, width / 2, y + 16 + static_cast<int>(boxW * clockcore::kNumeralHeight) + 10, b,
+               kBold);
+  }
+  zone(screen, 0, 0, width, y + timeH + gap / 2, Clock);
+  y += timeH + gap;
+
+  // The weather, wide, and the rain beside it as a glass.
+  const int rowH = 148;
+  const int rainW = 136;
+  const int wxW = inner - rainW - gap;
+  tile(m, y, wxW, rowH);
+  tag(m + 16, y + 14, "TIEMPO");
+  if (d.hasForecast) {
+    const wx::Sky sky = wx::skyOf(d.forecast.current.code);
+    weatherui::skyIcon(screen, sky, isDaytime(page), m + 62, y + 84, 88);
+    const int temp = wx::displayTemp(d.forecast.current.temp, d.fahrenheit);
+    const int shown = temp < 0 ? -temp : temp;
+    float nx = static_cast<float>(m + 124);
+    const float tb = 40;
+    const int ny = y + 32;
+    if (temp < 0) {
+      r.fillRect(static_cast<int>(nx), ny + 30, 16, 7, true);
+      nx += 22;
+    }
+    if (shown >= 10) {
+      clockfaces::drawNumeral(r, (shown / 10) % 10, nx, static_cast<float>(ny), tb, 7);
+      nx += tb + 6;
+    }
+    clockfaces::drawNumeral(r, shown % 10, nx, static_cast<float>(ny), tb, 7);
+    nx += tb + 6;
+    disc(r, static_cast<int>(nx) + 8, ny + 9, 8, Color::Black);
+    disc(r, static_cast<int>(nx) + 8, ny + 9, 4, Color::White);
+    text(r, NOTOSANS_12_FONT_ID, m + 124, ny + 68, skyWord(sky), kBold);
+    tempRange(page, a, sizeof(a));
+    textRight(r, NOTOSANS_12_FONT_ID, m + wxW - 14, ny + 68, a);
+  }
+  zone(screen, 0, y - gap / 2, m + wxW + gap / 2, rowH + gap, Weather);
+  const int rx = m + wxW + gap;
+  {
+    const int rain = rainToday(page);
+    // The glass: grey up to the chance of rain, inside the tile's own outline.
+    const int level = (rowH - 12) * rain / 100;
+    if (level > 0) {
+      r.fillRectDither(rx + 6, y + rowH - 6 - level, rainW - 12, level, Color::LightGray);
+      r.fillRect(rx + 6, y + rowH - 6 - level, rainW - 12, 2, true);
+    }
+    // The corners the grey squared off are given back to the page.
+    r.fillRect(rx, y + rowH - 20, 20, 20, false);
+    r.fillRect(rx + rainW - 20, y + rowH - 20, 20, 20, false);
+    if (level > 14) {
+      r.fillRoundedRect(rx + 5, y + rowH - 6 - (level < 30 ? level : 30), rainW - 10, level < 30 ? level : 30, 14,
+                        false, false, true, true, Color::LightGray);
+    }
+    tile(rx, y, rainW, rowH);
+    const int bw = r.getTextWidth(NOTOSANS_18_FONT_ID, "100%", kBold) + 12;
+    r.fillRoundedRect(rx + (rainW - bw) / 2, y + 44, bw, r.getLineHeight(NOTOSANS_18_FONT_ID) + 4, 10, Color::White);
+    r.fillRoundedRect(rx + 12, y + 10, 76, 22, 6, Color::White);
+    tag(rx + 16, y + 14, "LLUVIA");
+    std::snprintf(a, sizeof(a), "%d%%", rain % 1000);
+    textCentre(r, NOTOSANS_18_FONT_ID, rx + rainW / 2, y + 46, a, kBold);
+  }
+  zone(screen, rx - gap / 2, y - gap / 2, width - rx + gap / 2, rowH + gap, Weather);
+  y += rowH + gap;
+
+  // The markets, three alike.
+  const int mkH = 150;
+  const int mkW = (inner - gap * 2) / 3;
+  for (int i = 0; i < mk::kAssets; ++i) {
+    const int tx = m + (mkW + gap) * i;
+    tile(tx, y, mkW, mkH);
+    char price[24];
+    char change[16];
+    double pct = 0;
+    tag(tx + 12, y + 14, mk::infoOf(static_cast<mk::Asset>(i)).name);
+    if (quoteOf(page, i, price, sizeof(price), change, sizeof(change), pct)) {
+      text(r, NOTOSANS_14_FONT_ID, tx + 12, y + 30, price, kBold);
+      const int cy2 = y + 30 + r.getLineHeight(NOTOSANS_14_FONT_ID);
+      arrowhead(r, tx + 19, cy2 + labelH / 2 + 2, 14, pct >= 0);
+      text(r, NOTOSANS_12_FONT_ID, tx + 32, cy2, change[0] == '-' || change[0] == '+' ? change + 1 : change, kBold);
+      spark(r, d.quotes[i], tx + 14, cy2 + labelH + 4, mkW - 32, y + mkH - 14 - (cy2 + labelH + 4), 30, 2);
+    }
+  }
+  zone(screen, 0, y - gap / 2, width, mkH + gap, Markets);
+  y += mkH + gap;
+
+  // The sea: three figures in one long tile.
+  if (const nv::Hour* h = seaNow(page)) {
+    const int seaH = 78;
+    tile(m, y, inner, seaH);
+    const int at[3] = {0, (inner - 32) * 48 / 100, (inner - 32) * 76 / 100};
+    const char* tags[3] = {"VIENTO", "OLAS", "AGUA"};
+    for (int i = 0; i < 3; ++i) {
+      const int tx = m + 16 + at[i];
+      tag(tx, y + 14, tags[i]);
+      a[0] = 0;
+      if (i == 0 && h->wind >= 0) {
+        std::snprintf(a, sizeof(a), "%d kn %s", static_cast<int>(std::lround(h->wind)) % 1000,
+                      nv::compass(h->windFrom));
+      }
+      if (i == 1 && h->wave >= 0) {
+        const int tenths = static_cast<int>(std::lround(h->wave * 10)) % 1000;
+        std::snprintf(a, sizeof(a), "%d,%d m", tenths / 10, tenths % 10);
+      }
+      if (i == 2 && h->water > -50) {
+        std::snprintf(a, sizeof(a), "%d\xC2\xB0", static_cast<int>(std::lround(h->water)) % 1000);
+      }
+      text(r, NOTOSANS_14_FONT_ID, tx, y + 32, a[0] != 0 ? a : "--", kBold);
+      if (i > 0) r.fillRect(tx - 10, y + 14, 1, seaH - 28, true);
+    }
+    zone(screen, 0, y - gap / 2, width, seaH + gap, Sea);
+    y += seaH + gap;
+  }
+
+  // What is left of the page, to days like this one.
+  if (page.eventCount > 0 && bottom - y > labelH * 3) {
+    tile(m, y, inner, bottom - y - 2);
+    eventsBlock(screen, r, page, m + 16, y + 10, inner - 32, bottom - 10, EventLook::Reader);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. BILLETE: the day as a ticket for it. Fields with their small labels,
+// perforations between the parts, and a bar code made of the day's own figures.
+// ---------------------------------------------------------------------------
+void ticket(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
+  const todaystore::Snapshot& d = page.data;
+  const int width = screen.device().width;
+  const int m = 10;
+  const int x = 30;
+  const int inner = width - x * 2;
+  const int bottom = contentBottom(screen);
+  const int valueH = r.getLineHeight(NOTOSANS_16_FONT_ID);
+  char a[48];
+  char b[120];
+  r.drawRoundedRect(m, 8, width - m * 2, bottom - 12, 3, 22, true);
+  auto field = [&](const int fx, const int fy, const char* label, const char* value,
+                   const int font = NOTOSANS_16_FONT_ID) {
+    r.drawText(toybox::kTileFontId, fx, fy, label, true);
+    text(r, font, fx, fy + 16, value, kBold);
+  };
+  // A tear line: dashes across, and a bite out of each edge.
+  auto perforation = [&](const int py) {
+    for (int px = m + 22; px < width - m - 22; px += 12) r.fillRect(px, py, 6, 2, true);
+    disc(r, m + 1, py + 1, 14, Color::Black);
+    disc(r, m - 2, py + 1, 14, Color::White);
+    r.fillRect(0, py - 16, m, 34, false);
+    disc(r, width - m - 1, py + 1, 14, Color::Black);
+    disc(r, width - m + 2, py + 1, 14, Color::White);
+    r.fillRect(width - m + 1, py - 16, m, 34, false);
+  };
+
+  // The head: what this is, and its bar code.
+  int y = 26;
+  text(r, NOTOSANS_18_FONT_ID, x, y - 4, "HOY", kBold);
+  r.drawText(toybox::kTileFontId, x + r.getTextWidth(NOTOSANS_18_FONT_ID, "HOY", kBold) + 12, y + 4, "PASE DE UN DIA",
+             true);
+  r.drawText(toybox::kTileFontId, x + r.getTextWidth(NOTOSANS_18_FONT_ID, "HOY", kBold) + 12, y + 20, "VALIDO HOY",
+             true);
+  {
+    // The bars: widths from the digits of the hour, the date and the prices.
+    uint32_t seed =
+        static_cast<uint32_t>(page.now.tm_yday * 1440 + page.now.tm_hour * 60 + page.now.tm_min) * 2654435761u;
+    for (int i = 0; i < mk::kAssets; ++i) {
+      if (d.quotes[i].valid) seed ^= static_cast<uint32_t>(d.quotes[i].price * 100) * 40503u;
+    }
+    int bx = x + inner - 150;
+    while (bx < x + inner) {
+      seed = seed * 1664525u + 1013904223u;
+      const int w = 1 + static_cast<int>((seed >> 28) & 3);
+      const int w2 = bx + w > x + inner ? x + inner - bx : w;
+      r.fillRect(bx, y - 2, w2, 40, true);
+      bx += w + 1 + static_cast<int>((seed >> 24) & 3);
+    }
+  }
+  y += 52;
+  r.fillRect(x, y, inner, 3, true);
+  y += 14;
+
+  // The hour, large, with the date and the place beside it.
+  const int clockTop = y;
+  r.drawText(toybox::kTileFontId, x, y, "HORA", true);
+  const float boxW = 46;
+  const int timeW = numerals(r, page, static_cast<float>(x), static_cast<float>(y + 20), boxW, 7);
+  const int sideX = x + timeW + 22;
+  if (page.clockSet) {
+    std::snprintf(a, sizeof(a), "%.3s %d %.3s", kWeekdays[page.now.tm_wday % 7], page.now.tm_mday,
+                  kMonths[page.now.tm_mon % 12]);
+    field(sideX, y, "FECHA", a, NOTOSANS_14_FONT_ID);
+  }
+  if (d.hasPlace) {
+    lowerName(d.place.name, a, sizeof(a));
+    a[13] = 0;
+    field(sideX, y + 16 + r.getLineHeight(NOTOSANS_14_FONT_ID) + 4, "LUGAR", a, NOTOSANS_14_FONT_ID);
+  }
+  y += 20 + static_cast<int>(boxW * clockcore::kNumeralHeight) + 18;
+  zone(screen, 0, 0, width, y, Clock);
+  (void)clockTop;
+  perforation(y);
+  y += 18;
+
+  // The weather: four fields in a row, and tomorrow's under them.
+  const int weatherTop = y;
+  const int cw = inner / 4;
+  if (d.hasForecast) {
+    const wx::Sky sky = wx::skyOf(d.forecast.current.code);
+    weatherui::skyIcon(screen, sky, isDaytime(page), x + 30, y + 30, 64);
+    std::snprintf(a, sizeof(a), "%d\xC2\xB0", wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
+    field(x + cw, y, "AHORA", a);
+    tempRange(page, a, sizeof(a));
+    field(x + cw * 2 - 10, y, "MIN A MAX", a);
+    std::snprintf(a, sizeof(a), "%d%%", rainToday(page) % 1000);
+    field(x + cw * 3 + 24, y, "LLUVIA", a);
+    y += 16 + valueH + 8;
+    std::snprintf(b, sizeof(b), "%s.", skyPhrase(sky));
+    int at = static_cast<int>(std::strlen(b));
+    if (d.forecast.dayCount > 1) {
+      const wx::Day& next = d.forecast.days[1];
+      std::snprintf(b + at, sizeof(b) - static_cast<size_t>(at),
+                    " Ma\xC3\xB1"
+                    "ana %d\xC2\xB0/%d\xC2\xB0, lluvia %d %%.",
+                    wx::displayTemp(next.max, d.fahrenheit), wx::displayTemp(next.min, d.fahrenheit),
+                    static_cast<int>(next.precip) % 1000);
+    }
+    y += paragraph(r, NOTOSANS_12_FONT_ID, x, y + 4, inner, b, 2, false) + 10;
+  } else {
+    field(x, y, "TIEMPO", "sin previsi\xC3\xB3n");
+    y += 16 + valueH + 8;
+  }
+  zone(screen, 0, weatherTop - 8, width, y - weatherTop + 8, Weather);
+
+  // The sea, when the place has one.
+  if (const nv::Hour* h = seaNow(page)) {
+    const int seaTop = y;
+    r.fillRect(x, y, inner, 1, true);
+    y += 10;
+    const int sw = inner / 3;
+    a[0] = 0;
+    if (h->wind >= 0)
+      std::snprintf(a, sizeof(a), "%d kn %s", static_cast<int>(std::lround(h->wind)) % 1000, nv::compass(h->windFrom));
+    field(x, y, "VIENTO", a[0] != 0 ? a : "--");
+    a[0] = 0;
+    if (h->wave >= 0) {
+      const int tenths = static_cast<int>(std::lround(h->wave * 10)) % 1000;
+      std::snprintf(a, sizeof(a), "%d,%d m", tenths / 10, tenths % 10);
+    }
+    field(x + sw + 54, y, "OLAS", a[0] != 0 ? a : "--");
+    a[0] = 0;
+    if (h->water > -50) std::snprintf(a, sizeof(a), "%d\xC2\xB0", static_cast<int>(std::lround(h->water)) % 1000);
+    field(x + sw * 2 + 46, y, "AGUA", a[0] != 0 ? a : "--");
+    y += 16 + valueH + 10;
+    zone(screen, 0, seaTop, width, y - seaTop, Sea);
+  }
+  perforation(y);
+  y += 18;
+
+  // The stub: the three markets.
+  const int marketsTop = y;
+  const int mw = inner / 3;
+  for (int i = 0; i < mk::kAssets; ++i) {
+    const int fx = x + mw * i + (i > 0 ? 8 : 0);
+    char price[24];
+    char change[16];
+    double pct = 0;
+    if (quoteOf(page, i, price, sizeof(price), change, sizeof(change), pct)) {
+      field(fx, y, mk::infoOf(static_cast<mk::Asset>(i)).name, price);
+      arrowhead(r, fx + 7, y + 16 + valueH + r.getLineHeight(NOTOSANS_12_FONT_ID) / 2, 14, pct >= 0);
+      text(r, NOTOSANS_12_FONT_ID, fx + 20, y + 16 + valueH - 2,
+           change[0] == '-' || change[0] == '+' ? change + 1 : change, kBold);
+    } else {
+      field(fx, y, mk::infoOf(static_cast<mk::Asset>(i)).name, "--");
+    }
+  }
+  y += 16 + valueH + r.getLineHeight(NOTOSANS_12_FONT_ID) + 6;
+  zone(screen, 0, marketsTop - 8, width, y - marketsTop + 8, Markets);
+  if (page.eventCount > 0) {
+    perforation(y);
+    eventsBlock(screen, r, page, x, y + 16, inner, bottom - 14, EventLook::Reader);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 10. ALMANAQUE: a leaf of a tear-off calendar. The day of the month as large
+// as the leaf allows, tonight's moon, and the day's notes in the serif.
+// ---------------------------------------------------------------------------
+void almanac(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
+  const todaystore::Snapshot& d = page.data;
+  const int width = screen.device().width;
+  const int x = 24;
+  const int inner = width - x * 2;
+  const int bottom = contentBottom(screen);
+  const int cx = width / 2;
+  const int lineH = r.getLineHeight(NOTOSERIF_12_FONT_ID);
+  char a[48];
+  char b[120];
+
+  // The binding: a grey strip with the two holes the leaf hangs by.
+  r.fillRectDither(0, 0, width, 30, Color::DarkGray);
+  r.fillRect(0, 30, width, 3, true);
+  for (const int hx : {cx - 110, cx + 110}) {
+    disc(r, hx, 15, 9, Color::Black);
+    disc(r, hx, 15, 6, Color::White);
+  }
+
+  int y = 42;
+  if (page.clockSet) {
+    // The month, letter-spaced, with the year and the day of the year at its sides.
+    std::snprintf(a, sizeof(a), "%s", kMonths[page.now.tm_mon % 12]);
+    upper(a);
+    textCentre(r, NOTOSERIF_18_FONT_ID, cx, y, a, kBold);
+    std::snprintf(a, sizeof(a), "%d", (page.now.tm_year + 1900) % 10000);
+    text(r, NOTOSANS_12_FONT_ID, x, y + 10, a, kBold);
+    std::snprintf(a, sizeof(a),
+                  "d\xC3\xAD"
+                  "a %d",
+                  (page.now.tm_yday + 1) % 1000);
+    textRight(r, NOTOSANS_12_FONT_ID, x + inner, y + 10, a, kBold);
+  }
+  y += r.getLineHeight(NOTOSERIF_18_FONT_ID) + 6;
+  r.fillRect(x, y, inner, 3, true);
+  r.fillRect(x, y + 6, inner, 1, true);
+  y += 22;
+
+  // The day.
+  const float boxW = 118;
+  const float pen = 22;
+  const int boxH = static_cast<int>(boxW * clockcore::kNumeralHeight);
+  const int day = page.clockSet ? page.now.tm_mday : 0;
+  if (page.clockSet) {
+    const float total = day >= 10 ? boxW * 2 + 26 : boxW;
+    float nx = static_cast<float>(cx) - total / 2;
+    if (day >= 10) {
+      clockfaces::drawNumeral(r, day / 10, nx, static_cast<float>(y), boxW, pen);
+      nx += boxW + 26;
+    }
+    clockfaces::drawNumeral(r, day % 10, nx, static_cast<float>(y), boxW, pen);
+  }
+  y += boxH + 14;
+  if (page.clockSet) {
+    std::snprintf(b, sizeof(b), "%s  \xC2\xB7  %02d:%02d", kWeekdays[page.now.tm_wday % 7], page.now.tm_hour % 100,
+                  page.now.tm_min % 100);
+    textCentre(r, NOTOSERIF_18_FONT_ID, cx, y, b, kBold);
+  }
+  y += r.getLineHeight(NOTOSERIF_18_FONT_ID) + 8;
+  zone(screen, 0, 0, width, y, Clock);
+
+  // A rule with a lozenge at its middle.
+  r.fillRect(x, y, inner, 1, true);
+  r.fillRect(cx - 14, y - 2, 28, 5, false);
+  const int lx[4] = {cx - 8, cx, cx + 8, cx};
+  const int ly[4] = {y, y - 7, y, y + 7};
+  r.fillPolygon(lx, ly, 4, true);
+  y += 14;
+
+  // Two columns of notes: the moon and the year to the left, the weather to the right.
+  const int notesTop = y;
+  if (page.clockSet) {
+    const float p = moonPhase(page);
+    moon(r, x + 22, y + lineH, 20, p);
+    text(r, NOTOSERIF_12_FONT_ID, x + 52, y, moonName(p), kBold);
+    const int lit = static_cast<int>(std::lround((1 - std::cos(2 * kPi * p)) * 50));
+    std::snprintf(a, sizeof(a), "iluminada al %d %%", lit % 1000);
+    text(r, NOTOSERIF_12_FONT_ID, x + 52, y + lineH, a);
+    const bool leap =
+        (page.now.tm_year % 4 == 0 && page.now.tm_year % 100 != 0) || (page.now.tm_year + 1900) % 400 == 0;
+    std::snprintf(a, sizeof(a),
+                  "quedan %d d\xC3\xAD"
+                  "as",
+                  ((leap ? 365 : 364) - page.now.tm_yday) % 1000);
+    text(r, NOTOSERIF_12_FONT_ID, x, y + lineH * 2, a);
+  }
+  const int split = x + inner * 63 / 100;
+  r.fillRect(split, y + 4, 1, lineH * 3 - 8, true);
+  if (d.hasForecast) {
+    const int rxl = split + 14;
+    std::snprintf(b, sizeof(b), "%s, %d\xC2\xB0", skyWord(wx::skyOf(d.forecast.current.code)),
+                  wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
+    b[0] = static_cast<char>(b[0] >= 'a' && b[0] <= 'z' ? b[0] - 32 : b[0]);
+    text(r, NOTOSERIF_12_FONT_ID, rxl, y, b, kBold);
+    tempRange(page, a, sizeof(a));
+    std::snprintf(b, sizeof(b), "de %s", a);
+    text(r, NOTOSERIF_12_FONT_ID, rxl, y + lineH, b);
+    std::snprintf(b, sizeof(b), "lluvia %d %%", rainToday(page) % 1000);
+    text(r, NOTOSERIF_12_FONT_ID, rxl, y + lineH * 2, b);
+  }
+  y += lineH * 3 + 6;
+  zone(screen, 0, notesTop, split, y - notesTop, Clock);
+  zone(screen, split, notesTop, width - split, y - notesTop, Weather);
+
+  // The markets on one line each side of a rule, then the sea.
+  r.fillRect(x, y, inner, 1, true);
+  y += 6;
+  const int marketsTop = y;
+  const int mw = inner / 3;
+  for (int i = 0; i < mk::kAssets; ++i) {
+    char price[24];
+    char change[16];
+    double pct = 0;
+    const int mcx = x + mw * i + mw / 2;
+    lowerName(mk::infoOf(static_cast<mk::Asset>(i)).name, a, sizeof(a));
+    textCentre(r, NOTOSERIF_12_FONT_ID, mcx, y, a, kBold);
+    if (quoteOf(page, i, price, sizeof(price), change, sizeof(change), pct)) {
+      priceMove(r, NOTOSANS_12_FONT_ID, x + mw * i, y + lineH - 4, price, change, pct, mw);
+    }
+  }
+  y += lineH * 3 - 4;
+  zone(screen, 0, marketsTop, width, y - marketsTop, Markets);
+  skyAndSea(page, b, sizeof(b), false, true);
+  if (b[0] != 0 && bottom - y > lineH * 4) {
+    r.fillRect(x, y, inner, 1, true);
+    textCentre(r, NOTOSERIF_12_FONT_ID, cx, y + 4, b);
+    zone(screen, 0, y, width, lineH + 8, Sea);
+    y += lineH + 8;
+  }
+  r.fillRect(x, y, inner, 3, true);
+  eventsBlock(screen, r, page, x, y + 8, inner, bottom, EventLook::Reader);
 }
 
 // What every style shares: when the data is from, which of the five this is,
@@ -1100,7 +2040,7 @@ void foot(toybox::Screen& screen, GfxRenderer& r, const Page& page, const int st
     text(r, NOTOSANS_12_FONT_ID, toybox::kMargin, cy - r.getLineHeight(NOTOSANS_12_FONT_ID) / 2, when);
   }
   for (int i = 0; i < kStyles; ++i) {
-    const int dx = width / 2 + (i - kStyles / 2) * 16;
+    const int dx = width / 2 + (i * 2 - kStyles + 1) * 7;
     if (i == style) {
       r.fillRoundedRect(dx - 5, cy - 5, 10, 10, 5, Color::Black);
     } else {
@@ -1119,7 +2059,8 @@ void foot(toybox::Screen& screen, GfxRenderer& r, const Page& page, const int st
 }  // namespace
 
 const char* name(const int style) {
-  static constexpr const char* kNames[kStyles] = {"CLASICO", "PANEL", "DIARIO", "CALMA", "ESFERAS"};
+  static constexpr const char* kNames[kStyles] = {"CLASICO", "PANEL",  "DIARIO",  "CALMA",
+                                                  "ESFERAS", "ORBITA", "TABLERO", "SOLAR"};
   return kNames[style >= 0 && style < kStyles ? style : 0];
 }
 
@@ -1136,6 +2077,21 @@ void draw(const int style, toybox::Screen& screen, GfxRenderer& renderer, const 
       break;
     case 4:
       dials(screen, renderer, page);
+      break;
+    case 5:
+      poster(screen, renderer, page);
+      break;
+    case 6:
+      horizon(screen, renderer, page);
+      break;
+    case 7:
+      mosaic(screen, renderer, page);
+      break;
+    case 8:
+      ticket(screen, renderer, page);
+      break;
+    case 9:
+      almanac(screen, renderer, page);
       break;
     case 0:
     default:
