@@ -48,17 +48,29 @@ speaks exactly the requests the firmware does:
 - linking with a code, listing servers and players;
 - reading the timeline with track metadata, fetching the cover, and reading
   the play queue from the server;
-- pause, play, next, previous, volume, shuffle, repeat and seek.
+- pause, play, next, previous, volume, shuffle, repeat and seek;
+- listing the music libraries, recently added albums, artists, an artist's
+  albums, an album's tracks and the audio playlists;
+- jumping within the queue (`skipTo`);
+- having the server make a queue for an album and starting it on the player
+  (`playMedia`).
 
 The firmware's readers run against those captured answers in
 `host-tests/jukebox` (tokens, identifiers and public addresses replaced).
 
 **Not yet verified:**
 
-- The firmware itself on a reader against a real player. The screens were
-  built in the simulator, which has no radio and answers from a made-up
-  account and player; it says so on every page.
+- Most of the firmware's screens on a reader. Linking, choosing a player and
+  the controls have been used on a reTerminal Sticky against a real Plexamp;
+  the queue, the library and the looks were built in the simulator, which has
+  no radio and answers from a made-up account and player (it says so on every
+  page).
 - Whether Plexamp's remote control setting has to be on, or is on by default.
+- Three things the library page does that were not in that run: starting a
+  **playlist** (the queue is asked for with `playlistID`), **SHUFFLE** (the
+  same request with `shuffle=1`), and starting an album **from a chosen
+  track** (the tested request, naming that track instead of the first). If
+  one fails the page says so and nothing else changes.
 - Plexamp on iOS, desktop or headless; shared (not owned) servers; several
   players at once; a player that is asleep or in the background.
 - That a media server's `plex.direct` certificate chains to the Let's Encrypt
@@ -87,6 +99,10 @@ The firmware's readers run against those captured answers in
   only ever speaks to a player at a private address (10/8, 172.16/12,
   192.168/16, link-local) and refuses anything else, including a typed one.
   On a network you do not trust, someone else on it could read that traffic.
+- **Starting music hands the player a server token.** That is how any Plex
+  remote tells a player where to fetch from: the `playMedia` command, over
+  the same plain HTTP on the local network, carries the media server's token
+  in its address.
 - **Tokens are never logged**, and log lines carry request paths without their
   query strings.
 - **No analytics or telemetry.** Requests go to plex.tv, your server and your
@@ -94,9 +110,17 @@ The firmware's readers run against those captured answers in
 
 ## More than the controls
 
+- **The volume bar** takes a touch anywhere along it; the minus and plus
+  either side step by five.
+- **Three looks** for the playing page: CLASSIC, RECORD (the cover as the
+  label of a record) and POSTER (white on black). A touch on the top line of
+  the page, or LOOK in the menu, moves to the next.
 - **QUEUE** shows the tracks around the one playing, read from the media
-  server. It is to look at: jumping to a track waits for that command to be
-  tried on a real player.
+  server. A touch on a row jumps to it.
+- **BROWSE THE LIBRARY** (in the menu, and on the page when nothing is
+  playing) lists each music library's recently added albums and its artists,
+  and the audio playlists. An album or a playlist has PLAY and SHUFFLE; a
+  touch on a track starts the album there.
 - **Tapping the cover** opens it large with the track's name and nothing to
   press, for a reader left on a shelf. Any tap goes back.
 - **HOY** shows a "Suena ahora" line with the track when its refresh finds the
@@ -104,6 +128,5 @@ The firmware's readers run against those captured answers in
 
 ## Not built yet
 
-Browsing the library, starting playback from the reader, and jumping within
-the queue. `plex_diag.py library` tries those three against a real player
-first; the firmware follows what it finds.
+Searching the library, and browsing by anything but recent albums, artists
+and playlists.

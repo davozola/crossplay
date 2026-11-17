@@ -221,7 +221,19 @@ bool parseResources(const char* json, const size_t len, std::vector<Device>& out
     d.product = text(member(item, "product"));
     d.platform = text(member(item, "platform"));
     d.id = text(member(item, "clientIdentifier"));
-    if (d.server) d.token = text(member(item, "accessToken"));
+    if (d.server) {
+      d.token = text(member(item, "accessToken"));
+      // Where it answers: its address on this network for choice, else any
+      // direct one. A relay is the last resort and is not used.
+      std::string direct;
+      flatjson::forEach(member(item, "connections"), 8, [&](int, const Span& c) {
+        if (text(member(c, "protocol")) != "https" || truth(member(c, "relay"))) return;
+        const std::string uri = text(member(c, "uri"));
+        if (truth(member(c, "local")) && d.base.empty()) d.base = uri;
+        if (direct.empty()) direct = uri;
+      });
+      if (d.base.empty()) d.base = direct;
+    }
     if (d.player) {
       // A player is only of use at an address on this network.
       flatjson::forEach(member(item, "connections"), 8, [&](int, const Span& c) {
@@ -374,6 +386,137 @@ bool parseQueue(const char* json, const size_t len, Queue& out) {
   return true;
 }
 
+// --- The library ---------------------------------------------------------------
+
+namespace {
+std::string paged(const int start, const int size) {
+  char tail[72];
+  std::snprintf(tail, sizeof(tail), "X-Plex-Container-Start=%d&X-Plex-Container-Size=%d", start % 1000000, size % 1000);
+  return tail;
+}
+}  // namespace
+
+std::string librariesUrl(const std::string& serverBase) { return serverBase + "/library/sections"; }
+
+std::string recentUrl(const std::string& serverBase, const std::string& section, const int start, const int size) {
+  return serverBase + "/library/sections/" + section + "/recentlyAdded?type=9&" + paged(start, size);
+}
+
+std::string artistsUrl(const std::string& serverBase, const std::string& section, const int start, const int size) {
+  return serverBase + "/library/sections/" + section + "/all?type=8&" + paged(start, size);
+}
+
+std::string playlistsUrl(const std::string& serverBase, const int start, const int size) {
+  return serverBase + "/playlists?playlistType=audio&" + paged(start, size);
+}
+
+std::string childrenUrl(const std::string& serverBase, const std::string& key) {
+  return serverBase + "/library/metadata/" + key + "/children";
+}
+
+bool parseEntries(const char* json, const size_t len, std::vector<Entry>& out, int& total) {
+  const Span container = member(flatjson::root(json, len), "MediaContainer");
+  if (!container.ok()) return false;
+  const size_t before = out.size();
+  flatjson::forEach(member(container, "Directory"), 32, [&](int, const Span& item) {
+    if (text(member(item, "type")) != "artist") return;
+    Entry e;
+    e.kind = Kind::Library;
+    e.key = text(member(item, "key"));
+    e.title = text(member(item, "title"));
+    if (!e.key.empty()) out.push_back(e);
+  });
+  flatjson::forEach(member(container, "Metadata"), 128, [&](int, const Span& item) {
+    const std::string type = text(member(item, "type"));
+    Entry e;
+    if (type == "artist") {
+      e.kind = Kind::Artist;
+    } else if (type == "album") {
+      e.kind = Kind::Album;
+      e.detail = text(member(item, "parentTitle"));
+      const long year = whole(member(item, "year"));
+      if (year > 0) e.detail += (e.detail.empty() ? "" : "  \xC2\xB7  ") + std::to_string(year);
+    } else if (type == "track") {
+      e.kind = Kind::Track;
+      char length[16];
+      formatTime(static_cast<int32_t>(whole(member(item, "duration"))), length, sizeof(length));
+      e.detail = length;
+    } else if (type == "playlist") {
+      e.kind = Kind::Playlist;
+    } else {
+      return;
+    }
+    const Span key = member(item, "ratingKey");
+    e.key = key.ok() && *key.p == '"' ? text(key) : std::to_string(whole(key));
+    e.title = text(member(item, "title"));
+    e.count = static_cast<int>(whole(member(item, "leafCount")));
+    if (!e.key.empty()) out.push_back(e);
+  });
+  const long said = whole(member(container, "totalSize"));
+  total = said > 0 ? static_cast<int>(said) : static_cast<int>(out.size() - before);
+  return true;
+}
+
+std::string makeQueueUrl(const std::string& serverBase, const std::string& serverId, const Entry& what,
+                         const bool shuffle) {
+  std::string url = serverBase + "/playQueues?type=audio&repeat=0&continuous=0&own=1&shuffle=" + (shuffle ? "1" : "0");
+  if (what.kind == Kind::Playlist) return url + "&playlistID=" + what.key;
+  return url +
+         "&uri=" + percentEncode("server://" + serverId + "/com.plexapp.plugins.library/library/metadata/" + what.key);
+}
+
+bool parseMadeQueue(const char* json, const size_t len, std::string& queueId, std::string& firstKey) {
+  const Span container = member(flatjson::root(json, len), "MediaContainer");
+  if (!container.ok()) return false;
+  const long id = whole(member(container, "playQueueID"));
+  const Span first = member(container, "playQueueSelectedMetadataItemID");
+  firstKey = first.ok() && *first.p == '"' ? text(first) : std::to_string(whole(first));
+  queueId = std::to_string(id);
+  return id > 0 && !firstKey.empty() && firstKey != "0";
+}
+
+std::string playMediaExtra(const std::string& serverBase, const std::string& serverId, const std::string& serverToken,
+                           const std::string& queueId, const std::string& trackKey) {
+  // "https://host:32400" into its three parts.
+  const size_t scheme = serverBase.find("://");
+  const std::string protocol = scheme == std::string::npos ? "http" : serverBase.substr(0, scheme);
+  std::string host = scheme == std::string::npos ? serverBase : serverBase.substr(scheme + 3);
+  std::string port = "32400";
+  const size_t colon = host.rfind(':');
+  if (colon != std::string::npos) {
+    port = host.substr(colon + 1);
+    host = host.substr(0, colon);
+  }
+  return "&providerIdentifier=com.plexapp.plugins.library&machineIdentifier=" + serverId + "&protocol=" + protocol +
+         "&address=" + host + "&port=" + port + "&containerKey=" + percentEncode("/playQueues/" + queueId + "?own=1") +
+         "&key=" + percentEncode("/library/metadata/" + trackKey) + "&offset=0&token=" + serverToken;
+}
+
+std::string skipToExtra(const std::string& trackKey) {
+  return "&key=" + percentEncode("/library/metadata/" + trackKey);
+}
+
+std::string drawable(const std::string& in) {
+  std::string out;
+  out.reserve(in.size());
+  for (size_t i = 0; i < in.size();) {
+    const unsigned char c = static_cast<unsigned char>(in[i]);
+    const size_t n = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+    // Latin with its accents is two bytes and up to U+024F; a few marks of
+    // punctuation live at U+2010..U+2026. Everything else is dropped.
+    bool keep = n == 1 || (n == 2 && c <= 0xC9);
+    if (n == 3 && i + 2 < in.size() && c == 0xE2 && static_cast<unsigned char>(in[i + 1]) == 0x80) {
+      const unsigned char last = static_cast<unsigned char>(in[i + 2]);
+      keep = last >= 0x90 && last <= 0xA6;
+    }
+    if (keep && i + n <= in.size()) out.append(in, i, n);
+    i += n;
+  }
+  size_t a = 0;
+  while (a < out.size() && out[a] == ' ') ++a;
+  return out.substr(a);
+}
+
 std::string artUrl(const std::string& serverBase, const std::string& thumb, const int size) {
   char dims[96];
   std::snprintf(dims, sizeof(dims), "/photo/:/transcode?width=%d&height=%d&minSize=1&upscale=1&url=", size % 10000,
@@ -404,7 +547,8 @@ std::string pack(const Config& c) {
   out += line("player.id", c.playerId);
   out += line("player.host", c.playerHost);
   out += line("player.port", std::to_string(c.playerPort));
-  for (const Config::Server& s : c.servers) out += line("server", s.id + " " + s.token);
+  out += line("look", std::to_string(c.look));
+  for (const Config::Server& s : c.servers) out += line("server", s.id + " " + s.token + " " + s.base);
   return out;
 }
 
@@ -434,10 +578,17 @@ void unpack(const std::string& text, Config& out) {
     } else if (key == "player.port") {
       const int port = std::atoi(value.c_str());
       out.playerPort = port > 0 && port < 65536 ? port : kPlayerPort;
+    } else if (key == "look") {
+      out.look = static_cast<uint8_t>(std::atoi(value.c_str()) & 0x0F);
     } else if (key == "server") {
       const size_t space = value.find(' ');
       if (space != std::string::npos && out.servers.size() < 8) {
-        out.servers.push_back({value.substr(0, space), value.substr(space + 1)});
+        const size_t second = value.find(' ', space + 1);
+        Config::Server server;
+        server.id = value.substr(0, space);
+        server.token = value.substr(space + 1, second == std::string::npos ? std::string::npos : second - space - 1);
+        if (second != std::string::npos) server.base = value.substr(second + 1);
+        out.servers.push_back(server);
       }
     }
   }

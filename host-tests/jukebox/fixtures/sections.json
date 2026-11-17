@@ -1,0 +1,66 @@
+{
+ "MediaContainer": {
+  "size": 3,
+  "allowSync": false,
+  "title1": "Plex Library",
+  "Directory": [
+   {
+    "allowSync": true,
+    "filters": true,
+    "refreshing": false,
+    "key": "2",
+    "type": "show",
+    "title": "Shows",
+    "agent": "tv.plex.agents.series",
+    "scanner": "Plex TV Shows",
+    "language": "ca-ES",
+    "metadataAgentProviderGroupId": 2,
+    "updatedAt": 1764667037,
+    "createdAt": 1764667037,
+    "scannedAt": 1764667120,
+    "content": true,
+    "directory": true,
+    "contentChangedAt": 12711,
+    "hidden": 0
+   },
+   {
+    "allowSync": true,
+    "filters": true,
+    "refreshing": false,
+    "key": "3",
+    "type": "artist",
+    "title": "DJ",
+    "agent": "tv.plex.agents.music",
+    "scanner": "Plex Music",
+    "language": "en-US",
+    "metadataAgentProviderGroupId": 3,
+    "updatedAt": 1765055615,
+    "createdAt": 1765055615,
+    "scannedAt": 1765055618,
+    "content": true,
+    "directory": true,
+    "contentChangedAt": 95486,
+    "hidden": 0
+   },
+   {
+    "allowSync": true,
+    "filters": true,
+    "refreshing": false,
+    "key": "1",
+    "type": "artist",
+    "title": "Music",
+    "agent": "tv.plex.agents.music",
+    "scanner": "Plex Music",
+    "language": "en-US",
+    "metadataAgentProviderGroupId": 3,
+    "updatedAt": 1765055661,
+    "createdAt": 1764663638,
+    "scannedAt": 1793871713,
+    "content": true,
+    "directory": true,
+    "contentChangedAt": 915127,
+    "hidden": 0
+   }
+  ]
+ }
+}
