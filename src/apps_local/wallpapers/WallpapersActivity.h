@@ -304,6 +304,7 @@ class WallpapersActivity final : public Activity {
   // Where the finger came down, to tell a page-back swipe from the system's
   // Back gesture, which is the same swipe begun at the very edge.
   int pressX_ = -1;
+  int pressY_ = -1;
   // Which pack the fetch in hand is for: 0 the built-in set, 1 the Sticky pack.
   uint8_t fetchPack_ = 0;
   int stickyMissing_ = 0;  // how many of the Sticky pack are not on the card

@@ -27,5 +27,9 @@ int frameChoice();
 void setFrameChoice(int choice);
 const char* frameLabel(int choice);  // "OFF", "15M", "1H" ...
 uint32_t frameSeconds(int choice);
+// How many pictures the frame has changed by itself since its interval was
+// last set: the only sign, from inside the app, that it is running.
+uint32_t frameChanges();
+void setFrameChanges(uint32_t count);
 
 }  // namespace wakejobs
