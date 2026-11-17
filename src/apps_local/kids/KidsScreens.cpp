@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include "../ui/ToyboxFormat.h"
+#include "KidsMore.h"
 #include "KidsPictures.h"
 #include "MoleScreens.h"
 
@@ -175,19 +176,29 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   chrome(screen, "ILYA");
   const fui::DeviceContext device = screen.device();
   const int inner = device.width - toybox::kMargin * 2;
-  const int top = toybox::kChromeHeight + 12;
-  const int bottom = device.height - kBottomReserve - 6;
+  const int top = toybox::kChromeHeight + 10;
+  const int bottom = device.height - (model.touch ? 8 : kBottomReserve + 6);
   const int gap = 8;
-  const int rowH = (bottom - top - gap * (kids::kGames - 1)) / kids::kGames;
-  for (int i = 0; i < kids::kGames; ++i) {
-    const kids::Game game = static_cast<kids::Game>(i);
-    const fui::Rect r = rect(toybox::kMargin, top + i * (rowH + gap), inner, rowH);
+  const int total = kids::kGames + kidsmoreui::kGames;
+  const int rows = (total + 1) / 2;
+  const int tileW = (inner - gap) / 2;
+  const int tileH = (bottom - top - gap * (rows - 1)) / rows;
+  for (int i = 0; i < total; ++i) {
+    const fui::Rect r = rect(toybox::kMargin + (i % 2) * (tileW + gap), top + (i / 2) * (tileH + gap), tileW, tileH);
     tile(screen, r, ActionGame, i, false, true);
-    picture(screen, kids::gamePicture(game), r.x + 16 + 48, r.y + rowH / 2, 1, kInk);
-    if (game == kids::Game::Mole && model.renderer)
-      moleui::drawIcon(*model.renderer, r.x + 16 + 48, r.y + rowH / 2 - 2);
-    label(screen, rect(r.x + 128, r.y, inner - 144, rowH), kids::gameName(game), toybox::kDisplayFont,
-          toybox::kDisplayCut, fui::TextAlign::Left);
+    const bool more = i >= kids::kGames;
+    const kids::Game game = static_cast<kids::Game>(more ? 0 : i);
+    const kidsmoreui::Which which = static_cast<kidsmoreui::Which>(more ? i - kids::kGames : 0);
+    // The picture is the name a child reads; the word under it is for whoever is helping.
+    const int cx = r.x + tileW / 2;
+    const int cy = r.y + (tileH - 22) / 2;
+    const int scale = tileH - 22 >= 104 ? 1 : 0;
+    if (scale == 1) {
+      picture(screen, more ? kidsmoreui::pictureOf(which) : kids::gamePicture(game), cx, cy + 2, 1, kInk);
+      if (!more && game == kids::Game::Mole && model.renderer) moleui::drawIcon(*model.renderer, cx, cy);
+    }
+    label(screen, rect(r.x, r.y + tileH - 26, tileW, toybox::kTileCut.inkHeight),
+          more ? kidsmoreui::nameOf(which) : kids::gameName(game), toybox::kTileFont, toybox::kTileCut);
   }
 }
 
