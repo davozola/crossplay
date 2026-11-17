@@ -75,9 +75,24 @@ class JukeboxActivity final : public Activity {
   void buildNotice(toybox::Screen& screen);
   int pageBottom() const;
   int coverSide() const;
-  int coverArea() const;
   void fillDisc(int cx, int cy, int radius, bool black);
   void ringAt(int cx, int cy, int radius, bool black);
+
+  // The playing page's looks, and the pieces they are made of.
+  void buildClassic(toybox::Screen& screen);
+  void buildMinimal(toybox::Screen& screen);
+  void buildTape(toybox::Screen& screen);
+  void buildEditorial(toybox::Screen& screen);
+  void headLine(toybox::Screen& screen);
+  void progressBar(int x, int y, int w, bool slim);
+  void volumeBar(toybox::Screen& screen, int x, int y, int w, int h, bool steps, bool slim);
+  void smallRow(toybox::Screen& screen, int y, int h);
+  bool idleOrSilent(toybox::Screen& screen, int y, int h);
+  void zone(toybox::Screen& screen, int x, int y, int w, int h, freeink::ui::ActionId action, int value);
+  void glyph(int cx, int cy, int r, int kind, bool black);
+  uint16_t canNow() const;
+  bool idleNow() const;
+  const char* stateWord() const;
 
   jukebox::Config config_;
   jukebox::Pin pin_;
@@ -136,6 +151,12 @@ class JukeboxActivity final : public Activity {
   int16_t volumeX_ = 0;
   int16_t volumeY_ = 0;
   int16_t volumeW_ = 0;
+  int16_t volumeH_ = 0;
+  // The rows of "up next" on the look that has them, and the queue they are of.
+  int16_t nextY_ = 0;
+  int16_t nextRows_ = 0;
+  int nextFirst_ = 0;
+  std::string queueFor_;
   // Where the cover sits on the playing page: a tap there opens it large.
   int16_t coverX_ = 0;
   int16_t coverY_ = 0;
