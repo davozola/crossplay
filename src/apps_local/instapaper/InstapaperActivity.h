@@ -127,6 +127,9 @@ class InstapaperActivity final : public Activity {
   // When contact with the bridge was first lost, or 0 while polls are getting
   // through. See doSyncPoll: the job outlives a lost packet, so the sync does.
   uint32_t pollMissedSinceMs_ = 0;
+  uint32_t lastPairPollMs_ = 0;
+  // Puts the pairing code away and tells the bridge it will not be claimed.
+  void cancelPairing();
   // Reading positions this sync PUT UP, counted where they are put up -- the
   // verdict screen has no other way to know. Archives are not counted here:
   // the summary comes back saying which ones the service really took, and that

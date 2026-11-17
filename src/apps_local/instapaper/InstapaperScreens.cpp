@@ -523,8 +523,17 @@ fui::Rect buildPairQr(toybox::Screen& screen, const char* code) {
   // face has no glyph for it, so a line too long simply stops mid-word rather
   // than showing it was cut. Every string on this screen is short for that
   // reason and not for taste.
-  screen.target().text(fui::makeRect(body.x, body.bottom() - 30, body.width, 24), "CODE LASTS 5 MIN, BACK STOPS",
+  const fui::DeviceContext& device = screen.device();
+  const int16_t cancelY = static_cast<int16_t>(device.height - toybox::kMargin - toybox::kPillHeight);
+  screen.target().text(fui::makeRect(body.x, static_cast<int16_t>(cancelY - 34), body.width, 24), "CODE LASTS 5 MIN",
                        plain(toybox::kTileFont, fui::TextAlign::Center, fui::Color::DarkGray));
+  // A touch reader has no Back key, and a swipe is easy to lose while this
+  // screen is asking the bridge: the way out is a button.
+  fui::ButtonProps cancel;
+  cancel.label = "CANCEL";
+  cancel.action = ActionPairCancel;
+  screen.button(cancel, fui::makeRect(toybox::kMargin, cancelY,
+                                      static_cast<int16_t>(device.width - 2 * toybox::kMargin), toybox::kPillHeight));
   return qr;
 }
 

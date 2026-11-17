@@ -51,6 +51,8 @@ enum : fui::ActionId {
   ActionAccount = 328,
   ActionDisconnect = 329,
   ActionDisconnectCancel = 330,
+  // The way out of the pairing code for a reader with no Back key to press.
+  ActionPairCancel = 331,
 };
 
 // --- The queue -----------------------------------------------------------
