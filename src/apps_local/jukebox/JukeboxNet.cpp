@@ -12,8 +12,10 @@
 #include <esp_random.h>
 
 // Let's Encrypt and Google Trust Services, the same bundle the bridges verify
-// against: plex.direct names are issued by the first.
+// against: plex.direct names are issued by the first. plex.tv's own root is in
+// JukeboxRoots.h.
 #include "../study/StudySyncRoots.h"
+#include "JukeboxRoots.h"
 #else
 #include <cstdlib>
 #endif
@@ -49,7 +51,10 @@ const char* roots() {
       LOG_INF(kTag, "root bundle on the card: %s", fromCard.empty() ? "unusable, using the built-in one" : "in use");
     }
   }
-  return fromCard.empty() ? study::kBridgeCaRoots : fromCard.c_str();
+  if (!fromCard.empty()) return fromCard.c_str();
+  // One bundle, built once: wolfSSL takes concatenated PEM.
+  static const std::string builtIn = std::string(kDigiCertGlobalRootG2) + study::kBridgeCaRoots;
+  return builtIn.c_str();
 }
 
 bool heapTooLow() {

@@ -60,11 +60,11 @@ The firmware's readers run against those captured answers in
 - Whether Plexamp's remote control setting has to be on, or is on by default.
 - Plexamp on iOS, desktop or headless; shared (not owned) servers; several
   players at once; a player that is asleep or in the background.
-- Whether plex.tv's certificate chains to one of the roots the firmware
-  carries (Let's Encrypt and Google Trust Services). `plex_diag.py tls` prints
-  who signs it. If linking fails with "could not reach plex.tv over a verified
-  connection", a PEM bundle at `/.crosspoint/jukebox-roots.pem` on the card
-  replaces the built-in roots.
+- That a media server's `plex.direct` certificate chains to the Let's Encrypt
+  root the firmware carries (covers only). plex.tv's is DigiCert Global Root
+  G2, checked with `plex_diag.py tls` and carried too. If a certificate
+  authority changes, a PEM bundle at `/.crosspoint/jukebox-roots.pem` on the
+  card replaces the built-in roots.
 
 ## Security and privacy
 
