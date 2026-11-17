@@ -22,6 +22,7 @@ enum : fui::ActionId {
   ActionDismiss,
   ActionDay,  // value: day index, to open its sheet
   ActionAuto,
+  ActionMoveUp,      // value: saved place index, to swap with the one above
   ActionBoardOpen,   // value: saved place index, to open it full screen
   ActionChooseAuto,  // value: minutes, 0 for off
 };

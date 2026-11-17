@@ -986,7 +986,9 @@ void buildCities(toybox::Screen& screen, const CitiesModel& model) {
     row.styles = toybox::rowStyles();
     row.state = on ? fui::StateSelected : fui::StateNormal;
     row.radius = toybox::kPillRadius / 2;
-    const fui::Rect r = rect(toybox::kMargin, y, inner - xW - gap, rowH);
+    // A city, then the arrow that moves it up the list, then the cross that removes it.
+    const int upW = 52;
+    const fui::Rect r = rect(toybox::kMargin, y, inner - xW - gap - upW - gap, rowH);
     screen.button(row, r);
     const fui::Color ink = on ? fui::Color::White : fui::Color::Black;
     // The last forecast on the card, at the row's right: sky and temperature.
@@ -1014,6 +1016,20 @@ void buildCities(toybox::Screen& screen, const CitiesModel& model) {
           fui::TextAlign::Left, ink);
     label(screen, rect(r.x + 16, nameY + toybox::kUiCut.inkHeight + 10, textW, toybox::kTileCut.inkHeight), p.region,
           toybox::kTileFont, toybox::kTileCut, fui::TextAlign::Left, ink);
+    if (i > 0) {
+      fui::ButtonProps up;
+      up.label = "";
+      up.action = ActionMoveUp;
+      up.value = static_cast<int16_t>(i);
+      up.styles = toybox::rowStyles();
+      up.radius = toybox::kPillRadius / 2;
+      const fui::Rect ur = rect(r.x + r.width + gap, y, upW, rowH);
+      screen.button(up, ur);
+      const float ux = static_cast<float>(ur.x + upW / 2);
+      const float uy = static_cast<float>(y + rowH / 2);
+      stroke(screen, ux - 10, uy + 5, ux, uy - 6, 3);
+      stroke(screen, ux, uy - 6, ux + 10, uy + 5, 3);
+    }
     fui::ButtonProps x;
     x.label = "";
     x.action = ActionRemove;

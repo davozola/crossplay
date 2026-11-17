@@ -25,8 +25,20 @@ constexpr int BUTTON_KEYBOARD_HINT_GAP = 4;
 
 int keyboardGap(const ThemeMetrics& metrics) { return std::max(metrics.keyboardKeySpacing, KEYBOARD_MIN_GAP); }
 
-int keyboardKeysHeight(const ThemeMetrics& metrics, const int rows, const bool hasTouch) {
-  const int keyHeight = hasTouch ? metrics.keyboardKeyHeight : BUTTON_KEY_HEIGHT;
+// FORK CHANGE: on a touch panel the keys grow until the keyboard takes half the
+// page, rather than staying at the theme's height and leaving the page above
+// it empty. A finger needs the room more than the text field does.
+constexpr int TOUCH_KEYBOARD_PAGE_PERCENT = 50;
+// And a touch that lands between keys, or just off the keyboard's edge, goes
+// to the key nearest it when that key is within this many pixels.
+constexpr int TOUCH_KEY_REACH = 44;
+
+int keyboardKeysHeight(const ThemeMetrics& metrics, const int rows, const bool hasTouch, const int pageHeight) {
+  int keyHeight = hasTouch ? metrics.keyboardKeyHeight : BUTTON_KEY_HEIGHT;
+  if (hasTouch && rows > 0) {
+    const int roomy = (pageHeight * TOUCH_KEYBOARD_PAGE_PERCENT / 100 - (rows - 1) * keyboardGap(metrics)) / rows;
+    if (roomy > keyHeight) keyHeight = roomy;
+  }
   return rows * keyHeight + (rows > 1 ? (rows - 1) * keyboardGap(metrics) : 0) + KEYBOARD_PANEL_PADDING * 2;
 }
 
@@ -537,7 +549,7 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
   const int pageHeight = renderer.getScreenHeight();
   const int rows = currentLayout().rowCount;
   const bool hasTouch = mappedInput.hasTouch();
-  const int height = keyboardKeysHeight(metrics, rows, hasTouch);
+  const int height = keyboardKeysHeight(metrics, rows, hasTouch, pageHeight);
   const int hintGap = hasTouch ? metrics.verticalSpacing - metrics.keyboardVerticalOffset : BUTTON_KEYBOARD_HINT_GAP;
   const int y = pageHeight - metrics.buttonHintsHeight - height - hintGap;
   return fui::Rect{static_cast<int16_t>(content.x), static_cast<int16_t>(y), static_cast<int16_t>(content.width),
@@ -581,6 +593,34 @@ void KeyboardEntryActivity::loop() {
     int hx = 0;
     int hy = 0;
     const bool inContact = mappedInput.isScreenTouchHeld(hx, hy);
+
+    // FORK CHANGE: a touch that misses every key is given to the nearest one.
+    // Read from the published table, the same one the router is about to use.
+    const auto nearestKey = [this](int& x, int& y) {
+      if (y < keyboardRect().y - TOUCH_KEY_REACH) return;
+      const fui::Interaction* keys = interactions.publishedData();
+      const size_t count = interactions.publishedCount();
+      int best = -1;
+      long bestDistance = static_cast<long>(TOUCH_KEY_REACH) * TOUCH_KEY_REACH + 1;
+      for (size_t i = 0; i < count; ++i) {
+        const fui::Rect& r = keys[i].rect;
+        if (keys[i].action != ACTION_KEY || r.width <= 0 || r.height <= 0) continue;
+        const int dx = x < r.x ? r.x - x : (x >= r.x + r.width ? x - (r.x + r.width - 1) : 0);
+        const int dy = y < r.y ? r.y - y : (y >= r.y + r.height ? y - (r.y + r.height - 1) : 0);
+        if (dx == 0 && dy == 0) return;  // on a key already
+        const long distance = static_cast<long>(dx) * dx + static_cast<long>(dy) * dy;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = static_cast<int>(i);
+        }
+      }
+      if (best < 0) return;
+      const fui::Rect& r = keys[best].rect;
+      x = x < r.x ? r.x : (x >= r.x + r.width ? r.x + r.width - 1 : x);
+      y = y < r.y ? r.y : (y >= r.y + r.height ? r.y + r.height - 1 : y);
+    };
+    if (pressedDown) nearestKey(tx, ty);
+    if (tapped) nearestKey(tapX, tapY);
 
     const fui::TouchHoldRouter::Result result =
         touchRouter.update(interactions, pressedDown, static_cast<int16_t>(tx), static_cast<int16_t>(ty), tapped,
@@ -932,7 +972,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   }
 
   const fui::Rect kbRect = keyboardRect();
-  const int keysHeight = keyboardKeysHeight(metrics, currentLayout().rowCount, mappedInput.hasTouch());
+  const int keysHeight =
+      keyboardKeysHeight(metrics, currentLayout().rowCount, mappedInput.hasTouch(), renderer.getScreenHeight());
   const fui::Rect keysRect{kbRect.x, static_cast<int16_t>(kbRect.y + (kbRect.height - keysHeight) / 2), kbRect.width,
                            static_cast<int16_t>(keysHeight)};
 
