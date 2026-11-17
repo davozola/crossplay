@@ -1,12 +1,15 @@
 #include "ShelfFolderActivity.h"
 
 #include <FreeInkUIIcon.h>
+#include <InflateReader.h>
 #include <Logging.h>
 #include <Memory.h>
 
 #include "Shelf.h"
+#include "ShelfCatalogue.h"
 #include "ShelfOrder.h"
 #include "ShelfScreen.h"
+#include "ShelfShots.h"
 #include "player/PlayerName.h"
 #include "ui/Toybox.h"
 #include "ui/ToyboxFonts.h"
@@ -20,30 +23,108 @@ std::unique_ptr<Activity> ShelfFolderActivity::create(GfxRenderer& renderer, Map
 namespace {
 // Kept while the device is on, so the filter is still there on the way back
 // from the game it was used to find.
-bool favouritesOnlyIn[8] = {};
+// Where each folder was left, for as long as the reader stays awake: a game
+// closed lands back on the tab and page it was opened from.
+int tabIn[8] = {};
+int pageIn[8] = {};
+bool visitedIn[8] = {};
 }  // namespace
 
 int ShelfFolderActivity::rowsInList() const {
   if (choosing) return shelf::folders()[folder].count;
-  if (favouritesOnly) {
-    int held[shelf::kFavouriteSlots];
-    return shelf::favourites(folder, held);
-  }
-  return shelf::shownCount(folder);
+  return listedCount;
 }
 
+// The one place a row becomes an item, so a tap cannot open what the row under
+// the finger was not naming. Choosing lists the whole registry; otherwise it
+// is whatever the tab holds.
 int ShelfFolderActivity::itemAtRow(const int row) const {
   if (row < 0) return -1;
-  // While choosing, the list IS the registry: every item is on screen, in
-  // registry order, so the row is the item. That identity is the reason the
-  // chooser lists everything -- a chooser over the shown items could not show
-  // you what you had hidden.
   if (choosing) return row < shelf::folders()[folder].count ? row : -1;
-  if (favouritesOnly) {
+  return row < listedCount ? listed[row] : -1;
+}
+
+// What the tab holds. Home is the favourites and then what was last opened;
+// a kind is every shown item of that kind; the last tab is every shown item.
+// Nothing is listed twice, and a hidden item is on none of them.
+void ShelfFolderActivity::rebuildList() {
+  const shelf::Folder& self = shelf::folders()[folder];
+  listedCount = 0;
+  auto add = [&](const int item) {
+    for (int i = 0; i < listedCount; ++i) {
+      if (listed[i] == item) return;
+    }
+    if (listedCount < kMaxListed && !shelf::isHidden(folder, item)) listed[listedCount++] = item;
+  };
+  if (tab == 0) {
     int held[shelf::kFavouriteSlots];
-    return row < shelf::favourites(folder, held) ? held[row] : -1;
+    const int stars = shelf::favourites(folder, held);
+    for (int i = 0; i < stars; ++i) add(held[i]);
+    // Enough of the last opened to fill the page out, and never fewer than three.
+    int recent[shelfcat::kRowsPerPage];
+    const int room = shelfcat::kRowsPerPage - listedCount % shelfcat::kRowsPerPage;
+    const int n = shelf::recents(folder, recent, shelfcat::kRowsPerPage);
+    int taken = 0;
+    for (int i = 0; i < n && taken < (room < 3 ? 3 : room); ++i) {
+      const int before = listedCount;
+      add(recent[i]);
+      taken += listedCount - before;
+    }
+    return;
   }
-  return shelf::shownItem(folder, row);
+  const int kind = tab - 1;
+  for (int i = 0; i < self.count; ++i) {
+    if (tab == self.tabCount + 1 || self.items[i].category == kind) add(i);
+  }
+}
+
+void ShelfFolderActivity::setTab(const int to) {
+  const shelf::Folder& self = shelf::folders()[folder];
+  tab = to < 0 || to > self.tabCount + 1 ? 0 : to;
+  interactionsReady = false;
+  rebuildList();
+  itemCount = rowsInList();
+  selected = 0;
+  if (folder >= 0 && folder < 8) {
+    tabIn[folder] = tab;
+    pageIn[folder] = 0;
+  }
+  requestUpdate();
+}
+
+void ShelfFolderActivity::openSheet(const int item) {
+  const shelf::Folder& self = shelf::folders()[folder];
+  if (item < 0 || item >= self.count) return;
+  sheetItem = item;
+  sheetPicture.reset();
+  // The picture is kept deflated in flash and inflated only while its sheet is up.
+  if (const shelfshots::Shot* shot = shelfshots::find(self.items[item].title)) {
+    auto bits = makeUniqueNoThrow<uint8_t[]>(shelfshots::kRawBytes);
+    InflateReader reader;
+    if (!bits) {
+      LOG_ERR("SHELF", "OOM: %u bytes for a picture", static_cast<unsigned>(shelfshots::kRawBytes));
+    } else if (reader.init(false)) {
+      reader.setSource(shot->data, shot->size);
+      reader.skipZlibHeader();
+      if (reader.read(bits.get(), shelfshots::kRawBytes)) {
+        sheetPicture = std::move(bits);
+      } else {
+        LOG_ERR("SHELF", "picture of %s would not inflate", self.items[item].title);
+      }
+    }
+  }
+  interactionsReady = false;
+  requestUpdate();
+}
+
+void ShelfFolderActivity::closeSheet() {
+  sheetItem = -1;
+  sheetPicture.reset();
+  interactionsReady = false;
+  rebuildList();
+  itemCount = rowsInList();
+  if (selected >= itemCount) selected = itemCount > 0 ? itemCount - 1 : 0;
+  requestUpdate();
 }
 
 void ShelfFolderActivity::buildPage(const int first, const int count) {
@@ -84,67 +165,43 @@ void ShelfFolderActivity::buildPage(const int first, const int count) {
 void ShelfFolderActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
-  // Land where the folder was left standing: on the game that was opened from
-  // it, or on the first row of the page it was showing when it was walked out
-  // of. This activity is destroyed the moment it launches something and again
-  // the moment you leave, so neither can survive in a member.
-  favouritesOnly = folder >= 0 && folder < 8 && favouritesOnlyIn[folder];
-  itemCount = rowsInList();
-  // resumeRowFor is the whole answer to "the folder shrank since": it pins a row
-  // past the end to the last one, so the folder opens on its last page rather
-  // than dropping the memory and opening on its first. Named there rather than
-  // clamped here, so it is one rule with one test instead of an `if`.
-  if (favouritesOnly && itemCount == 0) {
-    favouritesOnly = false;
-    favouritesOnlyIn[folder] = false;
-    itemCount = rowsInList();
+  favouritesOnly = false;
+  sheetItem = -1;
+  const bool known = folder >= 0 && folder < 8 && visitedIn[folder];
+  tab = known ? tabIn[folder] : 0;
+  rebuildList();
+  // The first visit opens on what you use; with nothing starred or opened yet
+  // that is an empty page, so it opens on everything instead.
+  if (!known && listedCount == 0) {
+    tab = shelf::folders()[folder].tabCount + 1;
+    rebuildList();
   }
-  selected = favouritesOnly ? 0 : shelfui::resumeRowFor(shelf::resumeRowIn(folder), itemCount);
-  // The page itself is built in render(), which is the only place that knows how
-  // many rows fit.
-  requestUpdate();
-}
-
-void ShelfFolderActivity::setFavouritesOnly(const bool on) {
-  favouritesOnly = on;
-  if (folder >= 0 && folder < 8) favouritesOnlyIn[folder] = on;
-  interactionsReady = false;
   itemCount = rowsInList();
-  selected = on ? 0 : shelfui::resumeRowFor(shelf::resumeRowIn(folder), itemCount);
+  selected = 0;
+  if (known) {
+    const int row = pageIn[folder] * shelfcat::kRowsPerPage;
+    selected = row < itemCount ? row : 0;
+  }
+  if (folder >= 0 && folder < 8) {
+    visitedIn[folder] = true;
+    tabIn[folder] = tab;
+  }
   requestUpdate();
 }
 
+// The star filter became the home tab; this is the one way onto it by name.
+void ShelfFolderActivity::setFavouritesOnly(const bool on) { setTab(on ? 0 : shelf::folders()[folder].tabCount + 1); }
+
+// In and out of choosing what the folder shows. The chooser lists the whole
+// registry; leaving it goes back to the tab, rebuilt for what was just shown
+// or hidden.
 void ShelfFolderActivity::setChoosing(const bool on) {
   if (choosing == on) return;
-  // The table on the panel belongs to the mode that drew it, and every action
-  // id on this screen changes meaning here: the row that opened CHESS a moment
-  // ago now hides it. render() runs on the other core and only after this
-  // loop() returns, so between the chip's tap and the repaint there is a window
-  // where the OLD table is live and `choosing` is already the new value -- and
-  // an unchanged table always routes, by design, which is what keeps touch
-  // alive everywhere else. Disarmed here rather than left to the rebuild,
-  // because the rebuild is the thing that has not happened yet.
   interactionsReady = false;
-  // The item under the finger before the switch, kept through it. The two lists
-  // are different lengths, so a row carried across straight would be a
-  // different game -- and the page bar would say the same number either way.
-  const int item = itemAtRow(selected);
   choosing = on;
+  if (!choosing) rebuildList();
   itemCount = rowsInList();
-  if (choosing) {
-    // The chooser's rows ARE the registry, so the item is the row.
-    selected = item < 0 ? 0 : item;
-    requestUpdate();
-    return;
-  }
-  // Coming back out, the item may be the one that was just hidden, and then
-  // there is no row for it: shownRowFor answers with the nearest surviving one
-  // and resumeRowFor pins that to the end of a list that shrank underneath.
-  selected = shelfui::resumeRowFor(shelf::shownRowFor(folder, item < 0 ? 0 : item), itemCount);
-  // And that is where the folder comes back, the same write a page turn makes.
-  // Skipped when the list is empty: there is no row to remember, and the empty
-  // state is not a place.
-  if (itemCount > 0) shelf::rememberRowIn(folder, selected);
+  selected = 0;
   requestUpdate();
 }
 
@@ -169,7 +226,7 @@ bool ShelfFolderActivity::showPage(const int page) {
   // activity, and the idle timeout deep-sleeps wherever you happen to be, with
   // wake a chip reset. Paging is a deliberate act a handful of times a session,
   // and the write is twenty bytes beside a full-panel repaint.
-  shelf::rememberRowIn(folder, landing);
+  if (folder >= 0 && folder < 8) pageIn[folder] = page;
   return true;
 }
 
@@ -180,6 +237,10 @@ void ShelfFolderActivity::loop() {
   int pressY = 0;
   if (mappedInput.wasScreenTouchPressed(pressX, pressY)) swipeStartX = pressX;
 
+  if (sheetItem >= 0 && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    closeSheet();
+    return;
+  }
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // A swipe to the right is the page before, and it is also the system's
     // Back when it starts in the left quarter. So that one gesture cannot
@@ -212,25 +273,15 @@ void ShelfFolderActivity::loop() {
   fui::InputSnapshot input;
   int tapX = 0;
   int tapY = 0;
-  // A long press on a row makes it a favourite, or stops it being one.
-  if (!choosing && interactionsReady && mappedInput.wasScreenLongPress(tapX, tapY)) {
+  // A long press on a row opens its sheet: what it is, and what can be done with it.
+  if (!choosing && sheetItem < 0 && interactionsReady && mappedInput.wasScreenLongPress(tapX, tapY)) {
     fui::InputSnapshot held;
     held.touchReleased = true;
     held.touchX = static_cast<int16_t>(tapX);
     held.touchY = static_cast<int16_t>(tapY);
     const fui::ActionEvent on = interactions.route(held);
     const int item = on.action == shelfui::ActionOpen ? itemAtRow(on.value) : -1;
-    if (item >= 0) {
-      interactionsReady = false;
-      shelf::toggleFavourite(folder, item);
-      itemCount = rowsInList();
-      if (favouritesOnly && itemCount == 0) {
-        setFavouritesOnly(false);
-      } else if (selected >= itemCount) {
-        selected = itemCount - 1;
-      }
-      requestUpdate();
-    }
+    if (item >= 0) openSheet(item);
     return;
   }
   if (mappedInput.wasScreenTapped(tapX, tapY)) {
@@ -293,6 +344,7 @@ void ShelfFolderActivity::loop() {
   const bool prev =
       keyPrev || swipe == MappedInputManager::SwipeDir::Down || swipe == MappedInputManager::SwipeDir::Right;
 
+  if (sheetItem >= 0 && (next || prev)) return;
   if (itemCount > 0 && (next || prev)) {
     // A folder that fits on one page has no page to step to, and moving the
     // resumed row to the top instead would be a step that changed something
@@ -317,6 +369,26 @@ void ShelfFolderActivity::loop() {
   if (!input.touchReleased || !interactionsReady) return;
 
   const fui::ActionEvent event = interactions.route(input);
+  if (sheetItem >= 0) {
+    const int item = sheetItem;
+    if (event.action == shelfcat::ActionSheetOpen) {
+      sheetPicture.reset();
+      sheetItem = -1;
+      shelf::openItem(folder, item, renderer, mappedInput);
+    } else if (event.action == shelfcat::ActionSheetFavourite) {
+      shelf::toggleFavourite(folder, item);
+      interactionsReady = false;
+      requestUpdate();
+    } else if (event.action == shelfcat::ActionSheetHide) {
+      shelf::setHidden(folder, item, true);
+      closeSheet();
+    }
+    return;
+  }
+  if (event.action == shelfcat::ActionTab) {
+    setTab(event.value);
+    return;
+  }
   if (event.action == shelfui::ActionOpen) {
     selected = event.value;
     const int item = itemAtRow(selected);
@@ -382,9 +454,12 @@ void ShelfFolderActivity::render(RenderLock&&) {
   // while browsing and the chooser's caption in it while choosing, so the two
   // modes fit the same games on the same page and entering the chooser adds
   // boxes to the list rather than reshuffling it.
-  int held[shelf::kFavouriteSlots];
-  const bool starShown = !choosing && (favouritesOnly || shelf::favourites(folder, held) > 0);
-  const shelfui::Paging paging = shelfui::pagingFor(device, tokens, self.showsDeviceName, itemCount, starShown);
+  const bool starShown = false;
+  shelfui::Paging paging = shelfui::pagingFor(device, tokens, self.showsDeviceName, itemCount, starShown);
+  if (!choosing) {
+    paging.rowsPerPage = shelfcat::kRowsPerPage;
+    paging.pageCount = shelfui::pageCountFor(itemCount, shelfcat::kRowsPerPage);
+  }
   rowsPerPage = paging.rowsPerPage;
   const int page = shelfui::pageFor(selected, rowsPerPage);
   const int first = shelfui::rowForPage(page, rowsPerPage);
@@ -403,6 +478,51 @@ void ShelfFolderActivity::render(RenderLock&&) {
   }
   shouted[n] = '\0';
 
+  if (!choosing && sheetItem >= 0 && sheetItem < self.count) {
+    const shelf::Item& item = self.items[sheetItem];
+    shelfcat::SheetModel sheet;
+    sheet.title = item.title;
+    sheet.about = item.about;
+    sheet.kind = self.tabs[item.category];
+    sheet.online = item.online;
+    sheet.favourite = shelf::isFavourite(folder, sheetItem);
+    sheet.picture = sheetPicture.get();
+    shelfcat::drawSheet(screen, renderer, sheet);
+    interactionsReady = true;
+    toybox::reportOverflow(interactions, self.title);
+    renderer.displayBuffer();
+    return;
+  }
+  if (!choosing) {
+    shelfcat::Row rows[shelfcat::kRowsPerPage];
+    for (int i = 0; i < onThisPage && i < shelfcat::kRowsPerPage; ++i) {
+      const int item = itemAtRow(first + i);
+      if (item < 0) continue;
+      rows[i].title = self.items[item].title;
+      rows[i].blurb = self.items[item].blurb;
+      rows[i].icon = self.items[item].icon;
+      rows[i].star = stars[i];
+      rows[i].value = static_cast<int16_t>(first + i);
+    }
+    shelfcat::ListModel list;
+    list.title = shouted;
+    list.mark = self.mark;
+    list.kinds = self.tabs;
+    list.kindCount = self.tabCount;
+    list.tab = tab;
+    list.rows = rows;
+    list.rowCount = onThisPage < 0 ? 0 : onThisPage;
+    list.page = page;
+    list.pageCount = paging.pageCount;
+    shelfcat::drawList(screen, renderer, list);
+    interactionsReady = true;
+    toybox::reportOverflow(interactions, self.title);
+    const auto hints = mappedInput.mapLabels("Back", "Open", "Up", "Down");
+    GUI.drawButtonHints(renderer, hints.btn1, hints.btn2, hints.btn3, hints.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
   shelfui::MenuModel model;
   model.title = shouted;
   model.mark = self.mark;
@@ -416,7 +536,7 @@ void ShelfFolderActivity::render(RenderLock&&) {
   model.pageCount = paging.pageCount;
   model.stars = stars;
   model.starShown = starShown;
-  model.starOn = favouritesOnly;
+  model.starOn = false;
   shelfui::buildMenu(screen, model);
 
   interactionsReady = true;
