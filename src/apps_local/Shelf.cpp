@@ -16,6 +16,7 @@
 #include "ShelfState.h"
 #include "batch/BatchActivity.h"
 #include "battleship/BattleshipActivity.h"
+#include "boxes/BoxesActivity.h"
 #include "calculator/CalculatorActivity.h"
 #include "casa/CasaActivity.h"
 #include "checkers/CheckersActivity.h"
@@ -58,6 +59,7 @@
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
+#include "reversi/ReversiActivity.h"
 #include "rpn/RpnActivity.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
@@ -119,6 +121,12 @@ constexpr shelf::Item kGames[] = {
      "Damas con captura obligatoria, que el propio tablero te señala. Contra el dispositivo o a dos."},
     {"CONNECT FOUR", &icon_connectfour_32, &ConnectFourActivity::create, 0, false, "Cuatro en raya vertical",
      "Deja caer una ficha y alinea cuatro. Siete columnas, un toque cada una."},
+    {"REVERSI", &icon_reversi_32, &ReversiActivity::create, 0, false, "Atrapa y da la vuelta",
+     "Pon una ficha que encierre las del otro color entre dos tuyas y se vuelven tuyas. Contra el dispositivo, en "
+     "tres niveles, o a dos en la misma pantalla."},
+    {"DOTS AND BOXES", &icon_boxes_32, &BoxesActivity::create, 0, false, "Cierra cuadrados con rayas",
+     "Puntos y cajas: una raya por turno, y quien cierra un cuadrado se lo queda y repite. Contra el dispositivo o a "
+     "dos."},
     {"YAHTZEE", &icon_yahtzee_32, &YahtzeeActivity::create, 1, false, "Dados: 13 casillas, 3 tiradas",
      "El juego de dados de las trece casillas, con tres tiradas por turno y las reglas del comodín completas."},
     {"KNUCKLEBONES", &icon_knucklebones_32, &KnucklebonesActivity::create, 1, false, "Dados que suman y destruyen",
