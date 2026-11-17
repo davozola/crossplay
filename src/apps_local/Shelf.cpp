@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include "../activities/ActivityManager.h"
@@ -423,7 +424,45 @@ void openFolder(const int index, GfxRenderer& renderer, MappedInputManager& mapp
   replaceWith(ShelfFolderActivity::create(renderer, mappedInput, index), kFolders[index].title);
 }
 
+namespace {
+// Where leave() goes instead of the folder, once. Set by openFrom().
+char returnTitle[24] = "";
+bool keepReturn = false;
+
+bool findTitle(const char* title, int& folder, int& item) {
+  if (title == nullptr || *title == '\0') return false;
+  for (int f = 0; f < kFolderCount; ++f) {
+    for (int i = 0; i < kFolders[f].count; ++i) {
+      if (std::strcmp(kFolders[f].items[i].title, title) == 0) {
+        folder = f;
+        item = i;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+}  // namespace
+
+bool openFrom(const char* title, const char* returnTo, GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  int folder = 0;
+  int item = 0;
+  if (!findTitle(title, folder, item)) {
+    LOG_ERR("SHELF", "No item titled %s", title == nullptr ? "" : title);
+    return false;
+  }
+  std::snprintf(returnTitle, sizeof(returnTitle), "%s", returnTo == nullptr ? "" : returnTo);
+  keepReturn = true;
+  const bool opened = openItem(folder, item, renderer, mappedInput);
+  keepReturn = false;
+  if (!opened) returnTitle[0] = '\0';
+  return opened;
+}
+
 bool openItem(const int folder, const int item, GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  // Any other way of opening something forgets where a link meant to return.
+  if (!keepReturn) returnTitle[0] = '\0';
+
   if (folder < 0 || folder >= kFolderCount) {
     LOG_ERR("SHELF", "Bad folder index: %d", folder);
     return false;
@@ -565,6 +604,14 @@ void openPlayer(GfxRenderer& renderer, MappedInputManager& mappedInput) {
 }
 
 void leave(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  if (returnTitle[0] != '\0') {
+    char title[sizeof(returnTitle)];
+    std::snprintf(title, sizeof(title), "%s", returnTitle);
+    returnTitle[0] = '\0';
+    int folder = 0;
+    int item = 0;
+    if (findTitle(title, folder, item) && openItem(folder, item, renderer, mappedInput)) return;
+  }
   if (openFolderIndex >= 0) {
     openFolder(openFolderIndex, renderer, mappedInput);
     return;

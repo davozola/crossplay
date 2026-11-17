@@ -99,6 +99,10 @@ void openFolder(int index, GfxRenderer& renderer, MappedInputManager& mappedInpu
 // so leave() can undo it. False if the item could not be created, in which case
 // nothing was replaced and the caller still owns the screen.
 bool openItem(int folder, int item, GfxRenderer& renderer, MappedInputManager& mappedInput);
+// Opens the item with this title, whichever folder it is in. With `returnTo`,
+// leaving that item opens the one titled so instead of its folder: how a page
+// that links to other apps gets its visitor back.
+bool openFrom(const char* title, const char* returnTo, GfxRenderer& renderer, MappedInputManager& mappedInput);
 
 // ---------------------------------------------------------------------------
 // What a folder SHOWS, which is not the same as what it holds.

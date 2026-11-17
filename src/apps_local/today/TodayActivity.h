@@ -6,9 +6,10 @@
 #include "../ui/ToyboxScreen.h"
 #include "TodayStore.h"
 
-// HOY: one page to leave standing. The time on a black band, today's weather
-// and the day ahead as a curve, the three markets, the sea and a line of what
-// happened on this day, all from what the other apps keep on the card.
+// HOY: one page to leave standing. The time, today's weather, the three
+// markets, the sea and a line of what happened on this day, all from what the
+// other apps keep on the card, in five faces to swipe between. A tap on any
+// part opens the app it comes from.
 class TodayActivity final : public Activity {
  public:
   TodayActivity(GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity("Today", renderer, mappedInput) {}
@@ -43,6 +44,12 @@ class TodayActivity final : public Activity {
   void loadEvent();
   char eventText_[220] = "";
   int eventYear_ = 0;
+
+  // Which of the five faces is up; a swipe changes it and it is kept.
+  void setStyle(int style);
+  int style_ = 0;
+  int pressX_ = -1;
+  bool cleanNext_ = true;
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;
