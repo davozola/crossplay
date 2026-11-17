@@ -293,8 +293,15 @@ void card(toybox::Screen& screen, const fui::Rect& r, const mk::Asset asset, con
   char price[32];
   mk::formatPriceShort(q.price, price, sizeof(price));
   const int pillH = 32;
-  const int inkH = priceText(screen, faces, Face::Large, x, y, innerW - 146, price);
-  changePill(screen, 0, y + (inkH - pillH) / 2, pillH, mk::dayChangePercent(q), x + innerW);
+  // What trades around the clock has no close: its move is over 24 hours, and says so.
+  const bool rolling = q.dayAgo > 0;
+  constexpr int kRollingTagW = 40;
+  const int inkH = priceText(screen, faces, Face::Large, x, y, innerW - 146 - (rolling ? kRollingTagW : 0), price);
+  const int pillW = changePill(screen, 0, y + (inkH - pillH) / 2, pillH, mk::dayChangePercent(q), x + innerW);
+  if (rolling) {
+    caption(screen, x + innerW - pillW - 8 - kRollingTagW, y + (inkH - toybox::kTileCut.inkHeight) / 2, kRollingTagW,
+            "24H", fui::TextAlign::Right);
+  }
   y += inkH + 8;
 
   // A month of closes along the foot, inside the card's outline.
@@ -453,7 +460,7 @@ void buildDetail(toybox::Screen& screen, const DetailModel& model) {
   char change[40];
   char abs[32];
   mk::formatChange(mk::dayChange(q), abs, sizeof(abs));
-  std::snprintf(change, sizeof(change), "%s %s TODAY", abs, q.currency);
+  std::snprintf(change, sizeof(change), "%s %s %s", abs, q.currency, q.dayAgo > 0 ? "IN 24H" : "TODAY");
   caption(screen, x + pillW + 12, y + (36 - toybox::kTileCut.inkHeight) / 2, inner - pillW - 12, change);
   y += 36 + 18;
 
