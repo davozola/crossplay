@@ -32,6 +32,7 @@
 #include "handwriting/HandwritingActivity.h"
 #include "hearts/HeartsActivity.h"
 #include "hex/HexActivity.h"
+#include "history/HistoryActivity.h"
 #include "hive/HiveActivity.h"
 #include "innerclock/InnerClockActivity.h"
 #include "insider/InsiderActivity.h"
@@ -127,6 +128,7 @@ constexpr shelf::Item kApps[] = {
     {"THE BATCH", &icon_batch_32, &BatchActivity::create},
     {"DISCOVER", &icon_discover_32, &DiscoverActivity::create},
     {"APRENDE", &icon_learn_32, &LearnActivity::create},
+    {"EFEMERIDES", &icon_history_32, &HistoryActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},

@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y una cosas:
+Sticky**. Conserva todo lo del original y añade treinta y dos cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -47,6 +47,7 @@ Sticky**. Conserva todo lo del original y añade treinta y una cosas:
 | **The Batch** | El boletín semanal de DeepLearning.AI: archivo desde el primer número, cada número partido en sus noticias con el tiempo de lectura, favoritos y lectura sin red de lo ya abierto. |
 | **Discover** | Lo nuevo de GitHub con más estrellas: filtro por tema (IA, firmware, sintes, emuladores, gadgets), lenguaje, estrellas y antigüedad; ficha de cada repositorio, su README y una lista de guardados. |
 | **Aprende** | Cinco minutos al día: una idea de matemáticas, economía, electrónica o IA, con un ejemplo y una pregunta. Cuarenta lecciones en español, racha diaria y progreso por materia. |
+| **Efemérides** | Qué pasó un día como hoy: un hecho de ciencia, uno de historia y uno de cultura en portada, la lista completa del día detrás, y cada día buscado guardado en la tarjeta. De Wikipedia en español. |
 | **Misterios** | Seis casos detectivescos en castellano: interrogas a cuatro sospechosos, registras tres lugares y acusas cuando tienes motivo, ocasión y coartada rota. |
 | **Ilya**        | Seis minijuegos en catalán para un niño de tres años: dibujos, parejas, letras, números y El Talp, un golpea-al-topo sin prisas con cuatro animales. |
 | **Pinta** | Una hoja para pintar con el dedo: trazo fino, trazo gordo, sellos de dibujos, goma y hoja nueva. Sin letras, para Ilya. |
@@ -95,7 +96,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **40 games and 21 apps**,
+that holds still is good at: **40 games and 22 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -168,6 +169,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **The Batch**   | DeepLearning.AI's weekly newsletter, story by story, kept on the card.   |
 | **Discover**    | New repositories on GitHub by topic, language, stars and age.            |
 | **Aprende**     | A five-minute lesson a day in maths, economics, electronics or AI (Spanish). |
+| **Efemerides**  | On this day: science, history and culture, from Spanish Wikipedia.       |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
 | **Wallpapers**  | Pick an image on the card as the sleep screen, one tap to set it.        |
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
@@ -284,6 +286,10 @@ Most of the shelf never touches the network. Of the parts that do:
   for the instruments on its cards and in the portfolio; how much of each you hold
   stays on the card and is never sent; with auto-refresh on it does so on a timer and keeps the
   device awake and on Wi-Fi to do it.
+- **Efemérides asks Wikipedia.** The day's events come from Spanish Wikipedia's
+  public [on this day feed](https://www.mediawiki.org/wiki/Wikifeeds),
+  with no account. Wikipedia sees which day was asked for and the device's
+  address. The text is theirs, CC BY-SA.
 - **Discover asks GitHub directly.** Its search goes to the public
   [GitHub API](https://docs.github.com/rest/search) with no account, which allows
   ten searches a minute, and a README comes from raw.githubusercontent.com. GitHub
