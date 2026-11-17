@@ -1,0 +1,65 @@
+{
+ "id": "d1",
+ "categories": [
+  "Essential",
+  "Influential"
+ ],
+ "evidence": {
+  "Essential": "Invented for the demo pack.",
+  "Influential": "Invented for the demo pack."
+ },
+ "connections": [
+  {
+   "id": "d2",
+   "es": "Otro disco inventado del mismo paquete de demostración.",
+   "en": "Another invented record from the same demo pack."
+  },
+  {
+   "id": "d3",
+   "es": "Otro disco inventado del mismo paquete de demostración.",
+   "en": "Another invented record from the same demo pack."
+  }
+ ],
+ "sources": [
+  {
+   "url": "https://example.invalid/d1",
+   "title": "An invented source",
+   "supports": "Nothing: this record does not exist."
+  }
+ ],
+ "tracks": [
+  {
+   "title": "Opening Song",
+   "es": "La primera canción, que no existe.",
+   "en": "The first song, which does not exist."
+  }
+ ],
+ "es": {
+  "why": "«First Light» es un disco inventado para probar Liner Notes. Este párrafo ocupa el lugar de la explicación de por qué importa: qué cambió, a quién influyó y por qué merece una escucha atenta hoy. En un paquete de verdad aquí va un texto escrito a partir de fuentes.",
+  "context": "Aquí va el contexto: cuándo y dónde se grabó, quién lo produjo, en qué momento de la carrera del artista llegó y cómo fue recibido. Todos los datos de este paquete de demostración son ficticios.",
+  "sound": "Aquí se describe cómo suena: los instrumentos, la producción, el ambiente. La idea es que el texto ayude a escuchar, no que sustituya a la escucha.",
+  "listen": [
+   "Un detalle del sonido al que prestar atención.",
+   "Otro detalle, más adelante en el disco.",
+   "Un tercero, para la segunda escucha."
+  ],
+  "curios": [
+   "Una curiosidad inventada.",
+   "Otra más."
+  ]
+ },
+ "en": {
+  "why": "\"First Light\" is a record invented to try Liner Notes. This paragraph stands where the explanation of why it matters goes: what it changed, whom it influenced and why it deserves a careful listen today. In a real pack this is text written from sources.",
+  "context": "Here goes the context: when and where it was recorded, who produced it, at what point in the artist's career it arrived and how it was received. Every fact in this demo pack is fictitious.",
+  "sound": "Here is a description of how it sounds: the instruments, the production, the atmosphere. The idea is that the text helps you listen, not that it replaces listening.",
+  "listen": [
+   "A detail of the sound to pay attention to.",
+   "Another detail, later in the record.",
+   "A third, for the second listen."
+  ],
+  "curios": [
+   "An invented curiosity.",
+   "One more."
+  ]
+ }
+}

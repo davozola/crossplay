@@ -47,6 +47,7 @@
 #include "kids/KidsActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
 #include "learn/LearnActivity.h"
+#include "linernotes/LinerNotesActivity.h"
 #include "logic/LogicActivity.h"
 #include "mancala/MancalaActivity.h"
 #include "markets/MarketsActivity.h"
@@ -232,6 +233,9 @@ constexpr shelf::Item kApps[] = {
      "Con el sensor de la propia Sticky, leído cada tres segundos, y las últimas 24 horas en una gráfica."},
     {"RELOJ", &icon_clock_32, &ClockActivity::create, 0, false, "Reloj de mesa, siete esferas",
      "En vertical u horizontal, en claro u oscuro: trazo, paletas, esfera, anillos, matriz, segmentos y palabras."},
+    {"LINER NOTES", &icon_linernotes_32, &LinerNotesActivity::create, 3, false, "Notas de tus discos",
+     "Lo que conviene saber de los discos de tu propia colección, en español o inglés, leído de un paquete en la "
+     "tarjeta que haces tú. Abre el disco en Plexamp a través del Jukebox."},
     {"PRESENTER", &icon_presenter_32, &PresenterActivity::create, 3, false, "Mando para diapositivas",
      "La Sticky se empareja por Bluetooth como un teclado y pasa las diapositivas de PowerPoint, Keynote o Google "
      "Slides, sin instalar nada. Con reloj de la charla y avisos a cinco y a dos minutos del final."},

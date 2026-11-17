@@ -353,7 +353,7 @@ def survey(state, quiet=False):
         for m in tracks:
             any_audio = True
             pl = m.get("Player", {})
-            print("       %s — %s — %s" % (m.get("grandparentTitle"), m.get("parentTitle"), m.get("title")))
+            print("       %s / %s / %s" % (m.get("grandparentTitle"), m.get("parentTitle"), m.get("title")))
             print("       %s / %s, %s, on '%s' (%s, %s)" % (fmt_ms(m.get("viewOffset")), fmt_ms(m.get("duration")),
                                                           pl.get("state"), pl.get("title"), pl.get("product"),
                                                           pl.get("platform")))
@@ -403,7 +403,7 @@ def survey(state, quiet=False):
                  "state=%s %s/%s volume=%s" % (info.get("state"), fmt_ms(info.get("time")),
                                                 fmt_ms(info.get("duration")), info.get("volume")))
             if info.get("_title"):
-                print("       its own account: %s — %s — %s" % (info.get("_artist"), info.get("_album"),
+                print("       its own account: %s / %s / %s" % (info.get("_artist"), info.get("_album"),
                                                                 info.get("_title")))
             break
         if p["addresses"] and not p["control"]:
