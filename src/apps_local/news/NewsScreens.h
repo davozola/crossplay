@@ -17,6 +17,7 @@ enum : fui::ActionId {
   ActionBack = 345,
   ActionOpenLead = 346,
   ActionFavourite = 347,
+  ActionTextSize = 348,
   ActionTab0 = 350,  // one per section, in order
 };
 

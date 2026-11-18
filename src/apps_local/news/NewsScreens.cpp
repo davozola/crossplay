@@ -195,10 +195,10 @@ uint32_t buildReader(toybox::Screen& screen, const ReaderModel& model) {
   const fui::DeviceContext& device = screen.device();
   const int16_t footerY = static_cast<int16_t>(device.height - toybox::kMargin - kFooterHeight);
   const int16_t usable = static_cast<int16_t>(device.width - 2 * toybox::kMargin);
-  // Four across: the two arrows, the way back, and the favourite, which is
-  // inverted while the article is one.
-  const int16_t arrow = static_cast<int16_t>((usable - 3 * toybox::kGutter) / 6);
-  const int16_t wide = static_cast<int16_t>((usable - 2 * arrow - 3 * toybox::kGutter) / 2);
+  // Five across: the two arrows, the way back, the favourite (inverted while
+  // the article is one) and the size of the type.
+  const int16_t arrow = static_cast<int16_t>((usable - 4 * toybox::kGutter) / 7);
+  const int16_t wide = static_cast<int16_t>((usable - 2 * arrow - 4 * toybox::kGutter) / 3);
   const auto footerButton = [&screen, footerY](const char* label, const fui::ActionId action, const int16_t x,
                                                const int16_t width, const bool enabled, const bool inverted) {
     fui::ButtonProps button;
@@ -216,7 +216,9 @@ uint32_t buildReader(toybox::Screen& screen, const ReaderModel& model) {
   x = static_cast<int16_t>(x + arrow + toybox::kGutter);
   footerButton("LIST", ActionBack, x, wide, true, true);
   x = static_cast<int16_t>(x + wide + toybox::kGutter);
-  footerButton(model.favourite ? "FAV: YES" : "FAV: NO", ActionFavourite, x, wide, true, model.favourite);
+  footerButton("FAV", ActionFavourite, x, wide, true, model.favourite);
+  x = static_cast<int16_t>(x + wide + toybox::kGutter);
+  footerButton("Aa", ActionTextSize, x, wide, true, false);
   x = static_cast<int16_t>(x + wide + toybox::kGutter);
   footerButton(">", ActionPageNext, x, static_cast<int16_t>(toybox::kMargin + usable - x), model.canPageNext, true);
   if (model.wrap == nullptr) return 0;

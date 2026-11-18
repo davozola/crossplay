@@ -20,6 +20,8 @@ any of them.
   tab and its text is copied to `/.crosspoint/news/f/`, where it stays until
   FAV is tapped again. The list is `/.crosspoint/news/favourites.tsv`, forty
   at most.
+- Aa in the reader steps an article's type through three cuts of the reading
+  serif (11, 13, 14) and keeps the choice in `/.crosspoint/news/textsize.cfg`.
 - Behind a paywall, or on a page that needs a browser, the reader shows the
   outlet's own summary from the feed and says that is what it is.
 

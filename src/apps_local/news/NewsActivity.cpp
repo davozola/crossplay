@@ -32,6 +32,7 @@ constexpr const char* kCacheDir = "/.crosspoint/news";
 // network. Nothing prunes it: an article is a few tens of kilobytes.
 constexpr const char* kArticleDir = "/.crosspoint/news/a";
 constexpr const char* kFavouriteDir = "/.crosspoint/news/f";
+constexpr const char* kTextSizePath = "/.crosspoint/news/textsize.cfg";
 constexpr const char* kFavouriteIndex = "/.crosspoint/news/favourites.tsv";
 constexpr size_t kMaxArticleBytes = 128u * 1024u;
 constexpr size_t kCacheCap = 96u * 1024u;
@@ -61,6 +62,13 @@ void NewsActivity::onEnter() {
   // No radio here: the last headlines open from the card, and the first tap
   // that needs the network is what asks for it.
   loadFavourites();
+  {
+    std::string size;
+    if (Storage.exists(kTextSizePath) && Storage.readFileToString("NEWS", kTextSizePath, 8, size) && !size.empty() &&
+        size[0] >= '0' && size[0] <= '2') {
+      textSize_ = static_cast<uint8_t>(size[0] - '0');
+    }
+  }
   loadSection(0);
   phase_ = Phase::List;
   requestUpdate();
@@ -461,6 +469,18 @@ void NewsActivity::loop() {
     case newsui::ActionOpen:
       openItem(event.value);
       break;
+    case newsui::ActionTextSize: {
+      textSize_ = static_cast<uint8_t>((textSize_ + 1) % 3);
+      restoreAt_ = lineCount_ > 0 ? static_cast<int>(static_cast<uint64_t>(topLine_) * 1000 / lineCount_) : 0;
+      Storage.ensureDirectoryExists(kCacheDir);
+      HalFile file;
+      if (Storage.openFileForWrite("NEWS", kTextSizePath, file)) {
+        const uint8_t digit = static_cast<uint8_t>('0' + textSize_);
+        file.write(&digit, 1);
+      }
+      requestUpdate();
+      break;
+    }
     case newsui::ActionFavourite:
       toggleFavourite();
       break;
@@ -535,9 +555,12 @@ void NewsActivity::render(RenderLock&&) {
   renderer.clearScreen();
   // The reading cut one step down: a few more words to the line.
   const toybox::Faces faces =
-      phase_ == Phase::Reading
-          ? toybox::Faces{toybox::kReadingSmallFontId, toybox::kReadingMidFontId, toybox::kReadingBoldFontId}
-          : toybox::Faces{toybox::kTileFontId, toybox::kReadingMidFontId, toybox::kDisplayFontId};
+      phase_ == Phase::Reading ? toybox::Faces{toybox::kReadingSmallFontId,
+                                               textSize_ == 0   ? toybox::kReadingSmallFontId
+                                               : textSize_ == 2 ? toybox::kReadingFontId
+                                                                : toybox::kReadingMidFontId,
+                                               toybox::kReadingBoldFontId}
+                               : toybox::Faces{toybox::kTileFontId, toybox::kReadingMidFontId, toybox::kDisplayFontId};
   fui::GfxRendererTarget target = toybox::makeTarget(renderer, faces);
   const fui::DeviceContext device = target.deviceContext();
   const fui::ThemeTokens& tokens = toybox::themeTokens();
@@ -603,6 +626,12 @@ void NewsActivity::render(RenderLock&&) {
       const fui::Rect body = newsui::readerBody(device);
       visibleLines_ = fui::textAreaVisibleLines(body, target.lineHeight(tokens.bodyText.font));
       lineCount_ = wrap_.lineCount(target, body.width, document_.c_str(), tokens.bodyText);
+      if (restoreAt_ >= 0 && visibleLines_ > 0) {
+        // The same place in the text, snapped to the top of a page.
+        const uint32_t line = static_cast<uint32_t>(static_cast<uint64_t>(lineCount_) * restoreAt_ / 1000);
+        topLine_ = line / visibleLines_ * visibleLines_;
+        restoreAt_ = -1;
+      }
       const uint32_t pages = visibleLines_ > 0 ? (lineCount_ + visibleLines_ - 1) / visibleLines_ : 1;
       const uint32_t page = visibleLines_ > 0 ? topLine_ / visibleLines_ + 1 : 1;
       std::snprintf(pageLabel_, sizeof(pageLabel_), "%lu/%lu", static_cast<unsigned long>(page),

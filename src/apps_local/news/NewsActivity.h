@@ -88,6 +88,12 @@ class NewsActivity final : public Activity {
   uint32_t topLine_ = 0;
   uint32_t lineCount_ = 0;
   uint16_t visibleLines_ = 0;
+  // Which of the three reading cuts an article is set in: 0 small, 1 the step
+  // under the reading cut, 2 the reading cut. Kept on the card.
+  uint8_t textSize_ = 1;
+  // After the size changes, where in the article to land once it is re-wrapped,
+  // in thousandths; -1 when there is nothing to restore.
+  int restoreAt_ = -1;
   static constexpr int kPageLabelCap = 2 * toybox::kULongChars + toybox::literalChars("/") + 1;
   char pageLabel_[kPageLabelCap] = "";
 
