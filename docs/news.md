@@ -16,6 +16,10 @@ any of them.
   headlines never go near it.
 - Every article that opened in full is kept in `/.crosspoint/news/a/` and opens
   from the card after that; its row says ON CARD. Nothing prunes that folder.
+- FAV in the reader makes the article a favourite: it is listed under the FAVS
+  tab and its text is copied to `/.crosspoint/news/f/`, where it stays until
+  FAV is tapped again. The list is `/.crosspoint/news/favourites.tsv`, forty
+  at most.
 - Behind a paywall, or on a page that needs a browser, the reader shows the
   outlet's own summary from the feed and says that is what it is.
 
@@ -30,7 +34,8 @@ newest first, one row per address, forty rows at most.
 
 Verified by `host-tests/news` and in the simulator: the scanner against RSS 2.0
 and Atom written to the specifications, dates, the section file, the list, the
-lead, paging, the tabs, an article opened from the card.
+lead, paging, the tabs, an article opened from the card, making and listing a
+favourite.
 
 **Not verified anywhere**: any real feed. The machine this was built on could
 not reach one, so the addresses in the table are unchecked and the fixtures are

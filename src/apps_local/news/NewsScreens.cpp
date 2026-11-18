@@ -40,7 +40,8 @@ fui::TextStyle kickerStyle(const fui::ThemeTokens& tokens) {
 }
 
 int16_t leadHeight(const fui::DrawTarget& target, const fui::ThemeTokens& tokens) {
-  return static_cast<int16_t>(target.lineHeight(kickerStyle(tokens).font) + 2 * target.lineHeight(tokens.titleText.font) +
+  return static_cast<int16_t>(target.lineHeight(kickerStyle(tokens).font) +
+                              2 * target.lineHeight(tokens.titleText.font) +
                               2 * target.lineHeight(tokens.smallText.font) + 2 * toybox::kGutter);
 }
 
@@ -72,7 +73,7 @@ int16_t listTitleWidth(const fui::DeviceContext& device, const fui::ThemeTokens&
 }
 
 void buildList(toybox::Screen& screen, const ListModel& model) {
-  chrome(screen, model.title, nullptr, true);
+  chrome(screen, model.title, nullptr, model.canRefresh);
 
   // The footer: the sections, the one being read inverted.
   {
@@ -112,6 +113,7 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
     y = static_cast<int16_t>(y + headH + toybox::kGutter);
     screen.target().text(fui::makeRect(body.x, y, body.width, textH), text, message);
     y = static_cast<int16_t>(y + textH + 2 * toybox::kGutter);
+    if (!model.canRefresh) return;
     fui::ButtonProps button;
     button.label = "FETCH THE HEADLINES";
     button.action = ActionRefresh;
@@ -189,21 +191,30 @@ uint32_t buildReader(toybox::Screen& screen, const ReaderModel& model) {
   const fui::DeviceContext& device = screen.device();
   const int16_t footerY = static_cast<int16_t>(device.height - toybox::kMargin - kFooterHeight);
   const int16_t usable = static_cast<int16_t>(device.width - 2 * toybox::kMargin);
-  const int16_t arrow = static_cast<int16_t>((usable - 2 * toybox::kGutter) / 4);
-  const int16_t middle = static_cast<int16_t>(usable - 2 * arrow - 2 * toybox::kGutter);
+  // Four across: the two arrows, the way back, and the favourite, which is
+  // inverted while the article is one.
+  const int16_t arrow = static_cast<int16_t>((usable - 3 * toybox::kGutter) / 6);
+  const int16_t wide = static_cast<int16_t>((usable - 2 * arrow - 3 * toybox::kGutter) / 2);
   const auto footerButton = [&screen, footerY](const char* label, const fui::ActionId action, const int16_t x,
-                                               const int16_t width, const bool enabled) {
+                                               const int16_t width, const bool enabled, const bool inverted) {
     fui::ButtonProps button;
     button.label = label;
     button.action = enabled ? action : fui::NO_ACTION;
-    if (!enabled) button.styles = toybox::disabledButtonStyles();
+    if (!enabled) {
+      button.styles = toybox::disabledButtonStyles();
+    } else if (!inverted) {
+      button.styles = toybox::rowStyles();
+    }
     screen.button(button, fui::makeRect(x, footerY, width, kFooterHeight));
   };
-  const int16_t left = toybox::kMargin;
-  footerButton("<", ActionPagePrev, left, arrow, model.canPagePrev);
-  footerButton("HEADLINES", ActionBack, static_cast<int16_t>(left + arrow + toybox::kGutter), middle, true);
-  footerButton(">", ActionPageNext, static_cast<int16_t>(left + arrow + middle + 2 * toybox::kGutter), arrow,
-               model.canPageNext);
+  int16_t x = toybox::kMargin;
+  footerButton("<", ActionPagePrev, x, arrow, model.canPagePrev, true);
+  x = static_cast<int16_t>(x + arrow + toybox::kGutter);
+  footerButton("LIST", ActionBack, x, wide, true, true);
+  x = static_cast<int16_t>(x + wide + toybox::kGutter);
+  footerButton(model.favourite ? "FAV: YES" : "FAV: NO", ActionFavourite, x, wide, true, model.favourite);
+  x = static_cast<int16_t>(x + wide + toybox::kGutter);
+  footerButton(">", ActionPageNext, x, static_cast<int16_t>(toybox::kMargin + usable - x), model.canPageNext, true);
   if (model.wrap == nullptr) return 0;
   const fui::TextStyle style = screen.theme().bodyText;
   model.wrap->draw(screen.target(), readerBody(device), model.text, style, model.topLine);

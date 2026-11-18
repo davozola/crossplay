@@ -16,6 +16,7 @@ enum : fui::ActionId {
   ActionRefresh = 344,
   ActionBack = 345,
   ActionOpenLead = 346,
+  ActionFavourite = 347,
   ActionTab0 = 350,  // one per section, in order
 };
 
@@ -29,6 +30,9 @@ struct ListModel {
   int tab = 0;
   const char* emptyHeadline = nullptr;
   const char* emptyMessage = nullptr;
+  // Whether this list is one that can be fetched: the REFRESH chip, and the
+  // button on its empty state.
+  bool canRefresh = true;
   const fui::ListItem* items = nullptr;
   int count = 0;
   int topIndex = 0;
@@ -53,6 +57,7 @@ struct ReaderModel {
   const char* pageLabel = "";
   bool canPagePrev = false;
   bool canPageNext = false;
+  bool favourite = false;
 };
 uint32_t buildReader(toybox::Screen& screen, const ReaderModel& model);
 fui::Rect readerBody(const fui::DeviceContext& device);

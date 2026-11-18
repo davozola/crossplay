@@ -31,6 +31,8 @@ constexpr const char* kCacheDir = "/.crosspoint/news";
 // Every article that opened in full is kept here, so it opens again with no
 // network. Nothing prunes it: an article is a few tens of kilobytes.
 constexpr const char* kArticleDir = "/.crosspoint/news/a";
+constexpr const char* kFavouriteDir = "/.crosspoint/news/f";
+constexpr const char* kFavouriteIndex = "/.crosspoint/news/favourites.tsv";
 constexpr size_t kMaxArticleBytes = 128u * 1024u;
 constexpr size_t kCacheCap = 96u * 1024u;
 
@@ -39,6 +41,8 @@ void cachePath(const int section, char* out, const size_t cap) {
 }
 
 std::string articlePath(const std::string& url) { return std::string(kArticleDir) + "/" + news::articleFile(url); }
+
+std::string favouritePath(const std::string& url) { return std::string(kFavouriteDir) + "/" + news::articleFile(url); }
 
 uint32_t nowSeconds() {
   const time_t now = time(nullptr);
@@ -56,6 +60,7 @@ void NewsActivity::onEnter() {
   toybox::ensureFonts(renderer);
   // No radio here: the last headlines open from the card, and the first tap
   // that needs the network is what asks for it.
+  loadFavourites();
   loadSection(0);
   phase_ = Phase::List;
   requestUpdate();
@@ -75,11 +80,15 @@ void NewsActivity::loadSection(const int section) {
   items_.clear();
   fetched_ = 0;
   fetchFailed_ = false;
-  char path[48];
-  cachePath(section, path, sizeof(path));
-  std::string text;
-  if (Storage.exists(path) && Storage.readFileToString("NEWS", path, kCacheCap, text)) {
-    news::unpackSection(text, items_, fetched_);
+  if (showingFavourites()) {
+    items_ = favourites_;
+  } else {
+    char path[48];
+    cachePath(section, path, sizeof(path));
+    std::string text;
+    if (Storage.exists(path) && Storage.readFileToString("NEWS", path, kCacheCap, text)) {
+      news::unpackSection(text, items_, fetched_);
+    }
   }
   topIndex_ = 0;
   rowsBuilt_ = false;
@@ -98,9 +107,74 @@ void NewsActivity::saveSection() {
   file.write(reinterpret_cast<const uint8_t*>(packed.data()), packed.size());
 }
 
-bool NewsActivity::hasLead() const {
-  return !items_.empty() && topIndex_ == 0;
+const char* NewsActivity::sourceOf(const news::Item& item) const {
+  if (showingFavourites()) return item.summary.c_str();
+  const news::Section& section = news::kSections[section_];
+  return item.feed < section.feedCount ? section.feeds[item.feed].name : "";
 }
+
+void NewsActivity::loadFavourites() {
+  favourites_.clear();
+  std::string text;
+  uint32_t unused = 0;
+  if (Storage.exists(kFavouriteIndex) && Storage.readFileToString("NEWS", kFavouriteIndex, kCacheCap, text)) {
+    news::unpackSection(text, favourites_, unused);
+  }
+}
+
+void NewsActivity::saveFavourites() {
+  Storage.ensureDirectoryExists(kCacheDir);
+  const std::string packed = news::packSection(favourites_, 0);
+  HalFile file;
+  if (!Storage.openFileForWrite("NEWS", kFavouriteIndex, file)) {
+    LOG_ERR("NEWS", "could not keep the favourites on the card");
+    return;
+  }
+  file.write(reinterpret_cast<const uint8_t*>(packed.data()), packed.size());
+}
+
+bool NewsActivity::isFavourite(const std::string& url) const {
+  for (const news::Item& f : favourites_) {
+    if (f.url == url) return true;
+  }
+  return false;
+}
+
+void NewsActivity::toggleFavourite() {
+  if (reading_.url.empty() || document_.empty()) return;
+  const std::string path = favouritePath(reading_.url);
+  if (isFavourite(reading_.url)) {
+    for (size_t i = 0; i < favourites_.size(); ++i) {
+      if (favourites_[i].url == reading_.url) {
+        favourites_.erase(favourites_.begin() + static_cast<long>(i));
+        break;
+      }
+    }
+    Storage.remove(path.c_str());
+  } else {
+    if (static_cast<int>(favourites_.size()) >= news::kPerSection) {
+      LOG_ERR("NEWS", "favourites are full");
+      return;
+    }
+    Storage.ensureDirectoryExists(kFavouriteDir);
+    HalFile file;
+    if (!Storage.openFileForWrite("NEWS", path, file)) {
+      LOG_ERR("NEWS", "could not keep the favourite on the card");
+      return;
+    }
+    file.write(reinterpret_cast<const uint8_t*>(document_.data()), document_.size());
+    news::Item kept = reading_;
+    kept.summary = readingSource_;
+    kept.feed = 0;
+    favourites_.insert(favourites_.begin(), std::move(kept));
+  }
+  saveFavourites();
+  if (showingFavourites()) items_ = favourites_;
+  rowsBuilt_ = false;
+  requestUpdate();
+}
+
+bool NewsActivity::hasLead() const { return !items_.empty() && topIndex_ == 0; }
 
 void NewsActivity::ensureConnected(const Pending what, const char* busyMessage) {
   if (WiFi.status() == WL_CONNECTED) {
@@ -173,8 +247,7 @@ bool NewsActivity::fetchSection() {
 bool NewsActivity::fetchArticle() {
   if (selected_ < 0 || selected_ >= static_cast<int>(items_.size())) return false;
   const news::Item& item = items_[static_cast<size_t>(selected_)];
-  const news::Section& section = news::kSections[section_];
-  const char* source = item.feed < section.feedCount ? section.feeds[item.feed].name : "";
+  const char* source = sourceOf(item);
 
   std::string response;
   std::string url = kExtractorPrefix;
@@ -232,6 +305,8 @@ bool NewsActivity::fetchArticle() {
 
   RenderLock lock(*this);
   readerTitle_ = source;
+  readingSource_ = source;
+  reading_ = item;
   topLine_ = 0;
   lineCount_ = 0;
   visibleLines_ = 0;
@@ -242,16 +317,19 @@ bool NewsActivity::fetchArticle() {
 bool NewsActivity::openKept(const int index) {
   if (index < 0 || index >= static_cast<int>(items_.size())) return false;
   const news::Item& item = items_[static_cast<size_t>(index)];
-  const std::string path = articlePath(item.url);
+  // A favourite's own copy first: it outlives anything that clears the others.
+  std::string path = favouritePath(item.url);
+  if (!Storage.exists(path.c_str())) path = articlePath(item.url);
   std::string text;
   if (!Storage.exists(path.c_str()) || !Storage.readFileToString("NEWS", path, kMaxArticleBytes * 2, text) ||
       text.empty()) {
     return false;
   }
-  const news::Section& section = news::kSections[section_];
   RenderLock lock(*this);
   document_ = std::move(text);
-  readerTitle_ = item.feed < section.feedCount ? section.feeds[item.feed].name : "";
+  readingSource_ = sourceOf(item);
+  reading_ = item;
+  readerTitle_ = readingSource_;
   topLine_ = 0;
   lineCount_ = 0;
   visibleLines_ = 0;
@@ -359,7 +437,7 @@ void NewsActivity::loop() {
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
 
-  if (event.action >= newsui::ActionTab0 && event.action < newsui::ActionTab0 + news::kSectionCount) {
+  if (event.action >= newsui::ActionTab0 && event.action <= newsui::ActionTab0 + news::kSectionCount) {
     loadSection(event.action - newsui::ActionTab0);
     phase_ = Phase::List;
     requestUpdate();
@@ -372,7 +450,11 @@ void NewsActivity::loop() {
     case newsui::ActionOpen:
       openItem(event.value);
       break;
+    case newsui::ActionFavourite:
+      toggleFavourite();
+      break;
     case newsui::ActionRefresh:
+      if (showingFavourites()) break;
       ensureConnected(Pending::Section, "FETCHING THE HEADLINES");
       break;
     case newsui::ActionPagePrev:
@@ -382,6 +464,7 @@ void NewsActivity::loop() {
       turnPage(1);
       break;
     case newsui::ActionBack:
+      if (showingFavourites()) items_ = favourites_;
       phase_ = Phase::List;
       requestUpdate();
       break;
@@ -391,7 +474,6 @@ void NewsActivity::loop() {
 }
 
 void NewsActivity::buildRows() {
-  const news::Section& section = news::kSections[section_];
   const uint32_t now = nowSeconds();
   labels_.clear();
   values_.clear();
@@ -406,16 +488,22 @@ void NewsActivity::buildRows() {
     const news::Item& item = items_[i];
     char age[8];
     news::ageLabel(item.when, now, age, sizeof(age));
-    std::string value = item.feed < section.feedCount ? section.feeds[item.feed].name : "";
+    std::string value = sourceOf(item);
     if (age[0] != '\0') {
       value += "  ";
       value += age;
     }
-    if (Storage.exists(articlePath(item.url).c_str())) value += "  ON CARD";
+    if (!showingFavourites()) {
+      if (isFavourite(item.url)) {
+        value += "  FAV";
+      } else if (Storage.exists(articlePath(item.url).c_str())) {
+        value += "  ON CARD";
+      }
+    }
     if (i == 0) {
       leadKicker_ = value;
       leadTitle_ = item.title;
-      leadSummary_ = item.summary;
+      leadSummary_ = showingFavourites() ? std::string() : item.summary;
       continue;
     }
     labels_.push_back(item.title);
@@ -466,11 +554,14 @@ void NewsActivity::render(RenderLock&&) {
       if (topIndex_ >= static_cast<int>(rows_.size())) topIndex_ = 0;
 
       newsui::ListModel model;
-      model.title = news::kSections[section_].title;
+      const bool favourites = showingFavourites();
+      model.title = favourites ? "FAVOURITES" : news::kSections[section_].title;
+      model.canRefresh = !favourites;
       const char* tabs[newsui::kMaxTabs] = {};
-      for (int s = 0; s < news::kSectionCount && s < newsui::kMaxTabs; ++s) tabs[s] = news::kSections[s].name;
+      for (int s = 0; s < news::kSectionCount && s < newsui::kMaxTabs - 1; ++s) tabs[s] = news::kSections[s].name;
+      tabs[news::kSectionCount] = "FAVS";
       model.tabs = tabs;
-      model.tabCount = news::kSectionCount;
+      model.tabCount = news::kSectionCount + 1;
       model.tab = section_;
       model.items = rows_.empty() ? nullptr : rows_.data();
       model.count = static_cast<int>(rows_.size());
@@ -480,7 +571,10 @@ void NewsActivity::render(RenderLock&&) {
         model.leadTitle = leadTitle_.c_str();
         model.leadSummary = leadSummary_.empty() ? nullptr : leadSummary_.c_str();
       }
-      if (items_.empty()) {
+      if (items_.empty() && favourites) {
+        model.emptyHeadline = "NO FAVOURITES YET";
+        model.emptyMessage = "Open an article and tap FAV. It stays here, and its text stays on the card.";
+      } else if (items_.empty()) {
         model.emptyHeadline = fetchFailed_ ? "NOTHING ARRIVED" : "NO HEADLINES YET";
         model.emptyMessage = fetchFailed_ ? "None of this section's feeds answered. Check the network and try again."
                                           : "This section has not been fetched on this card. It needs Wi-Fi once; "
@@ -506,6 +600,7 @@ void NewsActivity::render(RenderLock&&) {
       model.pageLabel = pageLabel_;
       model.canPagePrev = topLine_ > 0;
       model.canPageNext = lineCount_ > topLine_ + visibleLines_;
+      model.favourite = isFavourite(reading_.url);
       newsui::buildReader(screen, model);
       what = "News reader";
       break;

@@ -43,6 +43,14 @@ class NewsActivity final : public Activity {
   // An article already on the card, opened with no network. False if it is not there.
   bool openKept(int index);
   void openItem(int index);
+  // Favourites: a list of their own, with each article's text kept beside it
+  // on the card for as long as it stays one.
+  bool showingFavourites() const { return section_ == news::kSectionCount; }
+  bool isFavourite(const std::string& url) const;
+  void toggleFavourite();
+  void loadFavourites();
+  void saveFavourites();
+  const char* sourceOf(const news::Item& item) const;
   void loadSection(int section);
   void saveSection();
   void buildRows();
@@ -68,6 +76,11 @@ class NewsActivity final : public Activity {
   int topIndex_ = 0;
   int visibleRows_ = 0;
   int selected_ = 0;
+
+  // In a favourite, `summary` holds the outlet's name: its section is not kept.
+  std::vector<news::Item> favourites_;
+  news::Item reading_;
+  std::string readingSource_;
 
   std::string document_;
   std::string readerTitle_;
