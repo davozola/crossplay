@@ -24,7 +24,6 @@
 #include "../clock/ClockFaces.h"
 #include "../history/HistoryCore.h"
 #include "../history/HistoryStore.h"
-#include "../jukebox/JukeboxPeek.h"
 #include "../live/LiveEngine.h"
 #include "../power/LightNap.h"
 #include "../ui/ToyboxFonts.h"
@@ -193,11 +192,10 @@ void TodayActivity::loop() {
       lastFetchMs_ = now;
       wifiActivated_ = true;
       char quiet[sizeof(report_)];
-      const bool wasPlaying = playing_[0] != 0;
       const int kinds = fetchRound(quiet, sizeof(quiet));
       if (kinds < 0) {
         if (intervalMs > kRetryMs) lastFetchMs_ = now - (intervalMs - kRetryMs);
-      } else if (kinds > 0 || wasPlaying || playing_[0] != 0) {
+      } else if (kinds > 0) {
         ask();
       }
       return;
@@ -271,8 +269,7 @@ void TodayActivity::loop() {
                statusHeadline_ == nullptr) {
       // Each part of the page opens the app it is drawn from, and Back there
       // comes back here.
-      static constexpr const char* kApps[] = {"",           "RELOJ",  "WEATHER", "MARKETS", "NAVAL WEATHER",
-                                              "EFEMERIDES", "JUKEBOX"};
+      static constexpr const char* kApps[] = {"", "RELOJ", "WEATHER", "MARKETS", "NAVAL WEATHER", "EFEMERIDES"};
       shelf::openFrom(kApps[target], "HOY", renderer, mappedInput);
     } else if (event.action == ActionDismiss) {
       statusHeadline_ = nullptr;
@@ -329,7 +326,6 @@ int TodayActivity::fetchRound(char* report, const size_t size) {
     live::engine::RadioLease lease(message);
     if (lease.held() && WiFi.status() == WL_CONNECTED) {
       kinds = todaystore::fetchAll(*data_, report, size);
-      jukebox::peekPlaying(playing_, sizeof(playing_));
       // The day's events too, when EFEMERIDES has not fetched them yet. They
       // are an extra: the report stays about the three the page cannot do without.
       if (eventCount_ == 0) {
@@ -409,7 +405,6 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   if (page.clockSet) localtime_r(&t, &page.now);
   page.autoMinutes = autoMinutes_;
   page.wide = wide_;
-  page.playing = playing_;
   page.eventCount = eventCount_;
   for (int i = 0; i < eventCount_; ++i) {
     page.events[i].text = eventText_[i];

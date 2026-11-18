@@ -127,8 +127,6 @@ The firmware's readers run against those captured answers in
   touch on a track starts the album there.
 - **Tapping the cover** opens it large with the track's name and nothing to
   press, for a reader left on a shelf. Any tap goes back.
-- **HOY** shows a "Suena ahora" line with the track when its refresh finds the
-  chosen player playing, and a tap on it opens Jukebox.
 
 ## Not built yet
 
