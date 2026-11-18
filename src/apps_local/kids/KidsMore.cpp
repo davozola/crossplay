@@ -255,11 +255,10 @@ class MemoryMini final : public Mini {
     for (int i = 0; i < game_.count; ++i) {
       if (inside(x, y, g.x + (i % g.cols) * (g.w + g.gap), g.y + (i / g.cols) * (g.h + g.gap), g.w, g.h)) index = i;
     }
-    // Cards going face down again leave their picture as a shadow under a fast
-    // paint, and a shadow gives the card away: that paint is a clean one.
+    // A touch that turns cards down has changed the board wherever it landed.
     const bool turningDown = game_.peeking || game_.second >= 0;
     const memory::Tap result = memory::tap(game_, index);
-    if (turningDown) return Did::Clean;
+    if (turningDown && result == memory::Tap::Nothing) return Did::Paint;
     switch (result) {
       case memory::Tap::Nothing:
         return Did::Nothing;
@@ -362,11 +361,11 @@ class MemoryMini final : public Mini {
         frame(r, x, y, g.w, g.h, 5);
         drawFace(r, card, x + g.w / 2, y + g.h / 2, g.w, g.h);
       } else {
-        // Face down: a grey back with a white heart of a square in it.
-        r.fillRoundedRect(x, y, g.w, g.h, 14, Color::DarkGray);
-        const int inset = std::min(g.w, g.h) / 4;
-        r.fillRoundedRect(x + inset, y + inset, g.w - 2 * inset, g.h - 2 * inset, 10, Color::White);
-        star(r, x + g.w / 2, y + g.h / 2, std::min(g.w, g.h) / 6);
+        // Face down: solid black with a small white star. Solid, because a
+        // grey back or a white one lets the picture it covered show through
+        // as a shadow on this panel, and black does not.
+        r.fillRoundedRect(x, y, g.w, g.h, 14, Color::Black);
+        star(r, x + g.w / 2, y + g.h / 2, std::min(g.w, g.h) / 7, false);
       }
     }
   }
