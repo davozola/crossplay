@@ -23,7 +23,7 @@ Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
-| **Reloj** | Reloj de sobremesa en vertical u horizontal con nueve esferas (trazo, paletas, esfera, anillos, matriz, segmentos, palabras, tambor y relojes), en claro u oscuro. |
+| **Reloj** | Reloj de sobremesa en vertical u horizontal con diez esferas, cada una con su tipografía (editorial, puntos, póster, grotesca, noir, terminal, cápsula, píxel, palabras y analógico), en claro u oscuro. |
 | **Casa** | La temperatura y la humedad de la habitación con el sensor de la propia Sticky, leídas cada tres segundos mientras está abierta, y las últimas 24 horas de cada una en una gráfica. |
 | **Hoy** | Una página para dejar en el soporte: la hora, el tiempo, los mercados, el mar y las efemérides del día, en diez estilos sobre blanco que se cambian deslizando: dos con la letra del firmware y ocho propios (diario, calma, esferas, cartel, un paisaje hecho con los datos, mosaico, billete y hoja de almanaque con la luna). Llena la pantalla entera, tocar cada parte abre su app y Atrás vuelve a Hoy. Al actualizar trae también las efemérides. |
 | **Reversi** | Atrapa las fichas del otro color entre dos tuyas y se dan la vuelta. Contra el dispositivo en tres niveles o a dos en la misma pantalla, en tablero de 8 o de 6. |
@@ -199,7 +199,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
 | **Hoy**         | The time, the weather, the markets and the sea on one page.              |
 | **Casa**        | The room's temperature and humidity, and the last day of each as a line. |
-| **Reloj**       | A desk clock, upright or on its side, in nine faces.                     |
+| **Reloj**       | A desk clock, upright or on its side, in ten faces set in ten typefaces.  |
 | **Presenter**   | A Bluetooth slide clicker with a talk clock that warns at five and two minutes. |
 | **Liner Notes** | Notes on the records in your own library, read from a pack you build and copy to the card. |
 | **Pomodoro**    | A focus timer that redraws once a minute and beeps when the session ends. |
