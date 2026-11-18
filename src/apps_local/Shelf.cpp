@@ -55,6 +55,7 @@
 #include "murdle/MurdleActivity.h"
 #include "mystery/MysteryActivity.h"
 #include "naval/NavalActivity.h"
+#include "news/NewsActivity.h"
 #include "notes/NotesActivity.h"
 #include "paint/PaintActivity.h"
 #include "picross/PicrossActivity.h"
@@ -223,6 +224,9 @@ constexpr shelf::Item kGames[] = {
 constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create, 1, true, "La portada de Hacker News",
      "La portada en una letra de lectura; los artículos que abres se guardan en la tarjeta para leerlos sin red."},
+    {"NEWS", &icon_news_32, &NewsActivity::create, 1, true, "Titulares de mundo, economía, tech e IA",
+     "Cinco secciones leídas del feed de cada medio, sin intermediarios; los titulares y los artículos que abres se "
+     "guardan en la tarjeta para leerlos sin red."},
     {"THE BATCH", &icon_batch_32, &BatchActivity::create, 1, true, "El boletín semanal de IA",
      "El boletín de DeepLearning.AI noticia a noticia, con archivo desde el primer número, favoritos y lectura sin red "
      "de lo ya abierto."},
