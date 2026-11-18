@@ -9,7 +9,8 @@ enum class Started : unsigned char {
   Yes,
   NotSetUp,       // nobody has signed in, or no player was chosen, in JUKEBOX
   NoServer,       // the settings hold no media server address yet
-  NoQueue,        // the server did not make a queue for that key
+  Unreachable,    // no listed server answered at all
+  NoQueue,        // every server that answered made no queue for that key
   PlayerRefused,  // the queue exists and the player did not take it
 };
 

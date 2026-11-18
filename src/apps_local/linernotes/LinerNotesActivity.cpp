@@ -313,6 +313,9 @@ void LinerNotesActivity::startAlbum() {
     case jukebox::Started::NoServer:
       note_ = "OPEN JUKEBOX AND BROWSE THE LIBRARY ONCE, SO IT LEARNS THE SERVER.";
       break;
+    case jukebox::Started::Unreachable:
+      note_ = "THE MEDIA SERVER DID NOT ANSWER. IS IT ON, AND ON THIS NETWORK?";
+      break;
     case jukebox::Started::NoQueue:
       note_ = "THE MEDIA SERVER DID NOT FIND THIS ALBUM.";
       break;
