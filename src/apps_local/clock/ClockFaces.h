@@ -17,6 +17,8 @@ struct Moment {
   int weekday = 0;  // 0 Sunday
   int day = 1;
   int month = 1;
+  int year = 2026;
+  int yearDay = 0;  // 0 on the first of January
 };
 
 void draw(GfxRenderer& renderer, int face, const Moment& now);

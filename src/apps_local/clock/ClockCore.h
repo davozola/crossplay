@@ -1,14 +1,15 @@
 #pragma once
 
 // RELOJ's freestanding half: everything a face needs that is not a pixel. The
-// time in Spanish words, the numerals as pen strokes, as seven segments and as
-// a 5x7 dot matrix, and the short names of days and months.
+// time and the date said in Spanish, the week of the year, and the pen-stroke
+// numerals HOY borrows.
 
+#include <cstddef>
 #include <cstdint>
 
 namespace clockcore {
 
-constexpr int kFaces = 9;
+constexpr int kFaces = 10;
 const char* faceName(int face);
 
 // One stroke of a numeral, in a box 1 wide and 1.6 tall with y downwards.
@@ -22,34 +23,35 @@ constexpr float kNumeralHeight = 1.6f;
 // The strokes of digit 0..9; returns how many.
 int strokesOf(int digit, const Stroke*& out);
 
-// Seven segments, bit 0 = a (top) clockwise to f, bit 6 = g (middle).
-uint8_t segmentsOf(int digit);
-// Seven rows of five dots, bit 4 the leftmost.
-const uint8_t* dotsOf(int digit);
+// A number from 0 to 59 in words, with its accents, in UTF-8: "nueve",
+// "cincuenta y nueve".
+void numberEs(int n, char* out, size_t cap);
 
-// The time said in Spanish, to the nearest five minutes, on up to three lines:
-// "SON LAS" / "DIEZ" / "Y VEINTE". Capitals without accents: the display face
-// has none.
-struct Words {
-  const char* lead;  // "SON LAS", "ES LA"
-  const char* hour;  // "DIEZ"
-  const char* tail;  // "Y VEINTE", "EN PUNTO"
+// The time as it is said, to the minute, in three parts: "son las" / "diez" /
+// "y nueve". Past the half hour it counts down to the next: "menos veinte".
+struct Said {
+  const char* lead;
+  const char* hour;
+  char tail[32];
 };
-Words wordsEs(int hour, int minute);
+Said saidEs(int hour, int minute);
 
-// A clock made of clocks: each numeral is six small dials, two across and
-// three down, whose two hands are set so that together they draw it. A hand
-// points Up, Right, Down or Left; a dial with nothing to draw rests both hands
-// on the diagonal.
-enum Hand : uint8_t { Up = 0, Right = 1, Down = 2, Left = 3, Rest = 4 };
-struct Dial {
-  Hand a;
-  Hand b;
-};
-// The six dials of digit 0..9, row by row.
-const Dial* dialsOf(int digit);
+// The time in one line with the part of the day it falls in.
+void longTimeEs(int hour, int minute, char* out, size_t cap);
 
-const char* weekdayEs(int weekday);  // 0 is Sunday: "DOM"
-const char* monthEs(int month);      // 1-based: "ENE"
+// The ISO 8601 week of a date, from its year, its day of the year (0 for the
+// first of January) and its weekday (0 Sunday).
+int isoWeek(int year, int yearDay, int weekday);
+
+// Names with their accents, in UTF-8. Weekday 0 is Sunday; months are 1-based.
+const char* weekdayLong(int weekday, bool capitals);
+const char* weekdayShort(int weekday, bool capitals);
+const char* monthLong(int month);
+const char* monthShort(int month, bool capitals);
+const char* monthRoman(int month);
+
+// Capitals without accents, for the Toybox faces: "DOM", "ENE".
+const char* weekdayEs(int weekday);
+const char* monthEs(int month);
 
 }  // namespace clockcore

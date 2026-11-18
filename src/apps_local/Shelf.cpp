@@ -256,9 +256,9 @@ constexpr shelf::Item kApps[] = {
      "Una página para dejar en el soporte, en diez estilos que se cambian deslizando. Tocar cada parte abre su app."},
     {"CASA", &icon_casa_32, &CasaActivity::create, 0, false, "Temperatura y humedad",
      "Con el sensor de la propia Sticky, leído cada tres segundos, y las últimas 24 horas en una gráfica."},
-    {"RELOJ", &icon_clock_32, &ClockActivity::create, 0, false, "Reloj de mesa, nueve esferas",
-     "En vertical u horizontal, en claro u oscuro: trazo, paletas, esfera, anillos, matriz, segmentos, "
-     "palabras, tambor y relojes."},
+    {"RELOJ", &icon_clock_32, &ClockActivity::create, 0, false, "Reloj de mesa, diez esferas",
+     "En vertical u horizontal, en claro u oscuro: editorial, puntos, póster, grotesca, noir, terminal, cápsula, "
+     "píxel, palabras y analógico."},
     {"LINER NOTES", &icon_linernotes_32, &LinerNotesActivity::create, 3, false, "Notas de tus discos",
      "Lo que conviene saber de los discos de tu propia colección, en español o inglés, leído de un paquete en la "
      "tarjeta que haces tú. Abre el disco en Plexamp a través del Jukebox."},

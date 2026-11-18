@@ -68,6 +68,8 @@ clockfaces::Moment ClockActivity::now() const {
   m.weekday = parts.tm_wday;
   m.day = parts.tm_mday;
   m.month = parts.tm_mon + 1;
+  m.year = parts.tm_year + 1900;
+  m.yearDay = parts.tm_yday;
   return m;
 }
 

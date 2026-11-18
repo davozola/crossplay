@@ -7,7 +7,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxTokens.h"
-#include "ClockDigits.h"
+#include "ClockType.h"
 
 namespace clockfaces {
 
@@ -79,36 +79,6 @@ void numeral(const Canvas& c, const int digit, const float x, const float y, con
   }
 }
 
-// A ring between two radii, from `from` to `to` turns of the dial (0 at twelve
-// o'clock, clockwise). `shade` 0 is solid; 1 leaves one pixel in nine, for a
-// track that is there without competing.
-void ring(const Canvas& c, const int cx, const int cy, const int inner, const int outer, const float from,
-          const float to, const int shade) {
-  for (int dy = -outer; dy <= outer; ++dy) {
-    int runStart = 0;
-    bool running = false;
-    for (int dx = -outer; dx <= outer + 1; ++dx) {
-      bool on = false;
-      if (dx <= outer) {
-        const int d2 = dx * dx + dy * dy;
-        if (d2 <= outer * outer && d2 >= inner * inner) {
-          float turn = std::atan2(static_cast<float>(dx), static_cast<float>(-dy)) / (2 * kPi);
-          if (turn < 0) turn += 1;
-          on = turn >= from && turn <= to;
-          if (on && shade == 1) on = ((cx + dx) % 3 == 0) && ((cy + dy) % 3 == 0);
-        }
-      }
-      if (on && !running) {
-        running = true;
-        runStart = dx;
-      } else if (!on && running) {
-        running = false;
-        c.r.fillRect(cx + runStart, cy + dy, dx - runStart, 1, true);
-      }
-    }
-  }
-}
-
 // Text in one of the Toybox cuts, placed by its ink: `top` is where the
 // capitals begin. align: -1 left of x, 0 centred on x, 1 right-aligned to x.
 void text(const Canvas& c, const int font, const toybox::CutMetrics& cut, const int x, const int top, const char* s,
@@ -118,538 +88,554 @@ void text(const Canvas& c, const int font, const toybox::CutMetrics& cut, const 
   c.r.drawText(font, left, top - (cut.ascender - cut.inkHeight), s, ink);
 }
 
-void dateLine(const Moment& now, char* out, const size_t cap) {
-  std::snprintf(out, cap, "%s %d %s", cc::weekdayEs(now.weekday), now.day, cc::monthEs(now.month));
-}
+// ---------------------------------------------------------------- the type
+// The faces are set in type baked by tools_local/clock/make_type.py: a string
+// is drawn from its pen position on the baseline, in UTF-8.
 
-// The four numerals of the time, or dashes when the clock has not been set.
-struct Digits {
-  int d[4];
-  bool valid;
-};
-Digits digitsOf(const Moment& now) {
-  return Digits{{now.hour / 10, now.hour % 10, now.minute / 10, now.minute % 10}, now.valid};
-}
+using clocktype::Font;
+using clocktype::Glyph;
 
-void dash(const Canvas& c, const float x, const float y, const float boxW, const float pen, const bool ink = true) {
-  const float mid = y + boxW * cc::kNumeralHeight / 2;
-  stroke(c, x + boxW * 0.2f, mid, x + boxW * 0.8f, mid, pen, ink);
-}
-
-// ---------------------------------------------------------------- TRAZO
-// The hours heavy, the minutes drawn with a hairline: one numeral face at two
-// weights, and nothing else on the page but the date.
-void faceTrazo(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
-  char date[32];
-  dateLine(now, date, sizeof(date));
-  if (c.wide()) {
-    const float boxW = 150;
-    const float boxH = boxW * cc::kNumeralHeight;
-    const float gap = 22;
-    const float colon = 56;
-    const float total = boxW * 4 + gap * 2 + colon;
-    float x = (c.w - total) / 2;
-    const float y = (c.h - boxH) / 2 - 24;
-    for (int i = 0; i < 4; ++i) {
-      const float pen = i < 2 ? boxW * 0.13f : boxW * 0.035f;
-      if (t.valid)
-        numeral(c, t.d[i], x, y, boxW, pen);
-      else
-        dash(c, x, y, boxW, pen);
-      x += boxW + (i == 1 ? colon : gap);
-    }
-    if (now.valid) text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, static_cast<int>(y + boxH) + 36, date);
-    return;
-  }
-  const float boxW = 186;
-  const float boxH = boxW * cc::kNumeralHeight;
-  const float gap = 34;
-  const float x0 = (c.w - boxW * 2 - gap) / 2;
-  const float y0 = 46;
-  for (int i = 0; i < 4; ++i) {
-    const float pen = i < 2 ? boxW * 0.13f : boxW * 0.035f;
-    const float x = x0 + (i % 2) * (boxW + gap);
-    const float y = y0 + (i / 2) * (boxH + 36);
-    if (t.valid)
-      numeral(c, t.d[i], x, y, boxW, pen);
-    else
-      dash(c, x, y, boxW, pen);
-  }
-  if (now.valid) text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, c.h - 80, date);
-}
-
-// ---------------------------------------------------------------- PALETAS
-// A split-flap board: four dark leaves, each cut across its middle.
-void facePaletas(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
-  char date[32];
-  dateLine(now, date, sizeof(date));
-  const bool wide = c.wide();
-  const int cardW = wide ? 168 : 204;
-  const int cardH = wide ? 290 : 300;
-  const int gap = wide ? 14 : 20;
-  const int group = wide ? 44 : 0;  // between the hours and the minutes
-  const int left = wide ? (c.w - cardW * 4 - gap * 2 - group) / 2 : (c.w - cardW * 2 - gap) / 2;
-  const int top = wide ? (c.h - cardH) / 2 - 26 : 44;
-  for (int i = 0; i < 4; ++i) {
-    const int x = wide ? left + i * (cardW + gap) + (i >= 2 ? group - gap : 0) : left + (i % 2) * (cardW + gap);
-    const int y = wide ? top : top + (i / 2) * (cardH + 34);
-    c.r.fillRoundedRect(x, y, cardW, cardH, 22, Color::Black);
-    const float boxW = cardW * 0.62f;
-    const float boxH = boxW * cc::kNumeralHeight;
-    const float nx = x + (cardW - boxW) / 2;
-    const float ny = y + (cardH - boxH) / 2;
-    if (t.valid)
-      numeral(c, t.d[i], nx, ny, boxW, boxW * 0.105f, false);
-    else
-      dash(c, nx, ny, boxW, boxW * 0.105f, false);
-    // The hinge: a clean cut, and a pin at either side.
-    c.r.fillRect(x, y + cardH / 2 - 2, cardW, 4, false);
-    c.r.fillRect(x - 5, y + cardH / 2 - 12, 10, 24, true);
-    c.r.fillRect(x + cardW - 5, y + cardH / 2 - 12, 10, 24, true);
-  }
-  if (wide) {
-    // The pair of dots between hours and minutes.
-    const int cx = left + 2 * (cardW + gap) - gap + group / 2;
-    disc(c, cx, top + cardH / 2 - 46, 9);
-    disc(c, cx, top + cardH / 2 + 46, 9);
-  }
-  if (now.valid) {
-    text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, wide ? top + cardH + 38 : c.h - 78, date);
-  }
-}
-
-// ---------------------------------------------------------------- ESFERA
-// A dial with nothing on it but its marks and two hands, and the date set
-// beside it like the page of a calendar.
-void faceEsfera(const Canvas& c, const Moment& now) {
-  const bool wide = c.wide();
-  const int radius = wide ? c.h / 2 - 26 : c.w / 2 - 26;
-  const int cx = wide ? radius + 36 : c.w / 2;
-  const int cy = wide ? c.h / 2 : radius + 44;
-  ring(c, cx, cy, radius - 5, radius, 0, 1, 0);
-  for (int k = 0; k < 60; ++k) {
-    const float a = static_cast<float>(k) / 60 * 2 * kPi;
-    const float sx = std::sin(a);
-    const float sy = -std::cos(a);
-    if (k % 5 == 0) {
-      const float in = radius - (k % 15 == 0 ? 46.0f : 34.0f);
-      stroke(c, cx + sx * in, cy + sy * in, cx + sx * (radius - 16), cy + sy * (radius - 16),
-             k % 15 == 0 ? 5.0f : 3.0f);
+const Glyph* glyphOf(const Font& font, const uint16_t codepoint) {
+  int lo = 0;
+  int hi = font.count - 1;
+  while (lo <= hi) {
+    const int mid = (lo + hi) / 2;
+    if (font.glyphs[mid].codepoint == codepoint) return &font.glyphs[mid];
+    if (font.glyphs[mid].codepoint < codepoint) {
+      lo = mid + 1;
     } else {
-      disc(c, static_cast<int>(std::lround(cx + sx * (radius - 18))),
-           static_cast<int>(std::lround(cy + sy * (radius - 18))), 1);
+      hi = mid - 1;
     }
   }
-  if (now.valid) {
-    const float ha = (static_cast<float>(now.hour % 12) + static_cast<float>(now.minute) / 60) / 12 * 2 * kPi;
-    const float ma = static_cast<float>(now.minute) / 60 * 2 * kPi;
-    // The minute hand is drawn in white first, a little fatter, so it stays
-    // readable where it crosses the hour hand.
-    stroke(c, cx - std::sin(ha) * 22, cy + std::cos(ha) * 22, cx + std::sin(ha) * radius * 0.5f,
-           cy - std::cos(ha) * radius * 0.5f, 9);
-    stroke(c, cx - std::sin(ma) * 30, cy + std::cos(ma) * 30, cx + std::sin(ma) * radius * 0.8f,
-           cy - std::cos(ma) * radius * 0.8f, 8, false);
-    stroke(c, cx - std::sin(ma) * 30, cy + std::cos(ma) * 30, cx + std::sin(ma) * radius * 0.8f,
-           cy - std::cos(ma) * radius * 0.8f, 4.5f);
-  }
-  disc(c, cx, cy, 13);
-  disc(c, cx, cy, 5, false);
-  if (!now.valid) return;
-  // The calendar leaf: weekday, the day large, the month.
-  const int px = wide ? cx + radius + (c.w - cx - radius) / 2 : c.w / 2;
-  const float boxW = wide ? 92 : 62;
-  const float boxH = boxW * cc::kNumeralHeight;
-  const int blockH = static_cast<int>(boxH) + 2 * (toybox::kDisplayCut.inkHeight + 26);
-  const int py = wide ? (c.h - blockH) / 2 : cy + radius + (c.h - cy - radius - blockH) / 2;
-  text(c, toybox::kDisplayFontId, toybox::kDisplayCut, px, py, cc::weekdayEs(now.weekday));
-  const int ny = py + toybox::kDisplayCut.inkHeight + 26;
-  const bool two = now.day >= 10;
-  const float nx = px - (two ? boxW + 7 : boxW / 2);
-  if (two) numeral(c, now.day / 10, nx, static_cast<float>(ny), boxW, boxW * 0.1f);
-  numeral(c, now.day % 10, two ? nx + boxW + 14 : nx, static_cast<float>(ny), boxW, boxW * 0.1f);
-  text(c, toybox::kDisplayFontId, toybox::kDisplayCut, px, ny + static_cast<int>(boxH) + 26, cc::monthEs(now.month));
+  return nullptr;
 }
 
-// ---------------------------------------------------------------- ANILLOS
-// Two arcs that fill as the hour and the half-day go by, with the time small
-// in the middle of them.
-void faceAnillos(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
-  const bool wide = c.wide();
-  const int outer = (wide ? c.h : c.w) / 2 - 22;
-  const int cx = c.w / 2;
-  const int cy = wide ? c.h / 2 : outer + 60;
-  const int band = 30;
-  const int gapBetween = 16;
-  const int r1o = outer;
-  const int r1i = outer - band;
-  const int r2o = r1i - gapBetween;
-  const int r2i = r2o - band;
-  ring(c, cx, cy, r1i, r1o, 0, 1, 1);
-  ring(c, cx, cy, r2i, r2o, 0, 1, 1);
-  if (now.valid) {
-    const float minutes = static_cast<float>(now.minute) / 60;
-    const float hours = (static_cast<float>(now.hour % 12) + minutes) / 12;
-    auto arc = [&](const int in, const int out, const float turn) {
-      if (turn <= 0.001f) {
-        disc(c, cx, cy - (in + out) / 2, band / 2);
-        return;
-      }
-      ring(c, cx, cy, in, out, 0, turn, 0);
-      // Round ends: one at twelve o'clock, one where the arc has got to.
-      const int mid = (in + out) / 2;
-      disc(c, cx, cy - mid, band / 2);
-      disc(c, static_cast<int>(std::lround(cx + std::sin(turn * 2 * kPi) * mid)),
-           static_cast<int>(std::lround(cy - std::cos(turn * 2 * kPi) * mid)), band / 2);
-    };
-    arc(r1i, r1o, minutes);
-    arc(r2i, r2o, hours);
-  }
-  const float boxW = static_cast<float>(r2i) * 0.3f;
-  const float boxH = boxW * cc::kNumeralHeight;
-  const float gap = boxW * 0.2f;
-  const float colon = boxW * 0.45f;
-  float x = cx - (boxW * 4 + gap * 2 + colon) / 2;
-  const float y = cy - boxH / 2;
-  for (int i = 0; i < 4; ++i) {
-    if (t.valid)
-      numeral(c, t.d[i], x, y, boxW, boxW * 0.1f);
-    else
-      dash(c, x, y, boxW, boxW * 0.1f);
-    if (i == 1) {
-      disc(c, static_cast<int>(x + boxW + colon / 2), static_cast<int>(cy - boxH * 0.2f), 4);
-      disc(c, static_cast<int>(x + boxW + colon / 2), static_cast<int>(cy + boxH * 0.2f), 4);
-    }
-    x += boxW + (i == 1 ? colon : gap);
-  }
-  if (!now.valid) return;
-  char date[32];
-  dateLine(now, date, sizeof(date));
-  if (wide) {
-    // The date as two short lines in the margin the rings leave at the left.
-    text(c, toybox::kUiFontId, toybox::kUiCut, 28, c.h / 2 - toybox::kUiCut.inkHeight - 8, cc::weekdayEs(now.weekday),
-         -1);
-    char rest[toybox::kIntChars + 8];
-    std::snprintf(rest, sizeof(rest), "%d %s", now.day, cc::monthEs(now.month));
-    text(c, toybox::kUiFontId, toybox::kUiCut, 28, c.h / 2 + 8, rest, -1);
-  } else {
-    text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, cy + outer + (c.h - cy - outer) / 2 - 20, date);
-  }
+// The next character of a UTF-8 string; one and two byte forms are all the
+// faces use.
+uint16_t nextChar(const char*& s) {
+  const uint8_t a = static_cast<uint8_t>(*s++);
+  if (a < 0x80 || *s == '\0') return a;
+  const uint8_t b = static_cast<uint8_t>(*s++);
+  return static_cast<uint16_t>(((a & 0x1F) << 6) | (b & 0x3F));
 }
 
-// ---------------------------------------------------------------- MATRIZ
-// A board of lamps: lit ones full, the rest a speck, so the grid is always there.
-void faceMatriz(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
-  const bool wide = c.wide();
-  const int cols = wide ? 25 : 11;  // 5 a numeral, 1 between, 3 for the colon
-  const int rows = wide ? 7 : 15;   // two rows of numerals with one between
-  const int pitch = wide ? 30 : 40;
-  const int lamp = pitch * 2 / 5;
-  const int left = (c.w - cols * pitch) / 2 + pitch / 2;
-  const int top = (c.h - rows * pitch) / 2 + pitch / 2 - (wide ? 30 : 34);
-  for (int row = 0; row < rows; ++row) {
-    for (int col = 0; col < cols; ++col) {
-      bool on = false;
-      if (t.valid) {
-        if (wide) {
-          // Columns: HH at 0 and 6, the colon at 12, MM at 14 and 20.
-          static const int kStart[4] = {0, 6, 14, 20};
-          for (int i = 0; i < 4; ++i) {
-            const int k = col - kStart[i];
-            if (k >= 0 && k < 5) on = (cc::dotsOf(t.d[i])[row] >> (4 - k)) & 1;
-          }
-          if (col == 12 && (row == 2 || row == 4)) on = true;
+int widthOf(const Font& font, const char* s, const int track = 0) {
+  int width = 0;
+  int count = 0;
+  while (*s != '\0') {
+    const Glyph* g = glyphOf(font, nextChar(s));
+    if (g == nullptr) continue;
+    width += g->advance;
+    ++count;
+  }
+  return count > 1 ? width + track * (count - 1) : width;
+}
+
+// `half` leaves every other pixel out, which is the nearest this panel comes
+// to grey without a slow refresh.
+void type(const Canvas& c, const Font& font, int x, const int baseline, const char* s, const bool ink = true,
+          const int track = 0, const bool half = false) {
+  while (*s != '\0') {
+    const Glyph* g = glyphOf(font, nextChar(s));
+    if (g == nullptr) continue;
+    const uint8_t* runs = font.runs + g->offset;
+    const int left = x + g->left;
+    const int top = baseline - g->top;
+    for (int row = 0; row < g->rows; ++row) {
+      const int count = *runs++;
+      for (int i = 0; i < count; ++i) {
+        if (!half) {
+          c.r.fillRect(left + runs[0], top + row, runs[1], 1, ink);
         } else {
-          const int line = row / 8;  // 0 hours, 1 minutes
-          const int r = row - line * 8;
-          if (r < 7) {
-            const int i = line * 2 + (col >= 6 ? 1 : 0);
-            const int k = col - (col >= 6 ? 6 : 0);
-            if (k < 5) on = (cc::dotsOf(t.d[i])[r] >> (4 - k)) & 1;
+          for (int px = left + runs[0] + ((left + runs[0] + top + row) & 1); px < left + runs[0] + runs[1]; px += 2) {
+            c.r.fillRect(px, top + row, 1, 1, ink);
           }
         }
+        runs += 2;
       }
-      const int x = left + col * pitch;
-      const int y = top + row * pitch;
-      if (on)
-        disc(c, x, y, lamp);
-      else
-        disc(c, x, y, 2);
     }
-  }
-  if (now.valid) {
-    char date[32];
-    dateLine(now, date, sizeof(date));
-    text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, top + rows * pitch - pitch / 2 + (wide ? 44 : 36),
-         date);
+    x += g->advance + track;
   }
 }
 
-// ---------------------------------------------------------------- SEGMENTOS
-// A liquid-crystal readout, leaning, with the unlit segments faintly there.
-void faceSegmentos(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
+// align: -1 from x, 0 centred on x, 1 ending at x.
+void typeAt(const Canvas& c, const Font& font, const int x, const int baseline, const char* s, const int align,
+            const bool ink = true, const int track = 0, const bool half = false) {
+  const int width = widthOf(font, s, track);
+  type(c, font, align < 0 ? x : (align == 0 ? x - width / 2 : x - width), baseline, s, ink, track, half);
+}
+
+// A box with round corners of any radius, solid.
+void slab(const Canvas& c, const int x, const int y, const int w, const int h, int radius, const bool ink = true) {
+  if (radius * 2 > w) radius = w / 2;
+  if (radius * 2 > h) radius = h / 2;
+  for (int row = 0; row < h; ++row) {
+    int inset = 0;
+    const int fromEdge = row < radius ? radius - row : (row >= h - radius ? row - (h - radius - 1) : 0);
+    if (fromEdge > 0) {
+      inset = radius - static_cast<int>(std::sqrt(static_cast<float>(radius * radius - fromEdge * fromEdge)));
+    }
+    c.r.fillRect(x + inset, y + row, w - inset * 2, 1, ink);
+  }
+}
+
+// A straight bar with square ends, lying along the dial: from `r0` to `r1`
+// out from the centre, at `degrees` clockwise from twelve.
+void spoke(const Canvas& c, const int cx, const int cy, const float degrees, const float r0, const float r1,
+           const float width) {
+  const float a = degrees * kPi / 180.0f;
+  const float dx = std::sin(a);
+  const float dy = -std::cos(a);
+  const float nx = -dy * width / 2;
+  const float ny = dx * width / 2;
+  const int xs[4] = {static_cast<int>(std::lround(cx + dx * r0 + nx)), static_cast<int>(std::lround(cx + dx * r1 + nx)),
+                     static_cast<int>(std::lround(cx + dx * r1 - nx)),
+                     static_cast<int>(std::lround(cx + dx * r0 - nx))};
+  const int ys[4] = {static_cast<int>(std::lround(cy + dy * r0 + ny)), static_cast<int>(std::lround(cy + dy * r1 + ny)),
+                     static_cast<int>(std::lround(cy + dy * r1 - ny)),
+                     static_cast<int>(std::lround(cy + dy * r0 - ny))};
+  c.r.fillPolygon(xs, ys, 4, true);
+}
+
+// What every face says, worked out once. All of it is empty until the clock
+// has been set, and an empty string draws nothing.
+struct Said {
+  char hh[4] = "";
+  char mm[4] = "";
+  char time[8] = "";   // 10:09
+  char day[4] = "";    // 18
+  char week[16] = "";  // semana 47
+  char weekCaps[16] = "";
+  char weekShort[8] = "";   // S47
+  char shortCaps[24] = "";  // MIE 18 NOV, with its accent
+  const char* weekday = "";
+  const char* weekdayCaps = "";
+};
+
+Said saidOf(const Moment& now) {
+  Said s;
+  if (!now.valid) return s;
+  std::snprintf(s.hh, sizeof(s.hh), "%02d", now.hour % 100);
+  std::snprintf(s.mm, sizeof(s.mm), "%02d", now.minute % 100);
+  std::snprintf(s.time, sizeof(s.time), "%s:%s", s.hh, s.mm);
+  std::snprintf(s.day, sizeof(s.day), "%d", now.day % 100);
+  const int week = cc::isoWeek(now.year, now.yearDay, now.weekday) % 100;
+  std::snprintf(s.week, sizeof(s.week), "semana %d", week);
+  std::snprintf(s.weekCaps, sizeof(s.weekCaps), "SEMANA %d", week);
+  std::snprintf(s.weekShort, sizeof(s.weekShort), "S%d", week);
+  std::snprintf(s.shortCaps, sizeof(s.shortCaps), "%s %d %s", cc::weekdayShort(now.weekday, true), now.day % 100,
+                cc::monthShort(now.month, true));
+  s.weekday = cc::weekdayLong(now.weekday, false);
+  s.weekdayCaps = cc::weekdayLong(now.weekday, true);
+  return s;
+}
+
+// Two rows of numerals, one above the other, each centred on `cx` (or begun
+// at it), with the pair centred on `cy`.
+void stacked(const Canvas& c, const Font& top, const Font& bottom, const Said& s, const int cx, const int cy,
+             const int pitch, const int track, const bool ink, const int align = 0) {
+  const int first = cy - (top.capTop + pitch) / 2 + top.capTop;
+  typeAt(c, top, cx, first, s.hh, align, ink, track);
+  typeAt(c, bottom, cx, first + pitch, s.mm, align, ink, track);
+}
+
+// ---------------------------------------------------------------- 01 EDITORIAL
+// A page of a magazine: the hours upright and the minutes in italic, between
+// two rules, with the time written out underneath.
+void faceEditorial(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
   const bool wide = c.wide();
-  const float dw = wide ? 132 : 158;  // a numeral's width
-  const float dh = dw * 1.9f;
-  const float thick = dw * 0.17f;
-  const float lean = 0.12f;
-  auto segment = [&](const float x, const float y, const int which, const bool lit) {
-    // Each segment a six-sided bar, horizontal or vertical, in the numeral's box.
-    const float half = dh / 2;
-    const float t2 = thick / 2;
-    const float g = thick * 0.14f;  // the gap where segments meet
-    float ax, ay, bx, by;           // the bar's two ends, on its centre line
-    switch (which) {
-      case 0:
-        ax = t2, ay = t2, bx = dw - t2, by = t2;
-        break;
-      case 1:
-        ax = dw - t2, ay = t2, bx = dw - t2, by = half;
-        break;
-      case 2:
-        ax = dw - t2, ay = half, bx = dw - t2, by = dh - t2;
-        break;
-      case 3:
-        ax = t2, ay = dh - t2, bx = dw - t2, by = dh - t2;
-        break;
-      case 4:
-        ax = t2, ay = half, bx = t2, by = dh - t2;
-        break;
-      case 5:
-        ax = t2, ay = t2, bx = t2, by = half;
-        break;
-      default:
-        ax = t2, ay = half, bx = dw - t2, by = half;
-        break;
+  const int pad = wide ? 40 : 36;
+  const int head = wide ? 41 : 45;
+  char date[32] = "";
+  char phrase[96] = "";
+  if (now.valid) {
+    std::snprintf(date, sizeof(date), "%d · %s · %d", now.day % 100, cc::monthRoman(now.month), now.year % 10000);
+    cc::longTimeEs(now.hour, now.minute, phrase, sizeof(phrase));
+  }
+  type(c, clocktype::kMonoLabel, pad, head, s.weekdayCaps, true, 2);
+  typeAt(c, clocktype::kMonoLabel, c.w - pad, head, date, 1, true, 2);
+  c.r.fillRect(pad, head + 15, c.w - pad * 2, 2, true);
+
+  int ruleY = 0;
+  if (wide) {
+    ruleY = 407;
+    type(c, clocktype::kSerifPhrase, pad, 445, phrase);
+    typeAt(c, clocktype::kMonoLabel, c.w - pad, 445, s.weekCaps, 1, true, 2);
+  } else {
+    // The phrase breaks in two when it is longer than the page is wide.
+    const int room = c.w - pad * 2;
+    char second[96] = "";
+    if (widthOf(clocktype::kSerifPhrase, phrase) > room) {
+      for (int cut = static_cast<int>(std::strlen(phrase)) - 1; cut > 0; --cut) {
+        if (phrase[cut] != ' ') continue;
+        phrase[cut] = '\0';
+        if (widthOf(clocktype::kSerifPhrase, phrase) <= room) {
+          std::snprintf(second, sizeof(second), "%s", phrase + cut + 1);
+          break;
+        }
+        phrase[cut] = ' ';
+      }
     }
-    const bool horizontal = ay == by;
-    float px[6];
-    float py[6];
-    if (horizontal) {
-      const float l = ax + g, r = bx - g;
-      const float pts[6][2] = {{l, ay}, {l + t2, ay - t2}, {r - t2, ay - t2},
-                               {r, ay}, {r - t2, ay + t2}, {l + t2, ay + t2}};
-      for (int i = 0; i < 6; ++i) px[i] = pts[i][0], py[i] = pts[i][1];
-    } else {
-      const float u = ay + g, d = by - g;
-      const float pts[6][2] = {{ax, u}, {ax + t2, u + t2}, {ax + t2, d - t2},
-                               {ax, d}, {ax - t2, d - t2}, {ax - t2, u + t2}};
-      for (int i = 0; i < 6; ++i) px[i] = pts[i][0], py[i] = pts[i][1];
+    const int last = 730;
+    const int first = second[0] != '\0' ? last - 36 : last;
+    type(c, clocktype::kSerifPhrase, pad, first, phrase);
+    type(c, clocktype::kSerifPhrase, pad, last, second);
+    type(c, clocktype::kMonoLabel, pad, 765, s.weekCaps, true, 2);
+    ruleY = first - 40;
+  }
+  c.r.fillRect(pad, ruleY, c.w - pad * 2, 2, true);
+
+  const int top = head + 17;
+  if (wide) {
+    const Font& upright = clocktype::kSerifBig;
+    const Font& italic = clocktype::kSerifBigItalic;
+    const int track = -9;
+    const int gap = 6;
+    const char* colon = now.valid ? ":" : "";
+    const int total =
+        widthOf(upright, s.hh, track) + gap + widthOf(upright, colon) + gap + widthOf(italic, s.mm, track);
+    int x = (c.w - total) / 2;
+    const int baseline = (top + ruleY) / 2 + upright.capTop / 2;
+    type(c, upright, x, baseline, s.hh, true, track);
+    x += widthOf(upright, s.hh, track) + gap;
+    type(c, upright, x, baseline, colon);
+    x += widthOf(upright, colon) + gap;
+    type(c, italic, x, baseline, s.mm, true, track);
+  } else {
+    stacked(c, clocktype::kSerifTall, clocktype::kSerifTallItalic, s, c.w / 2, (top + ruleY) / 2, 264, -10, true);
+  }
+}
+
+// ---------------------------------------------------------------- 02 PUNTOS
+// White lamps on black, and the day as twenty-four dots: the hours gone
+// solid, this one a ring, the ones to come dim.
+void dimDisc(const Canvas& c, const int cx, const int cy, const int radius) {
+  for (int dy = -radius; dy <= radius; ++dy) {
+    const int half = static_cast<int>(std::sqrt(static_cast<float>(radius * radius - dy * dy)));
+    if (((cy + dy) & 1) != 0) continue;
+    for (int x = cx - half; x <= cx + half; ++x) {
+      if ((x & 1) == 0) c.r.fillRect(x, cy + dy, 1, 1, false);
     }
-    int xs[6];
-    int ys[6];
-    for (int i = 0; i < 6; ++i) {
-      xs[i] = static_cast<int>(std::lround(x + px[i] + (dh - py[i]) * lean));
-      ys[i] = static_cast<int>(std::lround(y + py[i]));
+  }
+}
+
+void hourDot(const Canvas& c, const Moment& now, const int index, const int cx, const int cy, const int radius,
+             const int ringWidth) {
+  if (!now.valid || index > now.hour) {
+    dimDisc(c, cx, cy, radius);
+  } else {
+    disc(c, cx, cy, radius, false);
+    if (index == now.hour) disc(c, cx, cy, radius - ringWidth, true);
+  }
+}
+
+void facePuntos(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  c.r.fillRect(0, 0, c.w, c.h, true);
+  const Font& label = clocktype::kDotLabel;
+  if (wide) {
+    type(c, label, 40, 52, s.shortCaps, false, 2);
+    typeAt(c, label, c.w - 40, 52, s.weekCaps, 1, false, 2);
+    typeAt(c, clocktype::kDotBig, c.w / 2, 236 + clocktype::kDotBig.capTop / 2, s.time, 0, false);
+    const int cy = 438;
+    type(c, label, 40, cy + label.capTop / 2, "00", false);
+    typeAt(c, label, c.w - 40, cy + label.capTop / 2, "24", 1, false);
+    const int pitch = 26;
+    const int left = (c.w - 23 * pitch) / 2;
+    for (int i = 0; i < 24; ++i) hourDot(c, now, i, left + i * pitch, cy, 7, 3);
+  } else {
+    type(c, label, 36, 56, s.shortCaps, false, 2);
+    typeAt(c, label, c.w - 36, 56, s.weekShort, 1, false, 2);
+    const int pitch = 48;
+    const int gridTop = c.h - 34 - 3 * pitch - 28;
+    stacked(c, clocktype::kDotTall, clocktype::kDotTall, s, c.w / 2, (70 + gridTop - 24) / 2, 241, 0, false);
+    const int left = (c.w - 5 * pitch) / 2;
+    for (int i = 0; i < 24; ++i) hourDot(c, now, i, left + (i % 6) * pitch, gridTop + 14 + (i / 6) * pitch, 14, 5);
+  }
+}
+
+// ---------------------------------------------------------------- 03 POSTER
+// The panel cut in two: the hours white on black, the minutes black on white,
+// as large as they go, and a bar along the foot that grows with the minute.
+void facePoster(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  const Font& big = wide ? clocktype::kPosterBig : clocktype::kPosterTall;
+  const Font& label = clocktype::kPosterLabel;
+  const int track = -4;
+  if (wide) {
+    c.r.fillRect(0, 0, c.w / 2, c.h, true);
+    typeAt(c, big, c.w / 4, c.h / 2 + big.capTop / 2, s.hh, 0, false, track);
+    typeAt(c, big, c.w * 3 / 4, c.h / 2 + big.capTop / 2, s.mm, 0, true, track);
+    type(c, label, 24, 34, s.shortCaps, false, 2);
+    typeAt(c, label, c.w - 24, 34, s.weekCaps, 1, true, 2);
+    if (now.valid) c.r.fillRect(c.w / 2, c.h - 14, (c.w / 2) * now.minute / 60, 14, true);
+  } else {
+    c.r.fillRect(0, 0, c.w, c.h / 2, true);
+    typeAt(c, big, c.w / 2, c.h / 4 + big.capTop / 2 + 8, s.hh, 0, false, track);
+    typeAt(c, big, c.w / 2, c.h * 3 / 4 + big.capTop / 2 + 8, s.mm, 0, true, track);
+    type(c, label, 20, 27, s.shortCaps, false, 2);
+    typeAt(c, label, c.w - 20, c.h / 2 + 27, s.weekCaps, 1, true, 2);
+    if (now.valid) c.r.fillRect(0, c.h - 14, c.w * now.minute / 60, 14, true);
+  }
+}
+
+// ---------------------------------------------------------------- 04 GROTESCA
+// The date in three pills along the top and the time heavy at the foot.
+int pill(const Canvas& c, const int x, const int y, const char* s, const bool solid) {
+  const Font& font = clocktype::kGroteskLabel;
+  if (s[0] == '\0') return 0;
+  const int w = widthOf(font, s) + 44;
+  const int h = 46;
+  slab(c, x, y, w, h, h / 2, true);
+  if (!solid) slab(c, x + 3, y + 3, w - 6, h - 6, h / 2 - 3, false);
+  type(c, font, x + 22, y + h / 2 + font.capTop / 2, s, !solid);
+  return w;
+}
+
+void faceGrotesca(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  char date[16] = "";
+  if (now.valid) std::snprintf(date, sizeof(date), "%d %s", now.day % 100, cc::monthShort(now.month, false));
+  if (wide) {
+    int x = 40;
+    x += pill(c, x, 32, s.weekday, true) + 12;
+    pill(c, x, 32, date, false);
+    const Font& font = clocktype::kGroteskLabel;
+    typeAt(c, font, c.w - 40, 32 + 23 + font.capTop / 2, s.week, 1);
+    char time[8] = "";
+    if (now.valid) std::snprintf(time, sizeof(time), "%s.%s", s.hh, s.mm);
+    type(c, clocktype::kGroteskBig, 32, c.h - 34, time, true, -12);
+  } else {
+    // The pills wrap: what does not fit beside the last one starts a new row.
+    const char* pills[3] = {s.weekday, date, s.week};
+    int x = 36;
+    int y = 36;
+    for (int i = 0; i < 3; ++i) {
+      const int w = widthOf(clocktype::kGroteskLabel, pills[i]) + 44;
+      if (x > 36 && x + w > c.w - 36) {
+        x = 36;
+        y += 58;
+      }
+      x += pill(c, x, y, pills[i], i == 0) + 12;
     }
-    if (lit) {
-      c.r.fillPolygon(xs, ys, 6, true);
+    const int second = c.h - 40;
+    type(c, clocktype::kGroteskTall, 26, second - 254, s.hh, true, -15);
+    type(c, clocktype::kGroteskTall, 26, second, s.mm, true, -15);
+  }
+}
+
+// ---------------------------------------------------------------- 05 NOIR
+// Black, a hairline frame, and the time in a heavy italic.
+void faceNoir(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  c.r.fillRect(0, 0, c.w, c.h, true);
+  c.r.fillRect(16, 16, c.w - 32, 2, false);
+  c.r.fillRect(16, c.h - 18, c.w - 32, 2, false);
+  c.r.fillRect(16, 16, 2, c.h - 32, false);
+  c.r.fillRect(c.w - 18, 16, 2, c.h - 32, false);
+  char date[48] = "";
+  if (now.valid) {
+    char number[24];
+    cc::numberEs(now.day, number, sizeof(number));
+    std::snprintf(date, sizeof(date), "%s de %s", number, cc::monthLong(now.month));
+  }
+  typeAt(c, clocktype::kNoirDay, c.w / 2, wide ? 54 : 62, s.weekdayCaps, 0, false, 5);
+  typeAt(c, clocktype::kNoirDate, c.w / 2, wide ? c.h - 46 : c.h - 54, date, 0, false);
+  if (wide) {
+    typeAt(c, clocktype::kNoirBig, c.w / 2, c.h / 2 + clocktype::kNoirBig.capTop / 2 - 4, s.time, 0, false, -7);
+  } else {
+    stacked(c, clocktype::kNoirTall, clocktype::kNoirTall, s, c.w / 2, c.h / 2, 246, -9, false);
+  }
+}
+
+// ---------------------------------------------------------------- 06 TERMINAL
+// A prompt, the answer to `date`, and how much of the day is gone.
+void faceTerminal(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  const Font& label = clocktype::kTermLabel;
+  const int pad = wide ? 40 : 36;
+  const int head = wide ? 50 : 54;
+  type(c, label, pad, head, "sticky ~ % date");
+  c.r.fillRect(pad + widthOf(label, "sticky ~ % date") + 10, head - 18, 11, 22, true);
+
+  char line[48] = "";
+  char percent[16] = "";
+  int gone = 0;
+  if (now.valid) {
+    std::snprintf(line, sizeof(line), "%s %d %s %d · %s %d", cc::weekdayShort(now.weekday, false), now.day % 100,
+                  cc::monthShort(now.month, false), now.year % 10000, wide ? "semana" : "sem",
+                  cc::isoWeek(now.year, now.yearDay, now.weekday) % 100);
+    gone = (now.hour * 60 + now.minute) * 100 / 1440;
+    std::snprintf(percent, sizeof(percent), "%d%%", gone % 1000);
+  }
+  const int barBase = c.h - (wide ? 36 : 40);
+  type(c, label, pad, barBase - 36, line);
+  type(c, label, pad, barBase, "día");
+  typeAt(c, label, c.w - pad, barBase, percent, 1);
+  const int barX = pad + widthOf(label, "día") + 14;
+  const int barW = c.w - pad - widthOf(label, "100%") - 14 - barX;
+  const int barY = barBase - 18;
+  c.r.fillRect(barX, barY, barW, 22, true);
+  c.r.fillRect(barX + 3, barY + 3, barW - 6, 16, false);
+  c.r.fillRect(barX + 6, barY + 6, (barW - 12) * gone / 100, 10, true);
+
+  if (wide) {
+    type(c, clocktype::kTermBig, 34, 226 + clocktype::kTermBig.capTop / 2, s.time, true, -7);
+  } else {
+    stacked(c, clocktype::kTermTall, clocktype::kTermTall, s, 28, 396, 216, -10, true, -1);
+  }
+}
+
+// ---------------------------------------------------------------- 07 CAPSULA
+// The time in a black capsule that takes the page, the date above it.
+void faceCapsula(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  const Font& label = clocktype::kCapsuleLabel;
+  char date[16] = "";
+  if (now.valid) std::snprintf(date, sizeof(date), "%d %s", now.day % 100, cc::monthShort(now.month, true));
+  const int padX = wide ? 36 : 28;
+  const int head = wide ? 46 : 50;
+  type(c, label, padX + (wide ? 28 : 24), head, s.weekdayCaps, true, 1);
+  typeAt(c, label, c.w - padX - (wide ? 28 : 24), head, date, 1, true, 1);
+  const int top = head + (wide ? 24 : 27);
+  const int height = c.h - (wide ? 28 : 32) - top;
+  slab(c, padX, top, c.w - padX * 2, height, wide ? 120 : 140, true);
+  if (wide) {
+    typeAt(c, clocktype::kCapsuleBig, c.w / 2, top + height / 2 + clocktype::kCapsuleBig.capTop / 2, s.time, 0, false,
+           -7);
+  } else {
+    stacked(c, clocktype::kCapsuleTall, clocktype::kCapsuleTall, s, c.w / 2, top + height / 2, 219, -9, false);
+  }
+}
+
+// ---------------------------------------------------------------- 08 PIXEL
+// A chequered band, the time in blocks, and the date on a black foot.
+void facePixel(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  for (int y = 0; y < 32; y += 8) {
+    for (int x = ((y / 8) & 1) * 8; x < c.w; x += 16) c.r.fillRect(x, y, 8, 8, true);
+  }
+  const int footH = 60;
+  c.r.fillRect(0, c.h - footH, c.w, footH, true);
+  const Font& label = clocktype::kPixelLabel;
+  const int base = c.h - footH / 2 + label.capTop / 2;
+  type(c, label, wide ? 28 : 24, base, s.shortCaps, false, 2);
+  typeAt(c, label, c.w - (wide ? 28 : 24), base, wide ? s.weekCaps : s.weekShort, 1, false, 2);
+  const int middle = (32 + c.h - footH) / 2;
+  if (wide) {
+    typeAt(c, clocktype::kPixelBig, c.w / 2, middle + clocktype::kPixelBig.capTop / 2, s.time, 0);
+  } else {
+    stacked(c, clocktype::kPixelTall, clocktype::kPixelTall, s, c.w / 2, middle, 302, 0, true);
+  }
+}
+
+// ---------------------------------------------------------------- 09 PALABRAS
+// The time as it is said, to the minute, as large as the words allow.
+void facePalabras(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  c.r.fillRect(0, 0, c.w, c.h, true);
+  if (!now.valid) return;
+  const int padX = wide ? 40 : 36;
+  const cc::Said said = cc::saidEs(now.hour, now.minute);
+  const int leadBase = wide ? 68 : 82;
+  type(c, clocktype::kWords50, padX, leadBase, said.lead, false, -2, true);
+
+  char date[48];
+  std::snprintf(date, sizeof(date), "%s %d de %s", s.weekday, now.day % 100, cc::monthLong(now.month));
+  const Font& label = clocktype::kWordsLabel;
+  if (wide) {
+    type(c, label, padX, c.h - 34, date, false);
+    typeAt(c, label, c.w - padX, c.h - 34, s.time, 1, false);
+  } else {
+    type(c, label, padX, c.h - 74, date, false);
+    type(c, label, padX, c.h - 44, s.time, false);
+  }
+
+  // The hour on one line; what follows it on one more, or on two with the
+  // first word alone, whichever lets the type be larger.
+  const int areaTop = leadBase + 14;
+  const int areaH = c.h - (wide ? 58 : 108) - areaTop;
+  const int room = c.w - padX * 2;
+  char first[32];
+  char rest[32] = "";
+  std::snprintf(first, sizeof(first), "%s", said.tail);
+  if (char* space = std::strchr(first, ' ')) {
+    *space = '\0';
+    std::snprintf(rest, sizeof(rest), "%s", space + 1);
+  }
+  static const Font* const kSizes[] = {&clocktype::kWords148, &clocktype::kWords120, &clocktype::kWords96,
+                                       &clocktype::kWords76,  &clocktype::kWords60,  &clocktype::kWords50};
+  static constexpr int kPixels[] = {148, 120, 96, 76, 60, 50};
+  for (int i = 0; i < 6; ++i) {
+    const Font& font = *kSizes[i];
+    const int track = -kPixels[i] / 25;
+    const int pitch = kPixels[i] * 92 / 100;
+    const bool last = i == 5;
+    for (int split = 0; split < 2; ++split) {
+      if (split == 1 && rest[0] == '\0') break;
+      const char* lines[3] = {said.hour, split == 0 ? said.tail : first, split == 0 ? "" : rest};
+      const int count = split == 0 ? 2 : 3;
+      bool fits = count * pitch <= areaH;
+      for (int k = 0; k < count; ++k) fits = fits && widthOf(font, lines[k], track) <= room;
+      if (!fits && !(last && split == 1)) continue;
+      // Set from the top: the first line's tallest letter just under the lead.
+      int baseline = areaTop + pitch - pitch / 8;
+      for (int k = 0; k < count; ++k, baseline += pitch) type(c, font, padX, baseline, lines[k], false, track);
       return;
     }
-    // Unlit: its outline in specks.
-    for (int i = 0; i < 6; ++i) {
-      const int j = (i + 1) % 6;
-      const int n =
-          static_cast<int>(std::hypot(static_cast<float>(xs[j] - xs[i]), static_cast<float>(ys[j] - ys[i])) / 5) + 1;
-      for (int k = 0; k < n; ++k) c.r.drawPixel(xs[i] + (xs[j] - xs[i]) * k / n, ys[i] + (ys[j] - ys[i]) * k / n, true);
-    }
-  };
-  const float gap = dw * 0.22f;
-  const float colon = dw * 0.4f;
-  const float shift = dh * lean / 2;
-  for (int i = 0; i < 4; ++i) {
-    float x;
-    float y;
-    if (wide) {
-      const float total = dw * 4 + gap * 2 + colon;
-      x = (c.w - total) / 2 - shift + i * (dw + gap) + (i >= 2 ? colon - gap : 0);
-      y = (c.h - dh) / 2 - 24;
-    } else {
-      x = (c.w - dw * 2 - gap) / 2 - shift + (i % 2) * (dw + gap);
-      y = 40 + (i / 2) * (dh + 34);
-    }
-    const uint8_t mask = t.valid ? cc::segmentsOf(t.d[i]) : 0x40;
-    for (int sgm = 0; sgm < 7; ++sgm) segment(x, y, sgm, (mask >> sgm) & 1);
   }
-  if (wide) {
-    const float cx = (c.w - (dw * 4 + gap * 2 + colon)) / 2 - shift + 2 * (dw + gap) - gap + colon / 2;
-    const float y = (c.h - dh) / 2 - 24;
-    for (const float f : {0.3f, 0.7f}) {
-      const int px = static_cast<int>(cx + (dh - dh * f) * lean);
-      c.r.fillRect(px - static_cast<int>(thick / 2), static_cast<int>(y + dh * f - thick / 2), static_cast<int>(thick),
-                   static_cast<int>(thick), true);
+}
+
+// ---------------------------------------------------------------- 10 ANALOGICO
+// A dial with twelve marks and two hands, and the day of the month large
+// beside it.
+void faceAnalogico(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  const bool wide = c.wide();
+  const int cx = 240;
+  const int cy = 240;
+  disc(c, cx, cy, 200, true);
+  disc(c, cx, cy, 190, false);
+  for (int k = 0; k < 12; ++k) {
+    if (k % 3 == 0) {
+      spoke(c, cx, cy, k * 30.0f, 150, 180, 8);
+    } else {
+      spoke(c, cx, cy, k * 30.0f, 162, 180, 4);
     }
   }
   if (now.valid) {
-    char date[32];
-    dateLine(now, date, sizeof(date));
-    text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2,
-         wide ? static_cast<int>((c.h + dh) / 2) + 12 : c.h - 70, date);
+    spoke(c, cx, cy, (now.hour % 12) * 30.0f + now.minute * 0.5f, 0, 110, 16);
+    spoke(c, cx, cy, now.minute * 6.0f, 0, 160, 8);
   }
-}
+  disc(c, cx, cy, 14, true);
 
-// ---------------------------------------------------------------- PALABRAS
-// The time as it is said, in capitals as large as the longest word allows.
-void facePalabras(const Canvas& c, const Moment& now) {
-  if (!now.valid) {
-    text(c, toybox::kLargeFontId, toybox::kLargeCut, 40, c.h / 2 - 40, "SIN HORA", -1);
-    return;
-  }
-  const cc::Words w = cc::wordsEs(now.hour, now.minute);
-  // The tail may be two words; on a narrow panel it takes two lines.
-  char tailA[20];
-  char tailB[20] = "";
-  std::snprintf(tailA, sizeof(tailA), "%s", w.tail);
-  const int margin = c.wide() ? 48 : 34;
-  const int room = c.w - margin * 2;
-  struct Cut {
-    int font;
-    const toybox::CutMetrics* cut;
-  };
-  const Cut cuts[3] = {{toybox::kHugeFontId, &toybox::kHugeCut},
-                       {toybox::kLargeFontId, &toybox::kLargeCut},
-                       {toybox::kDisplayFontId, &toybox::kDisplayCut}};
-  auto fits = [&](const Cut& cut) {
-    return c.r.getTextWidth(cut.font, w.hour) <= room && c.r.getTextWidth(cut.font, tailA) <= room &&
-           c.r.getTextWidth(cut.font, tailB) <= room;
-  };
-  int pick = 0;
-  while (pick < 2 && !fits(cuts[pick])) ++pick;
-  if (pick > 0 && !c.wide()) {
-    // Before going smaller on a tall panel, try breaking the tail in two.
-    char* space = std::strchr(tailA, ' ');
-    if (space != nullptr) {
-      std::snprintf(tailB, sizeof(tailB), "%s", space + 1);
-      *space = 0;
-      pick = 0;
-      while (pick < 2 && !fits(cuts[pick])) ++pick;
-    }
-  }
-  const Cut& big = cuts[pick];
-  const int lead = big.cut->inkHeight + big.cut->inkHeight * 2 / 5;
-  const int lines = 2 + (tailB[0] ? 1 : 0);
-  const int blockH = toybox::kDisplayCut.inkHeight + 30 + lines * lead - (lead - big.cut->inkHeight);
-  int y = (c.h - blockH) / 2 - 20;
-  text(c, toybox::kDisplayFontId, toybox::kDisplayCut, margin, y, w.lead, -1);
-  y += toybox::kDisplayCut.inkHeight + 30;
-  // The hour inverted on a bar across the page; the rest in plain ink.
-  c.r.fillRect(0, y - big.cut->inkHeight / 4, c.w, big.cut->inkHeight * 3 / 2, true);
-  text(c, big.font, *big.cut, margin, y, w.hour, -1, false);
-  y += lead + big.cut->inkHeight / 4;
-  text(c, big.font, *big.cut, margin, y, tailA, -1);
-  if (tailB[0]) text(c, big.font, *big.cut, margin, y + lead, tailB, -1);
-  // The exact time and the date, small, in the corners.
-  char exact[2 * toybox::kIntChars + 2];
-  std::snprintf(exact, sizeof(exact), "%02d:%02d", now.hour % 100, now.minute % 100);
-  char date[32];
-  dateLine(now, date, sizeof(date));
-  text(c, toybox::kUiFontId, toybox::kUiCut, margin, c.h - 70, date, -1);
-  text(c, toybox::kUiFontId, toybox::kUiCut, c.w - margin, c.h - 70, exact, 1);
-}
-
-// ---------------------------------------------------------------- TAMBOR
-// One dark slab with the time set in a grotesque: the hours heavy, the minutes
-// light, and a seam across the middle where the leaves would fold.
-void bigDigit(const Canvas& c, const int digit, const int x, const int y, const bool bold) {
-  const uint16_t* offsets = bold ? clockdigits::kBoldOffsets : clockdigits::kLightOffsets;
-  const uint8_t* runs = (bold ? clockdigits::kBoldRuns : clockdigits::kLightRuns) + offsets[digit];
-  for (int row = 0; row < clockdigits::kHeight; ++row) {
-    const int count = *runs++;
-    for (int i = 0; i < count; ++i) {
-      c.r.fillRect(x + runs[0], y + row, runs[1], 1, false);
-      runs += 2;
-    }
-  }
-}
-
-void faceTambor(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
-  char date[32];
-  dateLine(now, date, sizeof(date));
-  const bool wide = c.wide();
-  const int boldW = clockdigits::kBoldWidth;
-  const int lightW = clockdigits::kLightWidth;
-  const int digitH = clockdigits::kHeight;
-  const int margin = 18;
-  const int foot = toybox::kDisplayCut.inkHeight + 62;  // the date under the slab, clear of the strip
-  const int slabW = c.w - margin * 2;
-  const int slabH = c.h - margin - foot;
-  c.r.fillRoundedRect(margin, margin, slabW, slabH, 34, Color::Black);
-
-  const auto pair = [&](const int first, const int x, const int y, const bool bold) {
-    const int w = bold ? boldW : lightW;
-    for (int i = 0; i < 2; ++i) {
-      if (t.valid) {
-        bigDigit(c, t.d[first + i], x + i * w, y, bold);
-      } else {
-        c.r.fillRect(x + i * w + w / 4, y + digitH / 2 - 8, w / 2, 16, false);
-      }
-    }
-  };
+  const Font& label = clocktype::kDialLabel;
+  const char* month = now.valid ? cc::monthLong(now.month) : "";
   if (wide) {
-    const int gap = 26;
-    const int total = boldW * 2 + gap + lightW * 2;
-    const int x = (c.w - total) / 2;
-    const int y = margin + (slabH - digitH) / 2;
-    pair(0, x, y, true);
-    pair(2, x + boldW * 2 + gap, y, false);
-    c.r.fillRect(margin, y + digitH / 2 - 1, slabW, 3, true);
+    const int x = 488;
+    const Font& day = clocktype::kDialDay;
+    const int dayBase = 150 + 20 + day.capTop;
+    type(c, label, x, 150, s.weekdayCaps, true, 3);
+    type(c, day, x - 6, dayBase, s.day, true, -7);
+    type(c, clocktype::kDialMonth, x, dayBase + 44, month);
+    type(c, label, x, dayBase + 82, s.week);
   } else {
-    const int gap = 56;
-    const int y = margin + (slabH - digitH * 2 - gap) / 2;
-    pair(0, (c.w - boldW * 2) / 2, y, true);
-    pair(2, (c.w - lightW * 2) / 2, y + digitH + gap, false);
-    c.r.fillRect(margin, y + digitH / 2 - 1, slabW, 3, true);
-    c.r.fillRect(margin, y + digitH + gap + digitH / 2 - 1, slabW, 3, true);
+    const Font& day = clocktype::kDialDayTall;
+    const int dayBase = c.h - 44;
+    type(c, label, 40, dayBase - day.capTop - 22, s.weekdayCaps, true, 3);
+    type(c, day, 32, dayBase, s.day, true, -10);
+    typeAt(c, clocktype::kDialMonth, c.w - 40, dayBase - 38, month, 1);
+    typeAt(c, label, c.w - 40, dayBase - 6, s.week, 1);
   }
-  if (now.valid) text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, c.h - foot + 14, date);
-}
-
-// ---------------------------------------------------------------- RELOJES
-// Twenty-four small dials, six to a numeral, their hands set so that together
-// they write the time.
-void faceRelojes(const Canvas& c, const Moment& now) {
-  const Digits t = digitsOf(now);
-  char date[32];
-  dateLine(now, date, sizeof(date));
-  const bool wide = c.wide();
-  const int cols = wide ? 8 : 4;
-  const int rows = wide ? 3 : 6;
-  const int foot = toybox::kDisplayCut.inkHeight + 62;
-  const int group = wide ? 28 : 26;  // between the hours and the minutes
-  int cell = (c.w - 24 - (wide ? group : 0)) / cols;
-  const int cellByHeight = (c.h - foot - 20 - (wide ? 0 : group)) / rows;
-  if (cellByHeight < cell) cell = cellByHeight;
-  const int radius = cell / 2 - 3;
-  const int left = (c.w - cell * cols - (wide ? group : 0)) / 2;
-  const int top = (c.h - foot - cell * rows - (wide ? 0 : group)) / 2 + 4;
-  const float pen = radius * 0.13f;
-  static constexpr int kDx[5] = {0, 1, 0, -1, -1};
-  static constexpr int kDy[5] = {-1, 0, 1, 0, 1};
-  for (int d = 0; d < 4; ++d) {
-    const cc::Dial* dials = cc::dialsOf(t.valid ? t.d[d] : 8);
-    for (int i = 0; i < 6; ++i) {
-      const int col = (wide ? d * 2 : (d % 2) * 2) + i % 2;
-      const int row = (wide ? 0 : (d / 2) * 3) + i / 2;
-      const int cx = left + col * cell + cell / 2 + (wide && d >= 2 ? group : 0);
-      const int cy = top + row * cell + cell / 2 + (!wide && d >= 2 ? group : 0);
-      disc(c, cx, cy, radius);
-      disc(c, cx, cy, radius - 2, false);
-      const cc::Dial dial = t.valid ? dials[i] : cc::Dial{cc::Rest, cc::Rest};
-      for (const cc::Hand hand : {dial.a, dial.b}) {
-        // A resting hand stops short of the rim and is drawn thin.
-        const bool rest = hand == cc::Rest;
-        const float reach = rest ? radius * 0.55f : radius - 2.0f;
-        stroke(c, cx, cy, cx + kDx[hand] * reach * (rest ? 0.707f : 1.0f),
-               cy + kDy[hand] * reach * (rest ? 0.707f : 1.0f), rest ? 1.5f : pen);
-      }
-    }
-  }
-  if (now.valid) text(c, toybox::kDisplayFontId, toybox::kDisplayCut, c.w / 2, c.h - foot + 10, date);
 }
 
 }  // namespace
@@ -658,31 +644,34 @@ void draw(GfxRenderer& renderer, const int face, const Moment& now) {
   const Canvas c{renderer, renderer.getScreenWidth(), renderer.getScreenHeight()};
   switch (face) {
     case 0:
-      faceTrazo(c, now);
+      faceEditorial(c, now);
       break;
     case 1:
-      facePaletas(c, now);
+      facePuntos(c, now);
       break;
     case 2:
-      faceEsfera(c, now);
+      facePoster(c, now);
       break;
     case 3:
-      faceAnillos(c, now);
+      faceGrotesca(c, now);
       break;
     case 4:
-      faceMatriz(c, now);
+      faceNoir(c, now);
       break;
     case 5:
-      faceSegmentos(c, now);
+      faceTerminal(c, now);
+      break;
+    case 6:
+      faceCapsula(c, now);
       break;
     case 7:
-      faceTambor(c, now);
+      facePixel(c, now);
       break;
     case 8:
-      faceRelojes(c, now);
+      facePalabras(c, now);
       break;
     default:
-      facePalabras(c, now);
+      faceAnalogico(c, now);
       break;
   }
 }
