@@ -63,6 +63,9 @@ class TodayActivity final : public Activity {
   // Which of the five faces is up; a swipe changes it and it is kept.
   void setStyle(int style);
   int style_ = 0;
+  // Turned on its side by a swipe up or down, and kept with the style.
+  void applyOrientation();
+  bool wide_ = false;
   int pressX_ = -1;
   bool cleanNext_ = true;
 

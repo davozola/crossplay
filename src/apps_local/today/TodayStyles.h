@@ -1,6 +1,7 @@
 #pragma once
 
-// HOY's faces. The same day's data drawn ten ways, to be swiped between: two
+// HOY's faces. The same day's data drawn ten ways, each upright and on its
+// side, to be swiped between: two
 // in the firmware's own pixel hand, and eight that leave it for the reader's
 // serif and sans and for drawn dials.
 
@@ -38,6 +39,8 @@ struct Page {
   const char* playing = "";
   // Minutes between fetches the page makes by itself, 0 for never.
   int autoMinutes = 0;
+  // The page turned on its side: 800 wide, each face in its wide layout.
+  bool wide = false;
 };
 
 // Draws the page in a style, with its tappable parts and the foot they share:

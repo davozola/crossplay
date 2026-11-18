@@ -15,8 +15,8 @@
 #include <vector>
 
 #include "../../DevMode.h"
-#include "../../WifiCredentialStore.h"
 #include "../../SilentRestart.h"
+#include "../../WifiCredentialStore.h"
 #include "../../activities/network/WifiSelectionActivity.h"
 #include "../../components/UITheme.h"
 #include "../Shelf.h"
@@ -78,16 +78,20 @@ void TodayActivity::onEnter() {
   loadEvent();
   style_ = 0;
   autoMinutes_ = 0;
+  wide_ = false;
   if (Storage.exists(kStylePath)) {
     HalFile file;
-    uint8_t saved[2] = {0, 0};
-    if (Storage.openFileForRead("HOY", kStylePath, file) && file.read(saved, 2) >= 1) {
+    uint8_t saved[3] = {0, 0, 0};
+    if (Storage.openFileForRead("HOY", kStylePath, file) && file.read(saved, 3) >= 1) {
       if (saved[0] < todaystyles::kStyles) style_ = saved[0];
       for (const int choice : kAutoChoices) {
         if (choice == saved[1]) autoMinutes_ = choice;
       }
+      wide_ = saved[2] == 1;
     }
   }
+  applyOrientation();
+  cleanNext_ = true;
   shownMinute_ = -1;
   statusHeadline_ = nullptr;
   lastFetchMs_ = static_cast<uint32_t>(millis());
@@ -97,7 +101,14 @@ void TodayActivity::onEnter() {
   if (autoMinutes_ > 0) startRefresh();
 }
 
+void TodayActivity::applyOrientation() {
+  renderer.setOrientation(wide_ ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                                : GfxRenderer::Orientation::Portrait);
+}
+
 void TodayActivity::onExit() {
+  // The orientation is the renderer's, not this app's: hand it back upright.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -121,8 +132,12 @@ void TodayActivity::startRefresh() {
     step_ = Step::Ready;
     return;
   }
+  // The picker is an upright screen; the page turns back when it returns.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
+                           applyOrientation();
+                           cleanNext_ = true;
                            if (result.isCancelled) {
                              step_ = Step::Idle;
                              statusHeadline_ = "SIN WI-FI";
@@ -152,7 +167,8 @@ void TodayActivity::loop() {
     lastInputMs_ = lastFetchMs_;
     if (kinds < 0) {
       statusHeadline_ = "SIN WI-FI";
-      std::snprintf(report_, sizeof(report_), "NO SE PUDO UNIR A LA RED GUARDADA. LO ULTIMO DESCARGADO SIGUE EN LA TARJETA.");
+      std::snprintf(report_, sizeof(report_),
+                    "NO SE PUDO UNIR A LA RED GUARDADA. LO ULTIMO DESCARGADO SIGUE EN LA TARJETA.");
       statusDismissable_ = true;
       ask();
       return;
@@ -211,11 +227,19 @@ void TodayActivity::loop() {
     return;
   }
 
-  // A swipe either way is the next face or the one before.
+  // A swipe sideways is the next face or the one before; up or down turns the
+  // page on its side and back, as the clock does.
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
   if (swipe != MappedInputManager::SwipeDir::None && step_ == Step::Idle && statusHeadline_ == nullptr) {
-    const bool on = swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up;
-    setStyle(style_ + (on ? 1 : todaystyles::kStyles - 1));
+    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+      wide_ = !wide_;
+      applyOrientation();
+      savePrefs();
+      cleanNext_ = true;
+      ask();
+      return;
+    }
+    setStyle(style_ + (swipe == MappedInputManager::SwipeDir::Left ? 1 : todaystyles::kStyles - 1));
     return;
   }
 
@@ -348,8 +372,9 @@ void TodayActivity::setStyle(const int style) {
 void TodayActivity::savePrefs() {
   HalFile file;
   if (!Storage.openFileForWrite("HOY", kStylePath, file)) return;
-  const uint8_t saved[2] = {static_cast<uint8_t>(style_), static_cast<uint8_t>(autoMinutes_)};
-  file.write(saved, 2);
+  const uint8_t saved[3] = {static_cast<uint8_t>(style_), static_cast<uint8_t>(autoMinutes_),
+                            static_cast<uint8_t>(wide_ ? 1 : 0)};
+  file.write(saved, 3);
   file.flush();
 }
 
@@ -383,6 +408,7 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   page.clockSet = t >= kClockSetAfter;
   if (page.clockSet) localtime_r(&t, &page.now);
   page.autoMinutes = autoMinutes_;
+  page.wide = wide_;
   page.playing = playing_;
   page.eventCount = eventCount_;
   for (int i = 0; i < eventCount_; ++i) {
