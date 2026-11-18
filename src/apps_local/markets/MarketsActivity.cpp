@@ -41,6 +41,7 @@ void MarketsActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadState();
+  applyOrientation();
   marketsstore::loadPicks();
   for (int i = 0; i < mk::kAssets; ++i) loadCached(static_cast<mk::Asset>(i));
   marketsstore::loadPortfolio(portfolio_);
@@ -53,12 +54,21 @@ void MarketsActivity::onEnter() {
   if (autoMinutes_ > 0) startRefresh();
 }
 
+void MarketsActivity::applyOrientation() {
+  renderer.setOrientation(wide_ ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                                : GfxRenderer::Orientation::Portrait);
+}
+
 void MarketsActivity::requestUpdate(const bool immediate) {
   quiet_.paintPending = true;
   Activity::requestUpdate(immediate);
 }
 
 void MarketsActivity::onExit() {
+  // The orientation and the clip are the renderer's, not this app's: hand
+  // them back upright and open.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -74,9 +84,10 @@ void MarketsActivity::loadState() {
   if (!Storage.exists(kSavePath)) return;
   HalFile file;
   if (!Storage.openFileForRead("MKTS", kSavePath, file)) return;
-  uint8_t data[4] = {};
-  // The period came later: a shorter file is an older one, and still good.
+  uint8_t data[5] = {};
+  // The period and the turn came later: a shorter file is an older one, and still good.
   if (file.read(data, sizeof(data)) < 3 || data[0] != kSaveVersion) return;
+  wide_ = data[4] == 1;
   if (data[3] < mk::kPeriods) period_ = static_cast<mk::Period>(data[3]);
   for (const int choice : marketsui::kAutoChoices) {
     if (choice == data[1]) autoMinutes_ = choice;
@@ -87,8 +98,8 @@ void MarketsActivity::loadState() {
 void MarketsActivity::saveState() {
   HalFile file;
   if (!Storage.openFileForWrite("MKTS", kSavePath, file)) return;
-  const uint8_t data[4] = {kSaveVersion, static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(span_),
-                           static_cast<uint8_t>(period_)};
+  const uint8_t data[5] = {kSaveVersion, static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(span_),
+                           static_cast<uint8_t>(period_), static_cast<uint8_t>(wide_ ? 1 : 0)};
   file.write(data, sizeof(data));
   file.flush();
 }
@@ -129,7 +140,10 @@ void MarketsActivity::askSearch() {
     LOG_ERR("MKTS", "OOM: the keyboard");
     return;
   }
+  // The keyboard is an upright screen; the page turns back when it returns.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
+    applyOrientation();
     interactionsReady_ = false;
     if (!result.isCancelled) {
       mk::tidyQuery(std::get<KeyboardResult>(result.data).text.c_str(), query_, sizeof(query_));
@@ -203,8 +217,11 @@ void MarketsActivity::startRefresh() {
     step_ = Step::Ready;
     return;
   }
+  // The picker is an upright screen; the page turns back when it returns.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   startActivityForResult(
       std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
+        applyOrientation();
         if (result.isCancelled) {
           step_ = Step::Idle;
           job_ = Job::Refresh;
@@ -330,6 +347,17 @@ void MarketsActivity::loop() {
     return;
   }
 
+  // A swipe up or down turns the page on its side and back, as the clock does.
+  const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
+  if ((swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) &&
+      step_ == Step::Idle) {
+    wide_ = !wide_;
+    applyOrientation();
+    saveState();
+    requestUpdate();
+    return;
+  }
+
   int tapX = 0;
   int tapY = 0;
   if (!mappedInput.wasScreenTapped(tapX, tapY) || !interactionsReady_) return;
@@ -442,6 +470,8 @@ void MarketsActivity::route(const fui::ActionEvent& event) {
 }
 
 void MarketsActivity::render(RenderLock&&) {
+  // The clip is in logical coordinates and whoever drew last left theirs.
+  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();

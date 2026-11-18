@@ -41,8 +41,10 @@ void ClockActivity::onEnter() {
 
 void ClockActivity::onExit() {
   saveState();
-  // The orientation is the renderer's, not this app's: hand it back upright.
+  // The orientation and the clip are the renderer's, not this app's: hand
+  // them back upright and open, or the next page is cut where this one ended.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   Activity::onExit();
 }
 

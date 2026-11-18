@@ -69,6 +69,9 @@ class MarketsActivity final : public Activity {
   markets::Asset open_ = markets::Asset::Bitcoin;
   marketsui::Span span_ = marketsui::Span::Month;
   int autoMinutes_ = 0;
+  // Turned on its side by a swipe up or down, and kept with the rest.
+  void applyOrientation();
+  bool wide_ = false;
   int fetchedHour_ = -1;
   int fetchedMinute_ = 0;
   uint32_t lastFetchMs_ = 0;
