@@ -30,17 +30,21 @@ void pack(const Place* places, const int last, uint8_t* bytes) {
 }
 
 bool unpack(const uint8_t* bytes, const int size, Place* places, int& last) {
-  if (size != kSaveBytes || bytes[0] != 1) return false;
-  for (int i = 0; i < kGuides; ++i) {
+  // A save from before a guide was added is shorter by that guide's two bytes.
+  // Guides are only ever added at the end, so the places it holds still line
+  // up; the new guide starts at its first page.
+  if (size < 2 || bytes[0] != 1 || (size - 2) % 2 != 0) return false;
+  const int saved = (size - 2) / 2;
+  if (saved < kGuidesFirstSave || saved > kGuides) return false;
+  for (int i = 0; i < saved; ++i) {
     // A chapter the guide no longer has starts it again; the page is checked
     // by the reader, which is the one that knows how many there are.
     if (bytes[2 + i * 2] >= guideAt(i).count) return false;
   }
   for (int i = 0; i < kGuides; ++i) {
-    places[i].chapter = bytes[2 + i * 2];
-    places[i].page = bytes[3 + i * 2];
+    places[i] = i < saved ? Place{bytes[2 + i * 2], bytes[3 + i * 2]} : Place{};
   }
-  last = bytes[1] < kGuides ? bytes[1] : -1;
+  last = bytes[1] < saved ? bytes[1] : -1;
   return true;
 }
 

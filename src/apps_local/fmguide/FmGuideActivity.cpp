@@ -574,20 +574,30 @@ void FmGuideActivity::buildHome(toybox::Screen& screen) {
   const int inner = screen.device().width - x * 2;
   const int bottom = screen.device().height - kBottomReserve - 6;
   int y = toybox::kChromeHeight + 10;
-  const int gap = 8;
+  const int gap = 6;
   const int tileH = (bottom - y - gap * (fg::kGuides - 1)) / fg::kGuides;
+  // A tagline takes two lines. Under a name in the display cut that needs a
+  // tile about 120 tall, which five guides had on an 800-row panel and six do
+  // not (105). A shorter tile sets the name in the UI cut and moves the
+  // version up beside it, so the second line of the tagline keeps clear of
+  // both the version and the tile's edge.
+  const bool roomy = tileH >= 120;
+  const toybox::CutMetrics& nameCut = roomy ? toybox::kDisplayCut : toybox::kUiCut;
+  const fui::FontId nameFont = roomy ? toybox::kDisplayFont : toybox::kUiFont;
+  const int top = roomy ? 14 : 10;
   for (int i = 0; i < fg::kGuides; ++i) {
     const fg::Guide& guide = fg::guideAt(i);
     const fui::Rect r = lab::rect(x, y, inner, tileH);
     lab::button(screen, r, "", ActionGuide, i);
-    lab::label(screen, lab::rect(r.x + 16, r.y + 14, inner - 32, toybox::kDisplayCut.inkHeight), guide.name,
-               toybox::kDisplayFont, toybox::kDisplayCut, fui::TextAlign::Left);
-    lab::caption(screen, r.x + 16, r.y + tileH - 12 - toybox::kTileCut.inkHeight, inner - 32, guide.version,
-                 fui::TextAlign::Right, fui::Color::DarkGray);
-    flow(renderer, kBody, kBodyLine, r.x + 16, r.y + 14 + toybox::kDisplayCut.inkHeight + 8, inner - 32, guide.tagline,
-         true);
+    lab::label(screen, lab::rect(r.x + 16, r.y + top, inner - 32, nameCut.inkHeight), guide.name, nameFont, nameCut,
+               fui::TextAlign::Left);
+    const int versionY = roomy ? r.y + tileH - 12 - toybox::kTileCut.inkHeight
+                               : r.y + top + nameCut.inkHeight - toybox::kTileCut.inkHeight;
+    lab::caption(screen, r.x + 16, versionY, inner - 32, guide.version, fui::TextAlign::Right, fui::Color::DarkGray);
+    flow(renderer, kBody, kBodyLine, r.x + 16, r.y + top + nameCut.inkHeight + (roomy ? 8 : 3), inner - 32,
+         guide.tagline, true);
     // A mark on the one being read.
-    if (i == last_) renderer.fillRect(r.x + 4, r.y + 14, 5, tileH - 28, true);
+    if (i == last_) renderer.fillRect(r.x + 4, r.y + top, 5, tileH - top * 2, true);
     y += tileH + gap;
   }
 }
