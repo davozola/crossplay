@@ -1176,8 +1176,8 @@ void buildAutoPicker(toybox::Screen& screen, const int currentMinutes) {
     y += 60 + 8;
   }
   y += 10;
-  caption(screen, toybox::kMargin, y, inner, "WHILE IT IS ON THE READER STAYS AWAKE AND KEEPS");
-  caption(screen, toybox::kMargin, y + toybox::kTileCut.inkHeight + 8, inner, "THE WI-FI UP, WHICH USES BATTERY.");
+  caption(screen, toybox::kMargin, y, inner, "WHILE IT IS ON THE PAGE STAYS ON THE SCREEN.");
+  caption(screen, toybox::kMargin, y + toybox::kTileCut.inkHeight + 8, inner, "THE WI-FI COMES UP ONLY TO FETCH.");
 }
 
 void buildBoard(toybox::Screen& screen, const BoardModel& model) {

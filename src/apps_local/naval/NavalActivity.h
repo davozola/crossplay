@@ -3,13 +3,16 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxScreen.h"
 #include "../weather/WeatherCore.h"
 #include "NavalCore.h"
 
 // NAVAL WEATHER: wind, waves, swell and water for the places WEATHER keeps,
 // a week ahead, fetched from Open-Meteo on request and kept on the card so it
-// still reads at sea with no network.
+// still reads at sea with no network. On auto it stays on the panel and
+// fetches again by itself, with the radio up only for the fetch and a nap in
+// between.
 class NavalActivity final : public Activity {
  public:
   NavalActivity(GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity("Naval", renderer, mappedInput) {}
@@ -21,9 +24,12 @@ class NavalActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  bool preventAutoSleep() override { return autoMinutes_ > 0; }
+  void requestUpdate(bool immediate = false) override;
 
  private:
-  enum class View : uint8_t { Now, Day, Status };
+  enum class View : uint8_t { Now, Day, Status, AutoPicker };
+  enum class Fetched : uint8_t { Ok, NoAnswer, NoSea };
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
 
   void loadPlaces();
@@ -32,6 +38,10 @@ class NavalActivity final : public Activity {
   bool readFile(const char* path, std::unique_ptr<char[]>& body, size_t& size) const;
   void startFetch();
   void runFetch();
+  // The selected place's sea and wind, kept on the card. Needs the radio up.
+  Fetched fetchSea();
+  void loadAuto();
+  void saveAuto();
   void showStatus(const char* headline, const char* detail, bool dismissable);
   void buildNow(toybox::Screen& screen);
   void buildDay(toybox::Screen& screen);
@@ -40,6 +50,9 @@ class NavalActivity final : public Activity {
   View view_ = View::Now;
   Step step_ = Step::Idle;
   bool wifiActivated_ = false;
+  int autoMinutes_ = 0;
+  uint32_t lastFetchMs_ = 0;
+  autorefresh::Quiet quiet_;
 
   weather::Place places_[weather::kMaxPlaces];
   int placeCount_ = 0;

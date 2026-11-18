@@ -55,9 +55,15 @@ void WeatherActivity::onEnter() {
     view_ = View::Board;
   }
   lastFetchMs_ = static_cast<uint32_t>(millis());
+  quiet_.touched();
   requestUpdate();
-  // Left on auto, it comes back on auto: the first fetch is what joins the network.
+  // Left on auto, it comes back on auto, with a fetch straight away.
   if (autoMinutes_ > 0 && placeCount_ > 0) startJob(view_ == View::Board ? Job::Board : Job::Forecast);
+}
+
+void WeatherActivity::requestUpdate(const bool immediate) {
+  quiet_.paintPending = true;
+  Activity::requestUpdate(immediate);
 }
 
 void WeatherActivity::onExit() {
@@ -244,7 +250,9 @@ void WeatherActivity::startJob(const Job job) {
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false, view_ == View::Status ? statusBack_ : view_);
   wifiActivated_ = true;
-  if (WiFi.status() == WL_CONNECTED) {
+  // Connected already, or a network saved to join by itself: the join happens
+  // inside the job, with no picker in front of the page.
+  if (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone()) {
     step_ = Step::Ready;
     return;
   }
@@ -368,18 +376,37 @@ void WeatherActivity::loop() {
     return;
   }
   if (step_ == Step::Running) {
-    runJob();
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) {
+        runJob();
+      } else {
+        step_ = Step::Idle;
+        job_ = Job::None;
+        showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK. THE LAST FORECAST FETCHED STAYS HERE.", true,
+                   statusBack_);
+        requestUpdate();
+      }
+    }
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    quiet_.touched();
     return;
   }
 
-  // Auto-refresh: quietly, with no status page, and only when already online.
-  // A round that finds the radio down is skipped and the next one tries again.
+  // Auto-refresh: quietly, with no status page. The radio comes up for the
+  // round and goes down after it; in between the page naps.
+  quiet_.noteInput(mappedInput);
   if (autoMinutes_ > 0 && step_ == Step::Idle &&
       (view_ == View::Forecast || view_ == View::Day || view_ == View::Board)) {
+    const uint32_t intervalMs = static_cast<uint32_t>(autoMinutes_) * 60000u;
     const uint32_t now = static_cast<uint32_t>(millis());
-    if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
+    if (now - lastFetchMs_ >= intervalMs) {
       lastFetchMs_ = now;
-      if (wifiActivated_ && autorefresh::online(now, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_)) {
+      wifiActivated_ = true;
+      autorefresh::Radio radio;
+      if (!radio.online()) {
+        autorefresh::retrySoon(now, intervalMs, lastFetchMs_);
+      } else {
         bool any = false;
         if (view_ == View::Board) {
           const int shown = placeCount_ < boardSize() ? placeCount_ : boardSize();
@@ -392,6 +419,7 @@ void WeatherActivity::loop() {
       }
       return;
     }
+    quiet_.rest(lastFetchMs_, intervalMs);
   }
 
   // A swipe either way is the next arrangement: one city, three, five.
@@ -676,4 +704,5 @@ void WeatherActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
+  quiet_.paintPending = false;
 }

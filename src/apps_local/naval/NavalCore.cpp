@@ -38,6 +38,9 @@ void windUrl(const float lat, const float lon, char* out, const size_t cap) {
   std::snprintf(out, cap,
                 "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=wind_speed_10m"
                 "&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn"
+                // The wind over the water, not over the town behind it, and from one
+                // model the week through.
+                "&cell_selection=sea&models=ecmwf_ifs"
                 "&timezone=auto&forecast_days=%d",
                 static_cast<double>(lat), static_cast<double>(lon), kDays);
 }
