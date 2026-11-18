@@ -47,10 +47,15 @@ void MarketsActivity::onEnter() {
   reprice();
   view_ = View::Dashboard;
   lastFetchMs_ = static_cast<uint32_t>(millis());
+  quiet_.touched();
   requestUpdate();
-  // Left on auto, it comes back on auto: the first fetch is what joins the
-  // network, and without it no later round would ever find one.
+  // Left on auto, it comes back on auto, with a fetch straight away.
   if (autoMinutes_ > 0) startRefresh();
+}
+
+void MarketsActivity::requestUpdate(const bool immediate) {
+  quiet_.paintPending = true;
+  Activity::requestUpdate(immediate);
 }
 
 void MarketsActivity::onExit() {
@@ -192,7 +197,9 @@ void MarketsActivity::startRefresh() {
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false);
   wifiActivated_ = true;
-  if (WiFi.status() == WL_CONNECTED) {
+  // Connected already, or a network saved to join by itself: the join happens
+  // inside the fetch, with no picker in front of the page.
+  if (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone()) {
     step_ = Step::Ready;
     return;
   }
@@ -228,7 +235,16 @@ void MarketsActivity::loop() {
   if (step_ == Step::Running && job_ == Job::Search) {
     step_ = Step::Idle;
     job_ = Job::Refresh;
-    runSearch();
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) {
+        runSearch();
+      } else {
+        view_ = statusBack_;
+        showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK.", true);
+      }
+    }
+    quiet_.touched();
     requestUpdate();
     return;
   }
@@ -245,8 +261,17 @@ void MarketsActivity::loop() {
   }
   if (step_ == Step::Running) {
     step_ = Step::Idle;
-    const int ok = fetchAll();
-    if (ok == mk::kAssets && std::strncmp(report_, "ALL", 3) == 0) {
+    int ok = -1;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) ok = fetchAll();
+    }
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    quiet_.touched();
+    if (ok < 0) {
+      view_ = statusBack_;
+      showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK. THE LAST QUOTES FETCHED STAY ON THE CARD.", true);
+    } else if (ok == mk::kAssets && std::strncmp(report_, "ALL", 3) == 0) {
       view_ = statusBack_;
     } else {
       // Say which source it was; what did arrive is on the dashboard behind this.
@@ -257,24 +282,30 @@ void MarketsActivity::loop() {
     return;
   }
 
-  // Auto-refresh: quietly, with no status page, and only when already online.
-  // The radio reconnects by itself after a drop; a round that finds it down
-  // is skipped and the next one tries again.
+  // Auto-refresh: quietly, with no status page. The radio comes up for the
+  // round and goes down after it; in between the page naps.
+  quiet_.noteInput(mappedInput);
   if (autoMinutes_ > 0 && step_ == Step::Idle &&
       (view_ == View::Dashboard || view_ == View::Detail || view_ == View::Portfolio)) {
+    const uint32_t intervalMs = static_cast<uint32_t>(autoMinutes_) * 60000u;
     const uint32_t now = static_cast<uint32_t>(millis());
-    if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
+    if (now - lastFetchMs_ >= intervalMs) {
       lastFetchMs_ = now;
-      if (!wifiActivated_) {
+      if (!wifiActivated_ && !autorefresh::canJoinAlone()) {
         startRefresh();
         requestUpdate();
         return;
       }
-      if (autorefresh::online(now, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_) && fetchAll() > 0) {
+      wifiActivated_ = true;
+      autorefresh::Radio radio;
+      if (!radio.online()) {
+        autorefresh::retrySoon(now, intervalMs, lastFetchMs_);
+      } else if (fetchAll() > 0) {
         requestUpdate();
       }
       return;
     }
+    quiet_.rest(lastFetchMs_, intervalMs);
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -509,4 +540,5 @@ void MarketsActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
+  quiet_.paintPending = false;
 }

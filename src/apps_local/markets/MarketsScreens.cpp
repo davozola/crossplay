@@ -605,8 +605,8 @@ void buildAutoPicker(toybox::Screen& screen, const int currentMinutes) {
   s.align = fui::TextAlign::Left;
   s.maxLines = 4;
   screen.target().text(rect(toybox::kMargin, y, inner, toybox::kTileCut.lineHeight * 4),
-                       "WHILE IT IS ON, THE DEVICE STAYS AWAKE AND ON WI-FI, SO KEEP IT PLUGGED IN. OFF FETCHES ONLY "
-                       "WHEN YOU TAP REFRESH.",
+                       "WHILE IT IS ON, THE PAGE STAYS ON THE SCREEN AND THE WI-FI COMES UP ONLY TO FETCH. OFF FETCHES "
+                       "ONLY WHEN YOU TAP REFRESH.",
                        s);
 }
 

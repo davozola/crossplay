@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxScreen.h"
 #include "MarketsCore.h"
 #include "MarketsScreens.h"
@@ -10,7 +11,8 @@
 // MARKETS: three instruments of your choosing on one screen that can stand on
 // a desk (Bitcoin, the S&P 500 and the Nasdaq to begin with), and a portfolio. Bitcoin comes from Coinbase's daily
 // candles and the indexes from CNBC, one small answer per instrument, and are kept on the card so the last ones read
-// with no network. With auto-refresh on, the device stays awake and fetches again by itself.
+// with no network. With auto-refresh on, the page stays on the panel and fetches again by itself, with the radio
+// up only for the fetch and a nap in between.
 class MarketsActivity final : public Activity {
  public:
   MarketsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -24,6 +26,7 @@ class MarketsActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return autoMinutes_ > 0; }
+  void requestUpdate(bool immediate = false) override;
 
  private:
   enum class View : uint8_t {
@@ -69,6 +72,7 @@ class MarketsActivity final : public Activity {
   int fetchedHour_ = -1;
   int fetchedMinute_ = 0;
   uint32_t lastFetchMs_ = 0;
+  autorefresh::Quiet quiet_;
 
   const char* statusHeadline_ = "";
   const char* statusDetail_ = "";

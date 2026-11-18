@@ -22,6 +22,7 @@
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
 #include "../weather/WeatherSave.h"
+#include "../weather/WeatherScreens.h"
 #include "NavalPaths.h"
 
 namespace fui = freeink::ui;
@@ -32,6 +33,7 @@ namespace {
 
 using naval::kCacheDir;
 constexpr size_t kMaxBody = 48 * 1024;  // the marine answer is ~14 KB
+constexpr char kAutoPath[] = "/.crosspoint/naval-auto.cfg";
 
 enum : fui::ActionId {
   ActionPlace = 1,  // value: 0 the one before, 1 the one after
@@ -39,6 +41,7 @@ enum : fui::ActionId {
   ActionDay,      // value: day index
   ActionStepDay,  // value: 0 the day before, 1 the day after
   ActionDismiss,
+  ActionAuto,
 };
 
 const fui::Paint kInk = fui::Paint::solid(fui::Color::Black);
@@ -150,7 +153,12 @@ void NavalActivity::onEnter() {
   } else {
     haveSea_ = loadCache();
   }
+  loadAuto();
+  lastFetchMs_ = static_cast<uint32_t>(millis());
+  quiet_.touched();
   requestUpdate();
+  // Left on auto, it comes back on auto, with a fetch straight away.
+  if (autoMinutes_ > 0 && placeCount_ > 0) startFetch();
 }
 
 void NavalActivity::onExit() {
@@ -232,7 +240,9 @@ void NavalActivity::startFetch() {
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false);
   wifiActivated_ = true;
-  if (WiFi.status() == WL_CONNECTED) {
+  // Connected already, or a network saved to join by itself: the join happens
+  // inside the fetch, with no picker in front of the page.
+  if (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone()) {
     step_ = Step::Ready;
     return;
   }
@@ -248,8 +258,7 @@ void NavalActivity::startFetch() {
       });
 }
 
-void NavalActivity::runFetch() {
-  step_ = Step::Idle;
+NavalActivity::Fetched NavalActivity::fetchSea() {
   const weather::Place& p = places_[selected_];
   char url[512];
   char path[80];
@@ -258,16 +267,12 @@ void NavalActivity::runFetch() {
   nv::marineUrl(p.lat, p.lon, url, sizeof(url));
   if (!HttpDownloader::fetchUrl(url, body) || body.size() > kMaxBody) {
     LOG_ERR("NAVL", "marine fetch failed: status %d", HttpDownloader::lastStatus());
-    showStatus("NO ANSWER", "OPEN-METEO DID NOT ANSWER. CHECK THE WI-FI AND TRY AGAIN.", true);
-    requestUpdate();
-    return;
+    return Fetched::NoAnswer;
   }
   auto fresh = makeUniqueNoThrow<nv::Sea>();
   if (!fresh || !nv::parseMarine(body.data(), body.size(), *fresh)) {
     LOG_ERR("NAVL", "no sea in %u bytes", static_cast<unsigned>(body.size()));
-    showStatus("NO SEA HERE", "THERE IS NO WAVE FORECAST FOR THIS PLACE. IT IS PROBABLY TOO FAR INLAND.", true);
-    requestUpdate();
-    return;
+    return Fetched::NoSea;
   }
   cachePath("sea", path, sizeof(path));
   {
@@ -293,8 +298,56 @@ void NavalActivity::runFetch() {
   }
   *sea_ = *fresh;
   haveSea_ = true;
-  view_ = View::Now;
+  return Fetched::Ok;
+}
+
+void NavalActivity::runFetch() {
+  step_ = Step::Idle;
+  {
+    autorefresh::Radio radio;
+    if (!radio.online()) {
+      showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK. THE LAST FORECAST FETCHED STAYS HERE.", true);
+    } else {
+      switch (fetchSea()) {
+        case Fetched::Ok:
+          view_ = View::Now;
+          break;
+        case Fetched::NoSea:
+          showStatus("NO SEA HERE", "THERE IS NO WAVE FORECAST FOR THIS PLACE. IT IS PROBABLY TOO FAR INLAND.", true);
+          break;
+        case Fetched::NoAnswer:
+          showStatus("NO ANSWER", "OPEN-METEO DID NOT ANSWER. CHECK THE WI-FI AND TRY AGAIN.", true);
+          break;
+      }
+    }
+  }
+  lastFetchMs_ = static_cast<uint32_t>(millis());
+  quiet_.touched();
   requestUpdate();
+}
+
+void NavalActivity::loadAuto() {
+  autoMinutes_ = 0;
+  if (!Storage.exists(kAutoPath)) return;
+  HalFile file;
+  uint8_t saved = 0;
+  if (!Storage.openFileForRead("NAVL", kAutoPath, file) || file.read(&saved, 1) < 1) return;
+  for (const int choice : weatherui::kAutoChoices) {
+    if (choice == saved) autoMinutes_ = choice;
+  }
+}
+
+void NavalActivity::saveAuto() {
+  HalFile file;
+  if (!Storage.openFileForWrite("NAVL", kAutoPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(autoMinutes_);
+  file.write(&saved, 1);
+  file.flush();
+}
+
+void NavalActivity::requestUpdate(const bool immediate) {
+  quiet_.paintPending = true;
+  Activity::requestUpdate(immediate);
 }
 
 void NavalActivity::loop() {
@@ -309,6 +362,26 @@ void NavalActivity::loop() {
   if (step_ == Step::Running) {
     runFetch();
     return;
+  }
+
+  // Auto: quietly, with no status page. The radio comes up for the round and
+  // goes down after it; in between the page naps.
+  quiet_.noteInput(mappedInput);
+  if (autoMinutes_ > 0 && step_ == Step::Idle && placeCount_ > 0 && (view_ == View::Now || view_ == View::Day)) {
+    const uint32_t intervalMs = static_cast<uint32_t>(autoMinutes_) * 60000u;
+    const uint32_t now = static_cast<uint32_t>(millis());
+    if (now - lastFetchMs_ >= intervalMs) {
+      lastFetchMs_ = now;
+      wifiActivated_ = true;
+      autorefresh::Radio radio;
+      if (!radio.online()) {
+        autorefresh::retrySoon(now, intervalMs, lastFetchMs_);
+      } else if (fetchSea() == Fetched::Ok) {
+        requestUpdate();
+      }
+      return;
+    }
+    quiet_.rest(lastFetchMs_, intervalMs);
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -330,6 +403,25 @@ void NavalActivity::loop() {
   input.touchX = static_cast<int16_t>(tapX);
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
+  // The picker is WEATHER's, and so are its actions.
+  if (view_ == View::AutoPicker) {
+    if (event.action != weatherui::ActionChooseAuto) return;
+    int chosen = -1;
+    for (const int choice : weatherui::kAutoChoices) {
+      if (choice == event.value) chosen = choice;
+    }
+    if (chosen < 0) return;
+    autoMinutes_ = chosen;
+    saveAuto();
+    view_ = View::Now;
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    // Turning it on fetches straight away.
+    if (autoMinutes_ > 0 && placeCount_ > 0) {
+      startFetch();
+    }
+    requestUpdate();
+    return;
+  }
   switch (event.action) {
     case ActionPlace:
       if (placeCount_ < 2) return;
@@ -350,6 +442,9 @@ void NavalActivity::loop() {
       break;
     case ActionDismiss:
       view_ = View::Now;
+      break;
+    case ActionAuto:
+      view_ = View::AutoPicker;
       break;
     default:
       return;
@@ -493,11 +588,19 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
   }
 
   // When it was fetched, by the place's own clock, and the way to fetch again.
-  std::snprintf(b, sizeof(b), "AS OF %.5s  %d %s", sea.now[0] ? sea.now + 11 : "--:--", h.day,
+  std::snprintf(b, sizeof(b), "%.5s  %d %s", sea.now[0] ? sea.now + 11 : "--:--", h.day,
                 kMonths[h.month > 12 ? 0 : h.month]);
-  lab::caption(screen, x, bottom - 46 + (46 - toybox::kTileCut.inkHeight) / 2, inner - 170, b, fui::TextAlign::Left,
+  lab::caption(screen, x, bottom - 46 + (46 - toybox::kTileCut.inkHeight) / 2, inner - 290, b, fui::TextAlign::Left,
                fui::Color::DarkGray);
-  lab::button(screen, lab::rect(x + inner - 160, bottom - 46, 160, 46), "REFRESH", ActionRefresh, 0);
+  if (autoMinutes_ <= 0) {
+    std::snprintf(a, sizeof(a), "AUTO OFF");
+  } else if (autoMinutes_ >= 60) {
+    std::snprintf(a, sizeof(a), "AUTO %d H", autoMinutes_ / 60);
+  } else {
+    std::snprintf(a, sizeof(a), "AUTO %d M", autoMinutes_);
+  }
+  lab::button(screen, lab::rect(x + inner - 280, bottom - 46, 136, 46), a, ActionAuto, 0, autoMinutes_ > 0);
+  lab::button(screen, lab::rect(x + inner - 136, bottom - 46, 136, 46), "REFRESH", ActionRefresh, 0);
 }
 
 void NavalActivity::buildDay(toybox::Screen& screen) {
@@ -620,6 +723,8 @@ void NavalActivity::render(RenderLock&&) {
   toybox::Screen screen(frame);
   if (view_ == View::Status || !sea_) {
     buildStatus(screen);
+  } else if (view_ == View::AutoPicker) {
+    weatherui::buildAutoPicker(screen, autoMinutes_);
   } else if (view_ == View::Day && haveSea_) {
     buildDay(screen);
   } else {
@@ -630,4 +735,5 @@ void NavalActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
+  quiet_.paintPending = false;
 }

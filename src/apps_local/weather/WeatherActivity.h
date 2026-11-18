@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxScreen.h"
 #include "WeatherCore.h"
 #include "WeatherScreens.h"
@@ -21,8 +22,10 @@ class WeatherActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
-  // With auto-refresh on, the reader stays awake to fetch again by itself.
+  // With auto-refresh on, the page stays on the panel and fetches again by
+  // itself, with the radio up only for the fetch and a nap in between.
   bool preventAutoSleep() override { return autoMinutes_ > 0; }
+  void requestUpdate(bool immediate = false) override;
 
  private:
   enum class View : uint8_t { Forecast, Day, Cities, Results, Status, AutoPicker, Board };
@@ -64,6 +67,7 @@ class WeatherActivity final : public Activity {
   int pressX_ = -1;
   weatherui::BoardCard cards_[weather::kMaxPlaces];
   uint32_t lastFetchMs_ = 0;
+  autorefresh::Quiet quiet_;
 
   weather::Place places_[weather::kMaxPlaces];
   int placeCount_ = 0;
