@@ -91,6 +91,14 @@ int main() {
     CHECK(!unpack(bytesOut, kSaveBytes - 1, back, last));
     pack(places, -1, bytesOut);
     CHECK(unpack(bytesOut, kSaveBytes, back, last) && last == -1);
+    // A save written when there were five guides keeps its places, and the
+    // guide added since starts at its first page.
+    pack(places, 4, bytesOut);
+    back[kGuides - 1] = {7, 7};
+    const int firstSave = 2 + kGuidesFirstSave * 2;
+    CHECK(unpack(bytesOut, firstSave, back, last) && last == 4 && back[1].chapter == 3 && back[4].chapter == 9 &&
+          back[kGuides - 1].chapter == 0 && back[kGuides - 1].page == 0);
+    CHECK(!unpack(bytesOut, firstSave - 2, back, last));
   }
   if (failures == 0)
     std::printf("fmguide: all tests passed (%d checks, %d blocks, %d bytes of text)\n", checks, blocks, bytes);

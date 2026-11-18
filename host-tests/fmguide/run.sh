@@ -12,5 +12,5 @@ mkdir -p "$BUILD_DIR"
 SRC=../../src/apps_local/fmguide
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -O2 -I$SRC \
   test_fmguide.cpp $SRC/GuideCore.cpp $SRC/Guides.cpp $SRC/GuideGeneral.cpp $SRC/GuideSloop.cpp \
-  $SRC/GuideFelucca.cpp $SRC/GuideBaud.cpp $SRC/GuideX0x.cpp -o "$BUILD_DIR/test_fmguide"
+  $SRC/GuideFelucca.cpp $SRC/GuideBaud.cpp $SRC/GuideX0x.cpp $SRC/GuideJiant.cpp -o "$BUILD_DIR/test_fmguide"
 "$BUILD_DIR/test_fmguide"

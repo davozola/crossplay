@@ -35,16 +35,17 @@ constexpr Block kPanel[] = {
     KEYS(kAllWhite | kAllBlack,
          "Dieciséis teclas blancas, de Fa3 a Sol5, y once negras. En las guías se numeran así: blancas 1 a 16 y "
          "negras 1 a 11, siempre de izquierda a derecha."),
-    P("Las teclas no tienen sensibilidad a la fuerza. Cuando un firmware habla de notas fuertes o suaves, las da con "
-      "un botón mantenido, con un ajuste o por MIDI desde otro teclado."),
+    P("Con el firmware original las teclas no responden a la fuerza. Casi todos los de la comunidad dan las notas "
+      "fuertes o suaves con un botón mantenido, con un ajuste o por MIDI desde otro teclado. JIANT FM es la excepción: "
+      "lee la pastilla que hay bajo cada tecla y saca de ahí la fuerza y la presión."),
     N("TOCAR Y MANTENER",
       "Casi todos los firmwares distinguen entre tocar un botón (abre su página) y mantenerlo (abre una capa: mientras "
       "lo sujetas, teclas y mandos hacen otra cosa). Si algo no responde como esperas, prueba la otra forma."),
 };
 
 constexpr Block kChoose[] = {
-    P("Estas guías cubren los cuatro firmwares mejor valorados por la comunidad a noviembre de 2026. No compiten: "
-      "cada uno convierte la FM-1 en un instrumento distinto, y cambiar de uno a otro lleva un minuto."),
+    P("Estas guías cubren cinco de los firmwares mejor valorados por la comunidad a noviembre de 2026. No compiten: "
+      "cada uno convierte la FM-1 en un instrumento distinto, y cambiar de uno a otro lleva unos minutos."),
     H("En una frase"),
     R("SLOOP",
       "Una caja de ritmos para tocar en directo: tres sintes y una batería, grabas tocando y el bucle se "
@@ -56,15 +57,19 @@ constexpr Block kChoose[] = {
       "La FM-1 de siempre, mejorada: sigue siendo FM y añade un motor analógico virtual, uno de 8 bits, "
       "efectos y un secuenciador serio. El menos arriesgado."),
     R("X0X", "Una 909, una 808, dos 303 y un reproductor de breaks sonando a la vez. Para ácido, techno y big beat."),
+    R("JIANT FM",
+      "Seis pistas, doce motores, una voz que canta y un generador que escribe temas enteros por género. El más "
+      "grande, y el que más propone."),
     H("Cómo se parecen"),
-    FLOW("FELUCCA>SLOOP|FELUCCA>X0X|ORIGINAL V15>FM-1+VA",
-         "SLOOP y X0X nacen de Felucca: se instalan igual y comparten combinaciones de rescate y costumbres. FM-1+VA "
-         "modifica el firmware original de M-VAVE en lugar de sustituirlo."),
+    FLOW("FELUCCA>SLOOP|FELUCCA>X0X|FELUCCA>JIANT FM|ORIGINAL V15>FM-1+VA",
+         "SLOOP, X0X y JIANT FM nacen de Felucca: se instalan de forma parecida y comparten combinaciones de rescate y "
+         "costumbres. FM-1+VA modifica el firmware original de M-VAVE en lugar de sustituirlo."),
     H("Cuál probar primero"),
     B("Si quieres seguir teniendo tus presets FM y tu forma de tocar: FM-1+VA. Conserva presets y patrones."),
     B("Si quieres hacer un tema entero sin ordenador y sin leer mucho: SLOOP."),
     B("Si quieres diseñar sonido y programar pasos con detalle: Felucca."),
     B("Si quieres bombo, bajo ácido y breaks desde el primer minuto: X0X."),
+    B("Si quieres que la FM-1 te proponga un tema entero y luego retocarlo, con seis pistas: JIANT FM."),
     H("Datos de cada uno"),
     R("SLOOP 2.8.5", "Gratis, código abierto (GPL-3.0). Autor: 3dSam. 4 pistas, 12 motores, 153 sonidos."),
     R("Felucca 1.8.2",
@@ -74,6 +79,9 @@ constexpr Block kChoose[] = {
     R("X0X 1.2.0",
       "Gratis, código abierto (GPL-3.0). Autor: Charles Vestal. 5 partes, 32 patrones, canción de 192 "
       "compases. Se declara en beta."),
+    R("JIANT FM 10.7",
+      "Gratis, código abierto (GPL-3.0). Autor: Juan Jiant. 6 pistas, 12 motores, 6 proyectos de 4 "
+      "secciones."),
     N("VERSIONES",
       "Estos proyectos publican versiones nuevas cada pocos días. Antes de instalar, mira en la página de "
       "cada uno cuál es la actual: algún botón puede haber cambiado de sitio respecto a esta guía."),
@@ -104,8 +112,8 @@ constexpr Block kBefore[] = {
       "ni apagues."),
     N("FM-1 NUEVAS",
       "Las unidades vendidas desde otoño de 2026 llevan otro chip de memoria (UC25HQ80). Un firmware que no lo "
-      "reconoce pierde lo guardado al apagar y no puede actualizarse. SLOOP 2.8.5 y Felucca 1.8.2 sí lo reconocen: "
-      "no instales versiones anteriores en una FM-1 reciente."),
+      "reconoce pierde lo guardado al apagar y no puede actualizarse. SLOOP 2.8.5, Felucca 1.8.2 y JIANT FM desde la "
+      "V10.6z sí lo reconocen: no instales versiones anteriores en una FM-1 reciente."),
     N("POR TU CUENTA",
       "Ninguno de estos proyectos es de M-VAVE. Todos avisan de que se instalan bajo tu "
       "responsabilidad, y X0X se declara en beta."),
@@ -124,6 +132,9 @@ constexpr Block kSwitch[] = {
     R("X0X",
       "Página de backup: un archivo .x0b con sonidos, patrones, canción y ajustes. Los breaks propios no van "
       "dentro: guarda sus WAV."),
+    R("JIANT FM",
+      "Editor web, Projects, Save backup: un archivo con todo salvo el banco de voces FM6. Su instalador hace "
+      "además una copia al volver al original."),
     H("El orden seguro"),
     FLOW("FIRMWARE A>COPIA>ORIGINAL V15>FIRMWARE B",
          "Mucha gente pasa por el firmware original entre dos firmwares de la comunidad. No es obligatorio, pero es "
@@ -133,6 +144,9 @@ constexpr Block kSwitch[] = {
     N("FM-1+VA",
       "Solo se instala sobre el V15 original o sobre una versión anterior de sí mismo. Para llegar a él "
       "desde otro firmware de la comunidad, vuelve primero al original."),
+    N("JIANT FM",
+      "Solo se instala sobre el V16 o el V15 original, o sobre sí mismo. Su manual avisa de que escribirlo "
+      "directamente encima de otro firmware de la comunidad ya ha dejado alguna FM-1 sin arrancar."),
     P("Al volver al firmware original después de usar otro, puede arrancar con ajustes extraños o la pantalla "
       "revuelta: está leyendo datos que dejó el otro. No hay nada roto. Un restablecimiento de fábrica desde el propio "
       "firmware de M-VAVE lo arregla."),
@@ -144,10 +158,10 @@ constexpr Block kRescue[] = {
       "El actualizador de M-VAVE (m-vave.com, Downloads) con el archivo FM-1.fwsc, V16 o V15. Es el "
       "camino que recomienda SLOOP. Cierra antes cualquier otro programa con MIDI."),
     R("Desde el instalador",
-      "Felucca y X0X tienen en su página web un botón para volver al original; en FM-1+VA se "
+      "Felucca, X0X y JIANT FM tienen en su página web un botón para volver al original; en FM-1+VA se "
       "elige «Install a file from my computer» y se le da el archivo de M-VAVE."),
     H("Combinaciones de rescate"),
-    P("SLOOP y X0X documentan estas combinaciones. Felucca comparte la del modo actualización y tiene la "
+    P("SLOOP, X0X y JIANT FM documentan estas combinaciones. Felucca comparte la del modo actualización y tiene la "
       "calibración en su menú (HOME mantenido, SYSTEM, CALIBRATION). FM-1+VA no las usa."),
     PANEL(cOct, "Los dos botones de octava, a la izquierda, son la puerta de emergencia."),
     R("OCT- y OCT+ juntos, 5 s",
