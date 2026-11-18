@@ -223,32 +223,6 @@ void eventsBlock(toybox::Screen& screen, const GfxRenderer& r, const Page& page,
                  const int bottom, const EventLook look, const int zoneX = 0, int zoneW = -1) {
   const bool pixel = look == EventLook::Pixel;
   if (zoneW < 0) zoneW = screen.device().width - zoneX;
-  // The music first, when there is some: one line, which opens the Jukebox.
-  if (page.playing[0] != 0 && bottom - y > 60) {
-    const int musicTop = y;
-    const int font = NOTOSANS_12_FONT_ID;
-    const std::string line = r.truncatedText(font, page.playing, width);
-    if (pixel) {
-      const char* head = "SUENA AHORA";
-      const int tabW = r.getTextWidth(toybox::kTileFontId, head) + 16;
-      r.fillRect(x, y, tabW, 22, true);
-      r.drawText(toybox::kTileFontId, x + 8,
-                 y + (22 - toybox::kTileCut.inkHeight) / 2 - (toybox::kTileCut.ascender - toybox::kTileCut.inkHeight),
-                 head, false);
-      y += 26;
-      r.drawText(font, x, y, line.c_str(), true);
-    } else if (look == EventLook::Centred) {
-      textCentre(r, font, x + width / 2, y, "Suena ahora", kBold);
-      y += r.getLineHeight(font);
-      textCentre(r, font, x + width / 2, y, line.c_str());
-    } else {
-      text(r, font, x, y, "Suena ahora", kBold);
-      y += r.getLineHeight(font);
-      text(r, font, x, y, line.c_str());
-    }
-    y += r.getLineHeight(font) + (pixel ? 10 : 6);
-    zone(screen, zoneX, musicTop, zoneW, y - musicTop, Music);
-  }
   if (page.eventCount == 0) return;
   const int top = y;
   const int bodyFont = pixel ? toybox::kReadingSmallFontId : NOTOSERIF_12_FONT_ID;
@@ -2064,18 +2038,6 @@ void almanac(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
 // again for the wide page rather than stretched across it.
 // ===========================================================================
 
-// The music alone, or the events alone: a wide page often has room to part them.
-Page onlyMusic(const Page& page) {
-  Page copy = page;
-  copy.eventCount = 0;
-  return copy;
-}
-Page onlyEvents(const Page& page) {
-  Page copy = page;
-  copy.playing = "";
-  return copy;
-}
-
 // "SW 12 kn · olas 0,9 m · 18°": the sea in as few letters as say it.
 void seaShort(const Page& page, char* b, const size_t cap, const bool terse = false) {
   b[0] = 0;
@@ -2556,10 +2518,9 @@ void paperWide(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
     zone(screen, c2 - 9, seaTop, w2 + 18, y - seaTop, Sea);
     y += 6;
   }
-  eventsBlock(screen, r, onlyMusic(page), c2, y, w2, bottom, EventLook::Reader, c2 - 9, w2 + 18);
 
   // Third column: days like this one, as the paper's look back.
-  eventsBlock(screen, r, onlyEvents(page), c3, top, w3, bottom, EventLook::Reader, c3 - 9, width - c3 + 9);
+  eventsBlock(screen, r, page, c3, top, w3, bottom, EventLook::Reader, c3 - 9, width - c3 + 9);
 }
 
 // ---------------------------------------------------------------------------
@@ -3075,16 +3036,10 @@ void horizonWide(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   seaShort(page, b, sizeof(b));
   int used = 0;
   if (b[0] != 0) {
-    used = paragraph(r, NOTOSANS_12_FONT_ID, sxl, y, sw, b, page.playing[0] != 0 ? 1 : 2, false) - 4;
+    used = paragraph(r, NOTOSANS_12_FONT_ID, sxl, y, sw, b, 1, false) - 4;
     zone(screen, split, seaBottom, width - split, used + 8, Sea);
   }
-  if (page.playing[0] != 0) {
-    const int my = y + used;
-    text(r, NOTOSANS_12_FONT_ID, sxl, my, "Suena ahora", kBold);
-    const std::string line = r.truncatedText(NOTOSANS_12_FONT_ID, page.playing, sw);
-    text(r, NOTOSANS_12_FONT_ID, sxl, my + lineH - 4, line.c_str());
-    zone(screen, split, my, width - split, bottom - my, Music);
-  }
+  eventsBlock(screen, r, page, sxl, y + used, sw, bottom + 4, EventLook::Reader, split, width - split);
 }
 
 // ---------------------------------------------------------------------------
@@ -3120,7 +3075,7 @@ void mosaicWide(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
              kBold);
   zone(screen, 0, 0, rx - gap / 2, y + timeH + gap / 2, Clock);
   y += timeH + gap;
-  if ((page.eventCount > 0 || page.playing[0] != 0) && bottom - y > labelH * 3) {
+  if (page.eventCount > 0 && bottom - y > labelH * 3) {
     tile(m, y, lw, bottom - y - 2);
     eventsBlock(screen, r, page, m + 16, y + 10, lw - 32, bottom - 10, EventLook::Reader, 0, rx - gap / 2);
   }

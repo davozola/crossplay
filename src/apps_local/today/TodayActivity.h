@@ -58,7 +58,6 @@ class TodayActivity final : public Activity {
   char eventText_[3][220] = {};
   int eventYear_[3] = {};
   int eventCount_ = 0;
-  char playing_[160] = "";
 
   // Which of the five faces is up; a swipe changes it and it is kept.
   void setStyle(int style);
