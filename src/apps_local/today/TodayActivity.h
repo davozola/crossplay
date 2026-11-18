@@ -28,6 +28,11 @@ class TodayActivity final : public Activity {
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
 
   void startRefresh();
+  // The radio is up only for a fetch: joined, used and put down again, so the
+  // page can nap between minutes instead of idling at ~80mA with Wi-Fi held.
+  int fetchRound(char* report, size_t size);
+  void radioDown();
+  void ask();
   void buildPage(toybox::Screen& screen);
   void buildStatus(toybox::Screen& screen);
 
@@ -38,6 +43,10 @@ class TodayActivity final : public Activity {
   // Minutes between fetches made with nobody asking, 0 for never; kept with the style.
   int autoMinutes_ = 0;
   uint32_t lastFetchMs_ = 0;
+  // The last touch or key, for when napping may begin, and whether the paint
+  // asked for has reached the panel yet: a nap must not start before it has.
+  uint32_t lastInputMs_ = 0;
+  bool paintPending_ = false;
   void savePrefs();
   int shownMinute_ = -1;
   const char* statusHeadline_ = nullptr;  // non-null while a status page is up
@@ -54,6 +63,9 @@ class TodayActivity final : public Activity {
   // Which of the five faces is up; a swipe changes it and it is kept.
   void setStyle(int style);
   int style_ = 0;
+  // Turned on its side by a swipe up or down, and kept with the style.
+  void applyOrientation();
+  bool wide_ = false;
   int pressX_ = -1;
   bool cleanNext_ = true;
 

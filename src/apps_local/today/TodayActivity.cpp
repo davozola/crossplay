@@ -16,6 +16,7 @@
 
 #include "../../DevMode.h"
 #include "../../SilentRestart.h"
+#include "../../WifiCredentialStore.h"
 #include "../../activities/network/WifiSelectionActivity.h"
 #include "../../components/UITheme.h"
 #include "../Shelf.h"
@@ -24,7 +25,8 @@
 #include "../history/HistoryCore.h"
 #include "../history/HistoryStore.h"
 #include "../jukebox/JukeboxPeek.h"
-#include "../ui/AutoRefresh.h"
+#include "../live/LiveEngine.h"
+#include "../power/LightNap.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -50,6 +52,10 @@ constexpr char kStylePath[] = "/.crosspoint/hoy.cfg";
 // What a tap on the foot's left corner steps through, in minutes; 0 is by hand only.
 constexpr int kAutoChoices[] = {0, 15, 30, 60, 180};
 constexpr time_t kClockSetAfter = 1704067200;  // 2024-01-01: before it the clock was never set
+// After a touch or a key the page stays awake this long before it naps.
+constexpr uint32_t kAwakeAfterInputMs = 20000;
+// A round whose join failed comes up again this soon.
+constexpr uint32_t kRetryMs = 60000;
 
 const fui::Paint kInk = fui::Paint::solid(fui::Color::Black);
 
@@ -72,25 +78,37 @@ void TodayActivity::onEnter() {
   loadEvent();
   style_ = 0;
   autoMinutes_ = 0;
+  wide_ = false;
   if (Storage.exists(kStylePath)) {
     HalFile file;
-    uint8_t saved[2] = {0, 0};
-    if (Storage.openFileForRead("HOY", kStylePath, file) && file.read(saved, 2) >= 1) {
+    uint8_t saved[3] = {0, 0, 0};
+    if (Storage.openFileForRead("HOY", kStylePath, file) && file.read(saved, 3) >= 1) {
       if (saved[0] < todaystyles::kStyles) style_ = saved[0];
       for (const int choice : kAutoChoices) {
         if (choice == saved[1]) autoMinutes_ = choice;
       }
+      wide_ = saved[2] == 1;
     }
   }
+  applyOrientation();
+  cleanNext_ = true;
   shownMinute_ = -1;
   statusHeadline_ = nullptr;
   lastFetchMs_ = static_cast<uint32_t>(millis());
-  requestUpdate();
+  lastInputMs_ = lastFetchMs_;
+  ask();
   // Left on auto, it comes back on auto: the first fetch is what joins the network.
   if (autoMinutes_ > 0) startRefresh();
 }
 
+void TodayActivity::applyOrientation() {
+  renderer.setOrientation(wide_ ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                                : GfxRenderer::Orientation::Portrait);
+}
+
 void TodayActivity::onExit() {
+  // The orientation is the renderer's, not this app's: hand it back upright.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -107,12 +125,19 @@ void TodayActivity::startRefresh() {
   report_[0] = 0;
   statusDismissable_ = false;
   wifiActivated_ = true;
-  if (WiFi.status() == WL_CONNECTED) {
+  // Connected already, or a network saved to join by itself: the join happens
+  // inside the fetch, with no picker in front of the page.
+  WIFI_STORE.loadFromFile();
+  if (WiFi.status() == WL_CONNECTED || !WIFI_STORE.getLastConnectedSsid().empty()) {
     step_ = Step::Ready;
     return;
   }
+  // The picker is an upright screen; the page turns back when it returns.
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
+                           applyOrientation();
+                           cleanNext_ = true;
                            if (result.isCancelled) {
                              step_ = Step::Idle;
                              statusHeadline_ = "SIN WI-FI";
@@ -121,7 +146,7 @@ void TodayActivity::startRefresh() {
                            } else {
                              step_ = Step::Ready;
                            }
-                           requestUpdate();
+                           ask();
                          });
 }
 
@@ -137,20 +162,16 @@ void TodayActivity::loop() {
   }
   if (step_ == Step::Running) {
     step_ = Step::Idle;
-    const int kinds = todaystore::fetchAll(*data_, report_, sizeof(report_));
+    const int kinds = fetchRound(report_, sizeof(report_));
     lastFetchMs_ = static_cast<uint32_t>(millis());
-    jukebox::peekPlaying(playing_, sizeof(playing_));
-    // The day's events too, when EFEMERIDES has not fetched them yet. They are
-    // an extra: the report stays about the three the page cannot do without.
-    if (eventCount_ == 0) {
-      const time_t t = time(nullptr);
-      if (t >= kClockSetAfter) {
-        struct tm parts = {};
-        localtime_r(&t, &parts);
-        std::vector<history::Event> fetched;
-        historystore::fetchDay(parts.tm_mon + 1, parts.tm_mday, fetched);
-      }
-      loadEvent();
+    lastInputMs_ = lastFetchMs_;
+    if (kinds < 0) {
+      statusHeadline_ = "SIN WI-FI";
+      std::snprintf(report_, sizeof(report_),
+                    "NO SE PUDO UNIR A LA RED GUARDADA. LO ULTIMO DESCARGADO SIGUE EN LA TARJETA.");
+      statusDismissable_ = true;
+      ask();
+      return;
     }
     if (kinds == 3) {
       statusHeadline_ = nullptr;
@@ -159,24 +180,25 @@ void TodayActivity::loop() {
       statusHeadline_ = kinds == 0 ? "SIN RESPUESTA" : "FALTA ALGO";
       statusDismissable_ = true;
     }
-    requestUpdate();
+    ask();
     return;
   }
 
-  // Auto: quietly, with no status page, and only when already online. A round
-  // that finds the radio down is skipped and the next one tries again.
+  // Auto: quietly, with no status page. The radio comes up for the round and
+  // goes down after it; a round that cannot join tries again in a minute.
+  const uint32_t intervalMs = static_cast<uint32_t>(autoMinutes_) * 60000u;
   if (autoMinutes_ > 0 && step_ == Step::Idle && statusHeadline_ == nullptr) {
     const uint32_t now = static_cast<uint32_t>(millis());
-    if (now - lastFetchMs_ >= static_cast<uint32_t>(autoMinutes_) * 60000u) {
+    if (now - lastFetchMs_ >= intervalMs) {
       lastFetchMs_ = now;
-      if (wifiActivated_ && autorefresh::online(now, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_)) {
-        char quiet[sizeof(report_)];
-        const bool wasPlaying = playing_[0] != 0;
-        const bool music = jukebox::peekPlaying(playing_, sizeof(playing_)) || wasPlaying;
-        if (todaystore::fetchAll(*data_, quiet, sizeof(quiet)) > 0 || music) {
-          loadEvent();
-          requestUpdate();
-        }
+      wifiActivated_ = true;
+      char quiet[sizeof(report_)];
+      const bool wasPlaying = playing_[0] != 0;
+      const int kinds = fetchRound(quiet, sizeof(quiet));
+      if (kinds < 0) {
+        if (intervalMs > kRetryMs) lastFetchMs_ = now - (intervalMs - kRetryMs);
+      } else if (kinds > 0 || wasPlaying || playing_[0] != 0) {
+        ask();
       }
       return;
     }
@@ -184,13 +206,16 @@ void TodayActivity::loop() {
 
   int pressX = 0;
   int pressY = 0;
-  if (mappedInput.wasScreenTouchPressed(pressX, pressY)) pressX_ = pressX;
+  if (mappedInput.wasScreenTouchPressed(pressX, pressY)) {
+    pressX_ = pressX;
+    lastInputMs_ = static_cast<uint32_t>(millis());
+  }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     if (step_ != Step::Idle) return;
     if (statusHeadline_ != nullptr) {
       statusHeadline_ = nullptr;
-      requestUpdate();
+      ask();
       return;
     }
     // A rightward swipe from mid-page arrives as Back: it is the face before.
@@ -202,11 +227,19 @@ void TodayActivity::loop() {
     return;
   }
 
-  // A swipe either way is the next face or the one before.
+  // A swipe sideways is the next face or the one before; up or down turns the
+  // page on its side and back, as the clock does.
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
   if (swipe != MappedInputManager::SwipeDir::None && step_ == Step::Idle && statusHeadline_ == nullptr) {
-    const bool on = swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up;
-    setStyle(style_ + (on ? 1 : todaystyles::kStyles - 1));
+    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+      wide_ = !wide_;
+      applyOrientation();
+      savePrefs();
+      cleanNext_ = true;
+      ask();
+      return;
+    }
+    setStyle(style_ + (swipe == MappedInputManager::SwipeDir::Left ? 1 : todaystyles::kStyles - 1));
     return;
   }
 
@@ -221,7 +254,7 @@ void TodayActivity::loop() {
     const int target = static_cast<int>(event.action) - static_cast<int>(todaystyles::kTargetAction);
     if (target == todaystyles::Refresh && step_ == Step::Idle) {
       startRefresh();
-      requestUpdate();
+      ask();
     } else if (target == todaystyles::Auto && step_ == Step::Idle && statusHeadline_ == nullptr) {
       int at = 0;
       const int count = static_cast<int>(sizeof(kAutoChoices) / sizeof(kAutoChoices[0]));
@@ -233,7 +266,7 @@ void TodayActivity::loop() {
       lastFetchMs_ = static_cast<uint32_t>(millis());
       // Turning it on with the radio down fetches now, which is what joins the network.
       if (autoMinutes_ > 0 && !wifiActivated_) startRefresh();
-      requestUpdate();
+      ask();
     } else if (target > todaystyles::None && target < todaystyles::Refresh && step_ == Step::Idle &&
                statusHeadline_ == nullptr) {
       // Each part of the page opens the app it is drawn from, and Back there
@@ -243,7 +276,7 @@ void TodayActivity::loop() {
       shelf::openFrom(kApps[target], "HOY", renderer, mappedInput);
     } else if (event.action == ActionDismiss) {
       statusHeadline_ = nullptr;
-      requestUpdate();
+      ask();
     }
     return;
   }
@@ -251,7 +284,71 @@ void TodayActivity::loop() {
   // The minute turning over.
   const time_t t = time(nullptr);
   const int minute = t >= kClockSetAfter ? static_cast<int>((t / 60) % 100000) : -2;
-  if (minute != shownMinute_ && statusHeadline_ == nullptr) requestUpdate();
+  if (minute != shownMinute_ && statusHeadline_ == nullptr) {
+    ask();
+    return;
+  }
+
+  // Nothing to paint and nobody here: nap until the minute turns or the next
+  // round is due, whichever is sooner. lightnap refuses while the radio is up,
+  // so a page left online (Developer Mode holding it) simply stays awake.
+  const uint32_t nowMs = static_cast<uint32_t>(millis());
+  if (minute < 0 || paintPending_ || step_ != Step::Idle || statusHeadline_ != nullptr ||
+      nowMs - lastInputMs_ < kAwakeAfterInputMs) {
+    return;
+  }
+  struct tm parts;
+  localtime_r(&t, &parts);
+  uint64_t micros = static_cast<uint64_t>(60 - parts.tm_sec) * 1000000ULL + 250000ULL;
+  if (autoMinutes_ > 0) {
+    const uint32_t since = nowMs - lastFetchMs_;
+    const uint64_t untilRound = since >= intervalMs ? 0 : static_cast<uint64_t>(intervalMs - since) * 1000ULL;
+    if (untilRound < micros) micros = untilRound;
+  }
+  if (lightnap::nap(micros) == lightnap::Woke::Input) lastInputMs_ = static_cast<uint32_t>(millis());
+}
+
+void TodayActivity::ask() {
+  paintPending_ = true;
+  requestUpdate();
+}
+
+void TodayActivity::radioDown() {
+  // Developer Mode owns a radio it holds; everything else here is ours.
+  if (devmode::holdsRadio()) return;
+  if (WiFi.getMode() == WIFI_MODE_NULL) return;
+  if (WiFi.status() == WL_CONNECTED) WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+}
+
+int TodayActivity::fetchRound(char* report, const size_t size) {
+  int kinds = -1;
+  {
+    // Joins the saved network if nobody has; puts down only what it raised.
+    std::string message;
+    live::engine::RadioLease lease(message);
+    if (lease.held() && WiFi.status() == WL_CONNECTED) {
+      kinds = todaystore::fetchAll(*data_, report, size);
+      jukebox::peekPlaying(playing_, sizeof(playing_));
+      // The day's events too, when EFEMERIDES has not fetched them yet. They
+      // are an extra: the report stays about the three the page cannot do without.
+      if (eventCount_ == 0) {
+        const time_t t = time(nullptr);
+        if (t >= kClockSetAfter) {
+          struct tm parts = {};
+          localtime_r(&t, &parts);
+          std::vector<history::Event> fetched;
+          historystore::fetchDay(parts.tm_mon + 1, parts.tm_mday, fetched);
+        }
+      }
+      loadEvent();
+    } else {
+      LOG_INF("HOY", "no network for this round: %s", message.c_str());
+    }
+  }
+  // A radio the picker raised is ours too once the round is done.
+  radioDown();
+  return kinds;
 }
 
 void TodayActivity::buildStatus(toybox::Screen& screen) {
@@ -269,14 +366,15 @@ void TodayActivity::setStyle(const int style) {
   style_ = ((style % todaystyles::kStyles) + todaystyles::kStyles) % todaystyles::kStyles;
   savePrefs();
   cleanNext_ = true;
-  requestUpdate();
+  ask();
 }
 
 void TodayActivity::savePrefs() {
   HalFile file;
   if (!Storage.openFileForWrite("HOY", kStylePath, file)) return;
-  const uint8_t saved[2] = {static_cast<uint8_t>(style_), static_cast<uint8_t>(autoMinutes_)};
-  file.write(saved, 2);
+  const uint8_t saved[3] = {static_cast<uint8_t>(style_), static_cast<uint8_t>(autoMinutes_),
+                            static_cast<uint8_t>(wide_ ? 1 : 0)};
+  file.write(saved, 3);
   file.flush();
 }
 
@@ -310,6 +408,7 @@ void TodayActivity::buildPage(toybox::Screen& screen) {
   page.clockSet = t >= kClockSetAfter;
   if (page.clockSet) localtime_r(&t, &page.now);
   page.autoMinutes = autoMinutes_;
+  page.wide = wide_;
   page.playing = playing_;
   page.eventCount = eventCount_;
   for (int i = 0; i < eventCount_; ++i) {
@@ -340,4 +439,5 @@ void TodayActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
+  paintPending_ = false;
 }
