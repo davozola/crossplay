@@ -181,9 +181,13 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
 }
 
 fui::Rect readerBody(const fui::DeviceContext& device) {
-  const int bottom = toybox::kMargin + kFooterHeight + toybox::kGutter;
-  return fui::makeRect(toybox::kMargin, kBodyTop, static_cast<int16_t>(device.width - 2 * toybox::kMargin),
-                       static_cast<int16_t>(device.height - bottom - kBodyTop));
+  // Tighter than the rest of the fork on purpose: an article is the one screen
+  // here where every line of text gained is worth more than the air around it.
+  constexpr int kSide = 8;
+  constexpr int kTop = toybox::kHeaderHeight + 2 * toybox::kRule + 6;
+  const int bottom = toybox::kMargin + kFooterHeight + 6;
+  return fui::makeRect(kSide, kTop, static_cast<int16_t>(device.width - 2 * kSide),
+                       static_cast<int16_t>(device.height - bottom - kTop));
 }
 
 uint32_t buildReader(toybox::Screen& screen, const ReaderModel& model) {

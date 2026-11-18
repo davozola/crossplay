@@ -9,6 +9,7 @@
 #include "fonts/instrument_13.h"
 #include "fonts/instrument_24.h"
 #include "fonts/reading_serif_11.h"
+#include "fonts/reading_serif_13.h"
 #include "fonts/reading_serif_14.h"
 #include "fonts/reading_serif_bold_12.h"
 #include "fonts/reading_serif_bold_16.h"
@@ -51,6 +52,7 @@ EpdFont tile10(&toybox_10);
 // device's reading, not like its games.
 EpdFont button14(&toybox_14);
 EpdFont reading11(&reading_serif_11);
+EpdFont reading13(&reading_serif_13);
 EpdFont reading14(&reading_serif_14);
 EpdFont readingBold12(&reading_serif_bold_12);
 EpdFont readingBold16(&reading_serif_bold_16);
@@ -64,6 +66,7 @@ EpdFontFamily uiFamily(&ui20);
 EpdFontFamily tileFamily(&tile10);
 EpdFontFamily buttonFamily(&button14);
 EpdFontFamily readingSmallFamily(&reading11);
+EpdFontFamily readingMidFamily(&reading13);
 EpdFontFamily readingFamily(&reading14);
 EpdFontFamily readingBoldSmallFamily(&readingBold12);
 EpdFontFamily readingBoldFamily(&readingBold16);
@@ -84,6 +87,7 @@ FontMetrics metricsFor(const int fontId) {
                                 : fontId == kReadingBoldFontId      ? readingBoldFamily
                                 : fontId == kReadingFontId          ? readingFamily
                                 : fontId == kReadingSmallFontId     ? readingSmallFamily
+                                : fontId == kReadingMidFontId       ? readingMidFamily
                                 : fontId == kReadingBoldSmallFontId ? readingBoldSmallFamily
                                                                     : uiFamily;
   const EpdFontData* data = fontId == kHugeFontId               ? &toybox_64
@@ -94,6 +98,7 @@ FontMetrics metricsFor(const int fontId) {
                             : fontId == kReadingBoldFontId      ? &reading_serif_bold_16
                             : fontId == kReadingFontId          ? &reading_serif_14
                             : fontId == kReadingSmallFontId     ? &reading_serif_11
+                            : fontId == kReadingMidFontId       ? &reading_serif_13
                             : fontId == kReadingBoldSmallFontId ? &reading_serif_bold_12
                                                                 : &toybox_20;
   FontMetrics metrics;
@@ -139,6 +144,7 @@ void verifyCutMetrics() {
       {"instrument_13", &instrument_13, &serifTileFamily, &toybox::kSerifTileCut},
       {"instrument_24", &instrument_24, &serifTitleFamily, &toybox::kSerifTitleCut},
       {"reading_serif_11", &reading_serif_11, &readingSmallFamily, &toybox::kReadingSmallCut},
+      {"reading_serif_13", &reading_serif_13, &readingMidFamily, &toybox::kReadingMidCut},
       {"reading_serif_14", &reading_serif_14, &readingFamily, &toybox::kReadingCut},
       {"reading_serif_bold_12", &reading_serif_bold_12, &readingBoldSmallFamily, &toybox::kReadingBoldSmallCut},
       {"reading_serif_bold_16", &reading_serif_bold_16, &readingBoldFamily, &toybox::kReadingBoldCut},
@@ -170,6 +176,7 @@ void ensureFonts(GfxRenderer& renderer) {
   renderer.insertFont(kButtonFontId, buttonFamily);
   renderer.insertFont(kReadingFontId, readingFamily);
   renderer.insertFont(kReadingSmallFontId, readingSmallFamily);
+  renderer.insertFont(kReadingMidFontId, readingMidFamily);
   renderer.insertFont(kReadingBoldSmallFontId, readingBoldSmallFamily);
   renderer.insertFont(kReadingBoldFontId, readingBoldFamily);
   renderer.insertFont(kSerifTileFontId, serifTileFamily);

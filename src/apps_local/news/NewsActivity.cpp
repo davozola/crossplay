@@ -412,11 +412,15 @@ void NewsActivity::loop() {
   const bool swipeNext = swipe == MappedInputManager::SwipeDir::Up;
   const bool swipePrev = swipe == MappedInputManager::SwipeDir::Down;
   if (phase_ == Phase::Reading) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::PageForward) || swipeNext) {
+    // Sideways too, the way a page is turned. A swipe from the left edge is
+    // Back and never reaches here.
+    const bool sideNext = swipe == MappedInputManager::SwipeDir::Left;
+    const bool sidePrev = swipe == MappedInputManager::SwipeDir::Right;
+    if (mappedInput.wasReleased(MappedInputManager::Button::PageForward) || swipeNext || sideNext) {
       turnPage(1);
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::PageBack) || swipePrev) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::PageBack) || swipePrev || sidePrev) {
       turnPage(-1);
       return;
     }
@@ -436,6 +440,13 @@ void NewsActivity::loop() {
   input.touchX = static_cast<int16_t>(tapX);
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
+
+  // A tap on the article itself turns the page: the right half forward, the
+  // left half back.
+  if (phase_ == Phase::Reading && event.action == fui::NO_ACTION) {
+    turnPage(tapX >= renderer.getScreenWidth() / 2 ? 1 : -1);
+    return;
+  }
 
   if (event.action >= newsui::ActionTab0 && event.action <= newsui::ActionTab0 + news::kSectionCount) {
     loadSection(event.action - newsui::ActionTab0);
@@ -522,7 +533,11 @@ void NewsActivity::buildRows() {
 void NewsActivity::render(RenderLock&&) {
   namespace fui = freeink::ui;
   renderer.clearScreen();
-  const toybox::Faces faces = phase_ == Phase::Reading ? toybox::readerFaces() : toybox::readingFaces();
+  // The reading cut one step down: a few more words to the line.
+  const toybox::Faces faces =
+      phase_ == Phase::Reading
+          ? toybox::Faces{toybox::kReadingSmallFontId, toybox::kReadingMidFontId, toybox::kReadingBoldFontId}
+          : toybox::Faces{toybox::kTileFontId, toybox::kReadingMidFontId, toybox::kDisplayFontId};
   fui::GfxRendererTarget target = toybox::makeTarget(renderer, faces);
   const fui::DeviceContext device = target.deviceContext();
   const fui::ThemeTokens& tokens = toybox::themeTokens();
