@@ -115,7 +115,7 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
     y = static_cast<int16_t>(y + textH + 2 * toybox::kGutter);
     if (!model.canRefresh) return;
     fui::ButtonProps button;
-    button.label = "FETCH THE HEADLINES";
+    button.label = "GET TODAY'S EDITION";
     button.action = ActionRefresh;
     button.styles = toybox::invertedStyles();
     button.radius = static_cast<uint8_t>(toybox::kPillRadius);
@@ -233,7 +233,7 @@ void buildNotice(toybox::Screen& screen, const NoticeModel& model) {
   const int16_t width = static_cast<int16_t>(device.width - 2 * toybox::kMargin);
   if (model.backButton) {
     fui::ButtonProps action;
-    action.label = "BACK TO THE HEADLINES";
+    action.label = "BACK TO THE STORIES";
     action.action = ActionBack;
     screen.button(action, fui::makeRect(toybox::kMargin,
                                         static_cast<int16_t>(device.height - toybox::kMargin - toybox::kPillHeight),
