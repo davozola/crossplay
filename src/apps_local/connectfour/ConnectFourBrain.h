@@ -187,7 +187,7 @@ inline const char* levelName(const Level level) {
     case Level::Easy:
       return "EASY";
     case Level::Strong:
-      return "STRONG";
+      return "HARD";
     case Level::Medium:
     default:
       return "MEDIUM";

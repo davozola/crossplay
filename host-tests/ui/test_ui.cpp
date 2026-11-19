@@ -1398,7 +1398,7 @@ void heartsMenuFillsItsPanel() {
   CHECK(menu.target.drew("HEARTS"));
   CHECK(menu.target.drew("TABLE WAITING"));
   CHECK(menu.target.drew("RESUME"));
-  CHECK(menu.target.drew("TABLE: SHARP"));
+  CHECK(menu.target.drew("SHARP  0-0"));
   // The door to the rules is on the menu, and it is a label that cannot
   // truncate: "HOW TO PLAY" did not fit its button and shipped as "HOW TO P...".
   CHECK(menu.target.drew("RULES"));
@@ -6481,7 +6481,7 @@ void testTheSettingsRowsSayWhatTheyAre() {
   buildGo<goui::SettingsModel, goui::buildSettings>(computer, model);
   CHECK(computer.target.drew("OPPONENT"));
   CHECK(computer.target.drew("COMPUTER"));
-  CHECK(computer.target.drew("MEDIUM"));
+  CHECK(computer.target.drew("MEDIUM  0-0"));
   CHECK(computer.target.drew("YOU PLAY"));
   // The handicap and the board are rows of their own. The handicap used to be a
   // property of the level, so EASY meant "weaker AND two free stones" and
@@ -6786,7 +6786,7 @@ void testTheHexSettingsRowsSayWhatTheyAre() {
   CHECK(computer.target.drew("OPPONENT"));
   CHECK(computer.target.drew("COMPUTER"));
   CHECK(computer.target.drew("LEVEL"));
-  CHECK(computer.target.drew("NORMAL"));
+  CHECK(computer.target.drew("MEDIUM  0-0"));
   CHECK(computer.target.drew("YOU PLAY"));
   CHECK(computer.target.drew("BLACK"));
 
@@ -6795,7 +6795,7 @@ void testTheHexSettingsRowsSayWhatTheyAre() {
   Rendered white;
   buildHex<hexui::SettingsModel, hexui::buildSettings>(white, model);
   CHECK(white.target.drew("WHITE"));
-  CHECK(white.target.drew("HARD"));
+  CHECK(white.target.drew("HARD  0-0"));
 
   // There is no BOARD row and there must not be one: eleven is the only size
   // this game is played at here. And there is no SWAP row either -- the pie
@@ -7042,8 +7042,8 @@ void testTheHexResultDoorsKeepClearOfTheBoard() {
 // "I don't like this text, looks bloated and hard to read." The settings screen
 // now draws its title and its rows and nothing else.
 void testTheHexSettingsSayOnlyTheirRows() {
-  const char* allowed[] = {"SETTINGS", "OPPONENT", "COMPUTER", "2 PLAYERS", "LEVEL", "EASY",
-                           "NORMAL",   "HARD",     "--",       "YOU PLAY",  "BLACK", "WHITE"};
+  const char* allowed[] = {"SETTINGS",    "OPPONENT",  "COMPUTER", "2 PLAYERS", "LEVEL", "EASY  0-0",
+                           "MEDIUM  0-0", "HARD  0-0", "--",       "YOU PLAY",  "BLACK", "WHITE"};
   for (const hex::Opponent opponent : {hex::Opponent::Computer, hex::Opponent::Human}) {
     for (const hex::Level level : {hex::Level::Easy, hex::Level::Normal, hex::Level::Hard}) {
       hexui::SettingsModel model;
@@ -7280,7 +7280,7 @@ void testKnucklebonesMenuOffersItsThreeRows() {
   // The doors anchor to the bottom now, so the first row is found from the
   // content's floor rather than the header -- the same arithmetic the builder
   // uses, exercised from the other end.
-  const int listHeight = 3 * toybox::kRowHeight + 2 * (toybox::kGutter / 2) + toybox::kGutter;
+  const int listHeight = 4 * toybox::kRowHeight + 3 * (toybox::kGutter / 2) + toybox::kGutter;
   const int firstRowY = 800 - toybox::kMargin - listHeight + toybox::kRowHeight / 2;
   const fui::ActionEvent first = menu.tap(240, firstRowY);
   CHECK(first.action == knuckleui::ActionMenuRow);

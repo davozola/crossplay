@@ -1002,7 +1002,7 @@ void testBackLeavesTheAppOnlyFromTheFrontDoor() {
   CHECK(hex::nextLevel(hex::Level::Normal) == hex::Level::Hard);
   CHECK(hex::nextLevel(hex::Level::Hard) == hex::Level::Easy);
   CHECK(std::strcmp(hex::levelName(hex::Level::Easy), "EASY") == 0);
-  CHECK(std::strcmp(hex::levelName(hex::Level::Normal), "NORMAL") == 0);
+  CHECK(std::strcmp(hex::levelName(hex::Level::Normal), "MEDIUM") == 0);
   CHECK(std::strcmp(hex::levelName(hex::Level::Hard), "HARD") == 0);
 }
 

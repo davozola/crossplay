@@ -1132,7 +1132,7 @@ chessui::SettingsModel ChessActivity::settingsModel() const {
   model.showHints = showHints;
   model.level = level;
   std::snprintf(model.levelText, sizeof(model.levelText), "%s  %d-%d-%d",
-                level == 0 ? "EASY" : (level == 1 ? "NORMAL" : "HARD"), levelStats.won[level % 3] % 1000,
+                level == 0 ? "EASY" : (level == 1 ? "MEDIUM" : "HARD"), levelStats.won[level % 3] % 1000,
                 levelStats.lost[level % 3] % 1000, levelStats.drawn[level % 3] % 1000);
   model.canTakeBack = canTakeBack();
   model.restartPending = restartPending();
