@@ -15,6 +15,7 @@
 #include "../../components/UITheme.h"
 #include "../../util/QrUtils.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/Toybox.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
@@ -121,8 +122,15 @@ void InstapaperActivity::needNetwork(const Step next, const char* busyMessage) {
   step_ = next;
   busyMessage_ = busyMessage;
   WiFi.mode(WIFI_STA);
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void InstapaperActivity::onWifiChosen(const bool connected) {

@@ -246,6 +246,16 @@ bool WeatherActivity::saveCacheFor(const wx::Place& place, const char* body, con
 // --- network -------------------------------------------------------------------
 
 void WeatherActivity::startJob(const Job job) {
+  // With a forecast already showing and a network to join alone, the page
+  // stays: the fetch happens behind it.
+  const bool showing = view_ == View::Board || ((view_ == View::Forecast || view_ == View::Day) && haveForecast_);
+  if (job != Job::Search && showing && step_ == Step::Idle &&
+      (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone())) {
+    quietDue_ = true;
+    quietPainted_ = false;
+    requestUpdate();
+    return;
+  }
   job_ = job;
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false, view_ == View::Status ? statusBack_ : view_);
@@ -256,17 +266,24 @@ void WeatherActivity::startJob(const Job job) {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          step_ = Step::Idle;
-          job_ = Job::None;
-          showStatus("NO WI-FI", "THE FORECAST NEEDS A NETWORK. THE LAST ONE FETCHED STAYS HERE.", true, statusBack_);
-        } else {
-          step_ = Step::Ready;
-        }
-        requestUpdate();
-      });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        job_ = Job::None;
+        showStatus("NO WI-FI", "THE FORECAST NEEDS A NETWORK. THE LAST ONE FETCHED STAYS HERE.", true, statusBack_);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void WeatherActivity::runJob() {
@@ -390,6 +407,35 @@ void WeatherActivity::loop() {
     }
     lastFetchMs_ = static_cast<uint32_t>(millis());
     quiet_.touched();
+    return;
+  }
+
+  if (quietDue_ && step_ == Step::Idle) {
+    if (!quietPainted_) {
+      // The tag has to be on the panel before the radio blocks.
+      quietPainted_ = true;
+      requestUpdateAndWait();
+      return;
+    }
+    wifiActivated_ = true;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) {
+        if (view_ == View::Board) {
+          const int shown = placeCount_ < boardSize() ? placeCount_ : boardSize();
+          bool any = false;
+          for (int i = 0; i < shown; ++i) any = fetchQuietly(i) || any;
+          if (any) loadBoard();
+        } else {
+          fetchQuietly(selected_);
+        }
+      }
+    }
+    quietDue_ = false;
+    quietPainted_ = false;
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    quiet_.touched();
+    requestUpdate();
     return;
   }
 
@@ -703,6 +749,7 @@ void WeatherActivity::render(RenderLock&&) {
   toybox::reportOverflow(interactions_, "Weather");
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (quietDue_) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer();
   quiet_.paintPending = false;
 }

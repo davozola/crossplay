@@ -1,6 +1,7 @@
 #include "AutoRefresh.h"
 
 #include <Arduino.h>
+#include <GfxRenderer.h>
 #include <Logging.h>
 #include <WiFi.h>
 
@@ -8,12 +9,49 @@
 #include "../../MappedInputManager.h"
 #include "../../WifiCredentialStore.h"
 #include "../power/LightNap.h"
+#include "ToyboxFonts.h"
 
 namespace autorefresh {
 
 bool canJoinAlone() {
   WIFI_STORE.loadFromFile();
   return !WIFI_STORE.getLastConnectedSsid().empty();
+}
+
+bool joinSaved() {
+  if (WiFi.status() == WL_CONNECTED) return true;
+  if (devmode::holdsRadio()) return false;
+  WIFI_STORE.loadFromFile();
+  const std::string ssid = WIFI_STORE.getLastConnectedSsid();
+  if (ssid.empty()) return false;
+  const auto credential = WIFI_STORE.findCredential(ssid);
+  if (!credential.has_value()) return false;
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), credential->password.empty() ? nullptr : credential->password.c_str());
+  constexpr uint32_t kJoinMs = 12000;
+  const uint32_t started = millis();
+  while (millis() - started < kJoinMs) {
+    if (WiFi.status() == WL_CONNECTED) {
+      LOG_INF("AUTO", "joined the saved network in %lu ms", static_cast<unsigned long>(millis() - started));
+      return true;
+    }
+    delay(100);
+  }
+  LOG_ERR("AUTO", "the saved network did not answer; the picker takes over");
+  WiFi.disconnect(true);
+  return false;
+}
+
+void drawUpdatingMark(GfxRenderer& renderer) {
+  constexpr const char* kText = "UPDATING";
+  const int textW = renderer.getTextWidth(toybox::kTileFontId, kText);
+  const int lineH = renderer.getLineHeight(toybox::kTileFontId);
+  const int w = textW + 16;
+  const int h = lineH + 8;
+  const int x = renderer.getScreenWidth() - w;
+  const int y = renderer.getScreenHeight() - h;
+  renderer.fillRect(x, y, w, h, true);
+  renderer.drawText(toybox::kTileFontId, x + 8, y + 4, kText, false);
 }
 
 Radio::Radio() {

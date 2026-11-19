@@ -8,6 +8,7 @@
 
 #include "../live/LiveEngine.h"
 
+class GfxRenderer;
 class MappedInputManager;
 
 namespace autorefresh {
@@ -37,6 +38,17 @@ class Radio {
   std::optional<live::engine::RadioLease> lease_;
   bool online_ = false;
 };
+
+// Joins the network this reader last used, with no screen of its own, and
+// leaves it up for the app that asked: the app puts it down as it would one the
+// picker raised. False when there is no saved network, Developer Mode holds
+// the radio, or the join did not happen in time -- the picker is the fallback.
+bool joinSaved();
+
+// The one sign a page gives that it is fetching behind what it shows: a small
+// tag in the bottom right corner, drawn over the finished frame just before it
+// goes to the panel. No screen of its own, so what was cached stays readable.
+void drawUpdatingMark(GfxRenderer& renderer);
 
 // When the next round is due after one that could not join.
 inline void retrySoon(const uint32_t now, const uint32_t intervalMs, uint32_t& lastFetchMs) {

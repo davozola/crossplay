@@ -17,6 +17,7 @@
 #include "../../components/UITheme.h"
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -246,16 +247,23 @@ void NavalActivity::startFetch() {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          step_ = Step::Idle;
-          showStatus("NO WI-FI", "THE FORECAST NEEDS A NETWORK. THE LAST ONE FETCHED STAYS HERE.", true);
-        } else {
-          step_ = Step::Ready;
-        }
-        requestUpdate();
-      });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        showStatus("NO WI-FI", "THE FORECAST NEEDS A NETWORK. THE LAST ONE FETCHED STAYS HERE.", true);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 NavalActivity::Fetched NavalActivity::fetchSea() {

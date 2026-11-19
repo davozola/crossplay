@@ -26,6 +26,7 @@
 #include "../history/HistoryStore.h"
 #include "../live/LiveEngine.h"
 #include "../power/LightNap.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -135,20 +136,27 @@ void TodayActivity::startRefresh() {
   }
   // The picker is an upright screen; the page turns back when it returns.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           applyOrientation();
-                           cleanNext_ = true;
-                           if (result.isCancelled) {
-                             step_ = Step::Idle;
-                             statusHeadline_ = "SIN WI-FI";
-                             std::snprintf(report_, sizeof(report_), "LO ULTIMO DESCARGADO SIGUE EN LA TARJETA.");
-                             statusDismissable_ = true;
-                           } else {
-                             step_ = Step::Ready;
-                           }
-                           ask();
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      applyOrientation();
+      cleanNext_ = true;
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        statusHeadline_ = "SIN WI-FI";
+        std::snprintf(report_, sizeof(report_), "LO ULTIMO DESCARGADO SIGUE EN LA TARJETA.");
+        statusDismissable_ = true;
+      } else {
+        step_ = Step::Ready;
+      }
+      ask();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void TodayActivity::loop() {

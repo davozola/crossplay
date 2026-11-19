@@ -50,7 +50,8 @@ struct Headline {
 
 struct FrontModel {
   const char* section = "";
-  const char* edition = "";  // "18 NOV", or ""
+  const char* edition = "";    // "18 NOV", or ""
+  const char* note = nullptr;  // a word at the foot while something runs behind the page
   const Headline* items = nullptr;
   int count = 0;
   int top = 0;  // first headline on this page

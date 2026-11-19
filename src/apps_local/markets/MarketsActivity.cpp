@@ -219,18 +219,25 @@ void MarketsActivity::startRefresh() {
   }
   // The picker is an upright screen; the page turns back when it returns.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-        applyOrientation();
-        if (result.isCancelled) {
-          step_ = Step::Idle;
-          job_ = Job::Refresh;
-          showStatus("NO WI-FI", "QUOTES NEED A NETWORK. THE LAST ONES FETCHED STAY ON THE CARD.", true);
-        } else {
-          step_ = Step::Ready;
-        }
-        requestUpdate();
-      });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      applyOrientation();
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        job_ = Job::Refresh;
+        showStatus("NO WI-FI", "QUOTES NEED A NETWORK. THE LAST ONES FETCHED STAY ON THE CARD.", true);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void MarketsActivity::showStatus(const char* headline, const char* detail, const bool dismissable) {

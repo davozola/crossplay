@@ -3,20 +3,24 @@
 // NEWS: the day's edition of Kagi News, in the sections the reader chose, read
 // from the card.
 //
-// One thing touches the network: fetching the edition (and, the first time,
-// the list of sections to choose from). It replaces the edition on the card
-// only if it arrived. Everything else, reading included, works with the radio
-// off.
+// What is on the card is shown first, always. Fetching the edition happens
+// behind it: by itself when the app opens and the last fetch is two hours old
+// or more, and whenever the reader asks. The radio joins the saved network
+// with no screen of its own, and the only sign is a word at the foot of the
+// page. A fetch runs a step at a time between passes of the loop, so the page
+// in front keeps answering, and it replaces the edition only if it arrived.
 //
 // The stories are Kagi's (news.kagi.com, CC BY-NC 4.0): syntheses of what many
 // outlets reported, each ending with its sources and that attribution.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "../../activities/Activity.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxScreen.h"
 #include "../ui/ToyboxWrappedText.h"
@@ -40,7 +44,11 @@ class NewsActivity final : public Activity {
   enum class Pending : uint8_t { None, Edition, Categories };
 
   void ensureConnected(Pending what);
-  void fetchEdition();
+  // A fetch of the edition. Quiet: behind the page, with no notice at the end.
+  void startEdition(bool quiet);
+  void stepEdition();
+  void endEdition(const char* headline, const std::string& message, bool kept);
+  bool autoFetchDue() const;
   bool fetchCategories(news::CategoriesReader& into, size_t& bytes, uint32_t& lowestHeap);
   void loadChosen();
   void saveChosen();
@@ -93,6 +101,28 @@ class NewsActivity final : public Activity {
   // in thousandths of the way through; -1 when there is nothing to restore.
   int restoreAt_ = -1;
   char pageLabel_[24] = "";
+
+  // The edition being fetched, between steps.
+  struct EditionJob {
+    enum class Stage : uint8_t { Paint, Join, Categories, Sections, Commit };
+    bool quiet = false;
+    Stage stage = Stage::Paint;
+    size_t section = 0;
+    std::vector<news::Category> sections;  // the choice when the fetch began
+    news::CategoriesReader categories;
+    news::Deduper once;
+    std::vector<std::vector<news::Item>> fresh;
+    std::vector<std::string> files;
+    std::string failed;  // in the batch, but nothing could be read
+    std::string absent;  // not in today's batch at all
+    size_t bytes = 0;
+    uint32_t lowestHeap = 0xFFFFFFFFu;
+    uint32_t started = 0;
+    uint32_t created = 0;
+    int total = 0;
+  };
+  std::unique_ptr<EditionJob> job_;
+  std::optional<autorefresh::Radio> radio_;
 
   std::string noticeHeadline_;
   std::string noticeMessage_;

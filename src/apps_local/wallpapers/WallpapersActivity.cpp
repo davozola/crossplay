@@ -21,6 +21,7 @@
 #include "../Shelf.h"
 #include "../live/LiveBridge.h"
 #include "../live/LiveEngine.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/Toybox.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxText.h"
@@ -2122,16 +2123,23 @@ void WallpapersActivity::openAdd() {
   }
   addWaitingWifi_ = true;
   WiFi.mode(WIFI_STA);
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           addWaitingWifi_ = false;
-                           if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
-                             showNotice("NO WIFI", "Adding a wallpaper from your phone needs WiFi. Nothing changed.",
-                                        "BACK", wallpapersui::ActionDismiss);
-                             return;
-                           }
-                           startAddServer();
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      addWaitingWifi_ = false;
+      if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
+        showNotice("NO WIFI", "Adding a wallpaper from your phone needs WiFi. Nothing changed.", "BACK",
+                   wallpapersui::ActionDismiss);
+        return;
+      }
+      startAddServer();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 #endif
 }
 
@@ -2338,8 +2346,15 @@ void WallpapersActivity::startSetDownload() {
   // The radio first: entering the TLS stack with WiFi never started fails in a
   // way whose message says nothing about WiFi.
   WiFi.mode(WIFI_STA);
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void WallpapersActivity::onWifiChosen(const bool connected) {

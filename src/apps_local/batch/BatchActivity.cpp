@@ -17,6 +17,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
 #include "../hackernews/HackerNewsCore.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ExtraIcons.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
@@ -272,17 +273,24 @@ void BatchActivity::start(const Job job) {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          step_ = Step::Idle;
-          job_ = Job::None;
-          showStatus("NO WI-FI", "ISSUES ALREADY OPENED STAY ON THE CARD AND READ WITHOUT IT.", true);
-        } else {
-          step_ = Step::Ready;
-        }
-        requestUpdate();
-      });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        job_ = Job::None;
+        showStatus("NO WI-FI", "ISSUES ALREADY OPENED STAY ON THE CARD AND READ WITHOUT IT.", true);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 // The newest issues from the newsletter's own front page, and the whole

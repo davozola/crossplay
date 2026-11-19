@@ -18,6 +18,7 @@
 #include "../live/LiveBridge.h"
 #include "../live/LiveEngine.h"
 #include "../live/LiveStore.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxIcons.h"
 #include "../ui/ToyboxTheme.h"
@@ -586,14 +587,21 @@ void NotesActivity::startPhone() {
   // exactly this way.
   if (WiFi.status() != WL_CONNECTED) {
     WiFi.mode(WIFI_STA);
-    startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput),
-                           [this](const ActivityResult& result) {
-                             if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
-                               showNotice("Typing on your phone needs Wi-Fi. Nothing changed.");
-                               return;
-                             }
-                             startPhone();
-                           });
+    {
+      // The saved network is joined behind the page; the picker is for when there is none.
+      ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+        if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
+          showNotice("Typing on your phone needs Wi-Fi. Nothing changed.");
+          return;
+        }
+        startPhone();
+      };
+      if (autorefresh::joinSaved()) {
+        afterWifi(ActivityResult{});
+      } else {
+        startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+      }
+    }
     return;
   }
 #endif

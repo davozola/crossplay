@@ -196,8 +196,9 @@ int buildFront(toybox::Screen& screen, const Ink& ink, const FrontModel& model) 
   char pageText[24];
   std::snprintf(pageText, sizeof(pageText), "%d / %d", model.page, model.pages);
   const Word words[] = {{"Sections", ActionMenu, false},
+                        {model.note, fui::NO_ACTION, false},
                         {model.pages > 1 ? pageText : nullptr, model.pages > 1 ? ActionNext : fui::NO_ACTION, false}};
-  foot(screen, ink, words, 2);
+  foot(screen, ink, words, 3);
 
   if (model.count <= 0) {
     emptyPage(screen, ink, y, model.emptyHeadline != nullptr ? model.emptyHeadline : "Nothing here yet",

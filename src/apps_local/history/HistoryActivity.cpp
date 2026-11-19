@@ -18,6 +18,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
 #include "../discover/DiscoverCore.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -121,16 +122,23 @@ void HistoryActivity::startFetch() {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           if (result.isCancelled) {
-                             step_ = Step::Idle;
-                             showStatus("SIN WIFI", "LOS DIAS QUE YA SE BUSCARON SIGUEN EN LA TARJETA.", true);
-                           } else {
-                             step_ = Step::Ready;
-                           }
-                           requestUpdate();
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        showStatus("SIN WIFI", "LOS DIAS QUE YA SE BUSCARON SIGUEN EN LA TARJETA.", true);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void HistoryActivity::runFetch() {

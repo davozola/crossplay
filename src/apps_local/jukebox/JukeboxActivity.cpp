@@ -20,6 +20,7 @@
 #include "../../fontIds.h"
 #include "../../util/QrUtils.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -187,17 +188,24 @@ void JukeboxActivity::needNetwork(const Step next, const char* headline) {
   step_ = next;
   busyHeadline_ = headline;
   WiFi.mode(WIFI_STA);
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           interactionsReady_ = false;
-                           if (result.isCancelled) {
-                             step_ = Step::None;
-                             notice("NO WI-FI", "THE JUKEBOX NEEDS THE SAME WI-FI NETWORK AS YOUR PLEXAMP PLAYER.",
-                                    config_.signedIn() ? View::Menu : View::Welcome);
-                             return;
-                           }
-                           request(step_, busyHeadline_);
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      interactionsReady_ = false;
+      if (result.isCancelled) {
+        step_ = Step::None;
+        notice("NO WI-FI", "THE JUKEBOX NEEDS THE SAME WI-FI NETWORK AS YOUR PLEXAMP PLAYER.",
+               config_.signedIn() ? View::Menu : View::Welcome);
+        return;
+      }
+      request(step_, busyHeadline_);
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void JukeboxActivity::notice(const char* headline, const char* message, const View back) {
