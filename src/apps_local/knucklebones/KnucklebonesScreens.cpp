@@ -225,8 +225,9 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
 
   // The front door in the documented band order: record, rule, the last match
   // as the ornament, doors anchored to the bottom with PLAY loudest.
-  char record[48];
-  std::snprintf(record, sizeof(record), "%d PLAYED   %d WON", model.wins + model.losses + model.draws, model.wins);
+  char record[72];
+  std::snprintf(record, sizeof(record), "%d PLAYED  %d WON   %s: %d-%d", model.wins + model.losses + model.draws,
+                model.wins, model.levelName, model.levelWon, model.levelLost);
   const fui::Rect line = screen.takeTop(26);
   fui::TextStyle small;
   small.font = toybox::kTileFont;
@@ -235,37 +236,56 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   screen.target().fill(fui::makeRect(line.x, static_cast<int16_t>(line.bottom() + 6), line.width, toybox::kRule),
                        fui::Paint::solid(fui::Color::Black));
 
+  // The rows that are there, in order: CONTINUE only with a game to go back to.
   fui::ListItem rows[static_cast<int>(MenuRow::Count)] = {};
-  rows[static_cast<int>(MenuRow::Play)].label = "PLAY";
-  rows[static_cast<int>(MenuRow::Play)].actionValue = static_cast<int16_t>(MenuRow::Play);
-  // One line, so the row is the height of the others: "LEVEL  HARD".
   char levelRow[32];
   std::snprintf(levelRow, sizeof(levelRow), "LEVEL  %s", model.levelName);
-  rows[static_cast<int>(MenuRow::Level)].label = levelRow;
-  rows[static_cast<int>(MenuRow::Level)].actionValue = static_cast<int16_t>(MenuRow::Level);
-  rows[static_cast<int>(MenuRow::PlayNearby)].label = "PLAY NEARBY";
-  rows[static_cast<int>(MenuRow::PlayNearby)].subtitle = model.nearbyName;
-  rows[static_cast<int>(MenuRow::PlayNearby)].actionValue = static_cast<int16_t>(MenuRow::PlayNearby);
-  rows[static_cast<int>(MenuRow::HowTo)].label = "HOW TO PLAY";
-  rows[static_cast<int>(MenuRow::HowTo)].actionValue = static_cast<int16_t>(MenuRow::HowTo);
-
-  // Row 0 reads selected by default, jaipur's own trick: the most likely tap
-  // is also the loudest thing below the rule.
-  const int selected = model.selected < 0 ? 0 : model.selected;
+  int count = 0;
+  int nearbyAt = -1;
+  int selected = 0;
+  for (int r = 0; r < static_cast<int>(MenuRow::Count); ++r) {
+    const MenuRow row = static_cast<MenuRow>(r);
+    if (row == MenuRow::Continue && !model.hasSavedGame) continue;
+    const char* label = "";
+    switch (row) {
+      case MenuRow::Continue:
+        label = "CONTINUE";
+        break;
+      case MenuRow::Play:
+        label = model.hasSavedGame ? "NEW GAME" : "PLAY";
+        break;
+      case MenuRow::Level:
+        label = levelRow;
+        break;
+      case MenuRow::PlayNearby:
+        label = "PLAY NEARBY";
+        rows[count].subtitle = model.nearbyName;
+        nearbyAt = count;
+        break;
+      case MenuRow::HowTo:
+      default:
+        label = "HOW TO PLAY";
+        break;
+    }
+    rows[count].label = label;
+    rows[count].actionValue = static_cast<int16_t>(r);
+    if (model.selected == r) selected = count;
+    ++count;
+  }
   fui::ListProps list;
   list.items = rows;
-  list.count = static_cast<uint16_t>(MenuRow::Count);
+  list.count = static_cast<uint16_t>(count);
   list.selectedIndex = static_cast<int16_t>(selected);
   list.action = ActionMenuRow;
-  const int count = static_cast<int>(MenuRow::Count);
   const int16_t listHeight =
       static_cast<int16_t>(count * toybox::kRowHeight + (count - 1) * toybox::kGutter / 2 + toybox::kGutter);
   const fui::Rect content = screen.contentRect();
   const fui::Rect listBand =
       fui::makeRect(content.x, static_cast<int16_t>(content.bottom() - listHeight), content.width, listHeight);
   screen.list(list, listHeight, fui::LayoutAnchor::Bottom);
-  toybox::iconAtRowRight(screen, listBand, static_cast<int>(MenuRow::PlayNearby), 0, linkui::nearbyMark(),
-                         selected == static_cast<int>(MenuRow::PlayNearby));
+  if (nearbyAt >= 0) {
+    toybox::iconAtRowRight(screen, listBand, nearbyAt, 0, linkui::nearbyMark(), selected == nearbyAt);
+  }
 
   if (!model.hasHistory) return;
 
@@ -274,7 +294,8 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   // the app's own material and the app's own data, the only kind this fork
   // allows.
   const fui::DeviceContext device = screen.device();
-  constexpr int16_t kMini = 44;
+  // A fifth row takes the room a full-size ornament needs.
+  const int16_t kMini = count > 4 ? 30 : 44;
   constexpr int16_t kMiniGap = 4;
   const int16_t gridH = static_cast<int16_t>(3 * kMini + 2 * kMiniGap);
   const int16_t stackH = static_cast<int16_t>(gridH * 2 + 12 + 24 + 12);

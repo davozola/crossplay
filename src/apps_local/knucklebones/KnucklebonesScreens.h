@@ -31,7 +31,8 @@ enum : fui::ActionId {
 
 // The menu rows, in order. An enum rather than loose indices because the
 // activity switches on them, and a switch over an enum is exhaustive.
-enum class MenuRow : int { Play = 0, Level, PlayNearby, HowTo, Count };
+// Continue is only on the menu while there is a game to go back to.
+enum class MenuRow : int { Continue = 0, Play, Level, PlayNearby, HowTo, Count };
 
 struct MenuModel {
   // Shown on the PLAY NEARBY row when another device is already visible, so the
@@ -39,6 +40,10 @@ struct MenuModel {
   // is there yet.
   const char* nearbyName = nullptr;
   const char* levelName = "";  // how hard the built-in opponent plays
+  bool hasSavedGame = false;
+  // Against that level: won and lost.
+  int levelWon = 0;
+  int levelLost = 0;
   int selected = -1;
 
   // The board the last finished match ended on, and the running tally.
