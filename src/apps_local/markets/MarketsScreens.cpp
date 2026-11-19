@@ -948,6 +948,8 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
   const mk::Portfolio& pf = *model.portfolio;
   char a[40];
   char b[72];
+  int pages = 1;
+  int page = 0;
 
   int y = toybox::kChromeHeight + 18;
   if (pf.count == 0) {
@@ -1037,9 +1039,18 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
 
     // A row a holding: what and how much on the left, its worth and its day
     // on the right. The whole row opens the keypad.
-    int rowH = (listBottom - y) / (pf.count > 0 ? pf.count : 1);
+    // As many as fit at a height that still reads; the rest are a page on.
+    constexpr int kRowMin = 52;
+    int perPage = (listBottom - y) / kRowMin;
+    if (perPage < 1) perPage = 1;
+    if (pf.count <= perPage) perPage = pf.count > 0 ? pf.count : 1;
+    pages = (pf.count + perPage - 1) / perPage;
+    if (pages < 1) pages = 1;
+    page = ((model.page % pages) + pages) % pages;
+    int rowH = (listBottom - y) / perPage;
     if (rowH > 62) rowH = 62;
-    for (int i = 0; i < pf.count; ++i) {
+    const int firstRow = page * perPage;
+    for (int i = firstRow; i < pf.count && i < firstRow + perPage; ++i) {
       const mk::AssetInfo& info = mk::instrumentAt(pf.positions[i].instrument);
       const fui::Rect r = rect(listX, y, listW, rowH);
       fui::ButtonProps row;
@@ -1079,7 +1090,8 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
   // The foot: one more holding, and new prices.
   const int gap = 10;
   const int footW = side && pf.count > 0 ? headW : inner;
-  const int half = (footW - gap) / 2;
+  // With more holdings than fit, a third button between the two turns the page.
+  const int half = pages > 1 ? (footW - gap * 2) / 3 : (footW - gap) / 2;
   fui::ButtonProps add;
   add.label = "ADD";
   add.action = ActionAddPosition;
@@ -1092,7 +1104,17 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
   refresh.label = "REFRESH";
   refresh.action = ActionRefresh;
   refresh.enabled = true;
-  screen.button(refresh, rect(x + half + gap, bottom - footH, half, footH));
+  if (pages > 1) {
+    char turn[16];
+    std::snprintf(turn, sizeof(turn), "%d / %d", (page + 1) % 100, pages % 100);
+    fui::ButtonProps next = refresh;
+    next.label = turn;
+    next.action = ActionPortfolioPage;
+    screen.button(next, rect(x + half + gap, bottom - footH, half, footH));
+    screen.button(refresh, rect(x + (half + gap) * 2, bottom - footH, footW - (half + gap) * 2, footH));
+  } else {
+    screen.button(refresh, rect(x + half + gap, bottom - footH, half, footH));
+  }
 }
 
 void buildPicker(toybox::Screen& screen, const PickerModel& model) {

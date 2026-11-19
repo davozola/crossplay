@@ -26,9 +26,10 @@ enum : fui::ActionId {
   ActionKey,  // value: the character on the key
   ActionSaveAmount,
   ActionRemovePosition,
-  ActionPeriod,  // value: markets::Period, for the portfolio's change
-  ActionSearch,  // type a ticker or a name
-  ActionFound,   // value: a search result, or -1 for what was typed as it stands
+  ActionPeriod,         // value: markets::Period, for the portfolio's change
+  ActionSearch,         // type a ticker or a name
+  ActionFound,          // value: a search result, or -1 for what was typed as it stands
+  ActionPortfolioPage,  // the next page of holdings
 };
 
 // The slice of history the detail chart shows.
@@ -78,6 +79,7 @@ struct PortfolioModel {
   const markets::Priced* priced = nullptr;  // one for each holding
   double euro = 0;                          // a euro in dollars; 0 when unknown
   markets::Period period = markets::Period::Day;
+  int page = 0;  // of the holdings, when there are more than fit
   FaceSwap faces;
 };
 

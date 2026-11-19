@@ -418,6 +418,9 @@ void MarketsActivity::route(const fui::ActionEvent& event) {
     case ui::ActionChange:
       view_ = View::CardPicker;
       break;
+    case ui::ActionPortfolioPage:
+      ++portfolioPage_;
+      break;
     case ui::ActionAddPosition:
       if (portfolio_.count >= mk::kMaxPositions) return;
       view_ = View::HoldingPicker;
@@ -529,6 +532,7 @@ void MarketsActivity::render(RenderLock&&) {
       m.euro = euro_;
       m.period = period_;
       m.faces = faces;
+      m.page = portfolioPage_;
       marketsui::buildPortfolio(surface, m);
       break;
     }
