@@ -9,7 +9,8 @@
 #include "MancalaCore.h"
 
 // MANCALA: Kalah against the machine or a friend across the device. The board
-// stands upright: your six pits down the left, your store at the foot.
+// lies on its side as it does on a table: your six pits along the foot, your
+// store at the right-hand end. A swipe up or down stands it upright instead.
 class MancalaActivity final : public Activity {
  public:
   MancalaActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -19,6 +20,7 @@ class MancalaActivity final : public Activity {
   static std::unique_ptr<Activity> create(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
+  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
 
@@ -32,6 +34,12 @@ class MancalaActivity final : public Activity {
   void route(const freeink::ui::ActionEvent& event);
   void buildMenu(toybox::Screen& screen);
   void buildBoard(toybox::Screen& screen);
+  void buildBoardWide(toybox::Screen& screen);
+  void buildVerdict(toybox::Screen& screen, const char* status, int top, int bottom);
+  const char* statusText() const;
+  void buildMenuWide(toybox::Screen& screen);
+  void loadView();
+  void saveView();
   bool machineToMove() const;
   void takeBack();
   void showHint();
@@ -49,6 +57,7 @@ class MancalaActivity final : public Activity {
   uint32_t machineAtMs_ = 0;  // when the machine moves; 0 while it is not waiting to
   uint8_t fastPaints_ = 0;
   bool cleanNext_ = true;
+  bool wide_ = true;  // on its side, two rows and a store at each end; false: upright
 
   // The positions it was the player's turn in, for taking a move back (this
   // visit only); the pit a hint points at; and the record against each level.
