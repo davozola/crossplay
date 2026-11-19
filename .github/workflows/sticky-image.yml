@@ -10,7 +10,7 @@ on:
       - 'build/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   sticky:
@@ -58,3 +58,14 @@ jobs:
           name: sticky-image
           path: out/crossplay-davozola-sticky-full.bin
           retention-days: 7
+
+      # Also as a DRAFT release: drafts have no tag and never show in
+      # releases/latest, so no device is offered it as an update, and its asset
+      # downloads through the API where the artifact store cannot be reached.
+      - name: Keep it as a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "sticky-image-${{ github.run_id }}" out/crossplay-davozola-sticky-full.bin \
+            --draft --target "${{ github.sha }}" --title "Sticky image ${{ github.run_id }}" \
+            --notes "Built from ${{ github.ref_name }} at ${{ github.sha }}. Draft: not an update."
