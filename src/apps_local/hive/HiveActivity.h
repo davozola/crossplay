@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxHowToState.h"
 #include "../ui/ToyboxScreen.h"
 #include "HiveCore.h"
@@ -33,6 +34,7 @@ class HiveActivity final : public Activity {
   void play(const hive::Move& move);
   // Passes for a side with no move, and says whose turn it is.
   void settle();
+  void takeBack();
   bool deviceToMove() const { return mode_ != kTwoPlayers && game_.turn == 1 && game_.winner() < 0; }
   void boardTap(int x, int y);
   void loadState();
@@ -52,6 +54,10 @@ class HiveActivity final : public Activity {
   char status_[64] = "";
   // Set when the device is to move: the next pass paints, the one after thinks.
   bool thinking_ = false;
+  // Positions before each move made by hand, for taking one back (this visit
+  // only), and the record against each level.
+  sologame::History<hive::Game, 16> history_;
+  sologame::LevelStats levelStats_;
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;

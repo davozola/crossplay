@@ -19,6 +19,7 @@ namespace fui = freeink::ui;
 namespace {
 
 constexpr char kSavePath[] = "/.crosspoint/hive.sav";
+constexpr char kLevelsPath[] = "/.crosspoint/hive-levels.cfg";
 constexpr uint8_t kSaveVersion = 1;
 constexpr int kBackSwipeEdge = 12;
 
@@ -61,6 +62,8 @@ void HiveActivity::onEnter() {
   if (!buffers_) LOG_ERR("HIVE", "OOM: search buffers");
   rng_.state = static_cast<uint32_t>(millis()) * 2654435761u + 3u;
   loadState();
+  sologame::loadStats("HIVE", kLevelsPath, levelStats_);
+  history_.clear();
   view_ = View::Menu;
   requestUpdate();
 }
@@ -73,6 +76,7 @@ void HiveActivity::onExit() {
 
 void HiveActivity::startGame(const int mode) {
   mode_ = mode;
+  history_.clear();
   game_.reset();
   inProgress_ = true;
   selected_ = -1;
@@ -88,6 +92,12 @@ void HiveActivity::settle() {
   targetCount_ = 0;
   const int w = game_.winner();
   if (w >= 0) {
+    if (inProgress_ && mode_ != kTwoPlayers) {
+      // The player is white. Counted once: inProgress_ drops right here.
+      levelStats_.count(mode_, w == 0 ? 0 : (w == 1 ? 1 : 2));
+      sologame::saveStats("HIVE", kLevelsPath, levelStats_);
+    }
+    history_.clear();
     inProgress_ = false;
     thinking_ = false;
     if (w == 2) {
@@ -142,7 +152,17 @@ void HiveActivity::select(const int piece) {
   }
 }
 
+// Back to before the last move made by hand; the device's answer goes with it.
+void HiveActivity::takeBack() {
+  if (thinking_ || deviceToMove() || game_.winner() >= 0) return;
+  if (!history_.pop(game_)) return;
+  lastPiece_ = -1;
+  settle();
+  saveState();
+}
+
 void HiveActivity::play(const hv::Move& move) {
+  history_.push(game_);
   game_.apply(move);
   lastPiece_ = move.piece;
   haptic_feedback::touchAction();
@@ -245,6 +265,10 @@ void HiveActivity::loop() {
       view_ = View::Play;
       settle();
       break;
+    case hiveui::ActionUndo:
+      if (view_ != View::Play) return;
+      takeBack();
+      break;
     case hiveui::ActionHand: {
       if (view_ != View::Play || game_.winner() >= 0 || deviceToMove()) return;
       const int piece = game_.handPiece(game_.turn, static_cast<hv::Bug>(event.value));
@@ -279,6 +303,10 @@ void HiveActivity::render(RenderLock&&) {
   } else if (view_ == View::Menu) {
     hiveui::MenuModel m;
     m.canContinue = inProgress_;
+    for (int i = 0; i < 3; ++i) {
+      m.won[i] = levelStats_.won[i];
+      m.lost[i] = levelStats_.lost[i];
+    }
     hiveui::buildMenu(surface, m);
   } else {
     hiveui::PlayModel m;
@@ -293,6 +321,7 @@ void HiveActivity::render(RenderLock&&) {
     m.targetCount = targetCount_;
     m.lastPiece = lastPiece_;
     m.trayEnabled = game_.winner() < 0 && !deviceToMove();
+    m.canUndo = m.trayEnabled && !thinking_ && history_.count > 0;
     hiveui::buildPlay(surface, m);
   }
 

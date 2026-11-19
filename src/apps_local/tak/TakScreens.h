@@ -18,6 +18,7 @@ enum : fui::ActionId {
   ActionCancel = 4,
   ActionAgain = 5,
   ActionDone = 6,
+  ActionUndo = 7,
 };
 
 enum class MenuRow : int { Resume = 0, PlayComputer, PlayTwo, Size, Level, HowTo, Count };
@@ -28,6 +29,9 @@ struct MenuModel {
   tak::Level level = tak::Level::Medium;
   int played = 0;
   int won = 0;
+  // Against the chosen level.
+  int levelWon = 0;
+  int levelLost = 0;
   // The game waiting under RESUME, drawn small as the menu's ornament.
   const tak::Game* current = nullptr;
   bool vsComputer = true;
@@ -46,6 +50,7 @@ struct BoardModel {
   bool vsComputer = true;
   uint8_t human = tak::kWhite;
   bool thinking = false;
+  bool canUndo = false;
   tak::Stone tray = tak::Stone::Flat;
   bool holding = false;
   uint8_t from = 0;

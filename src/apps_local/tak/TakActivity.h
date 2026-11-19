@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "TakCore.h"
 #include "TakEngine.h"
@@ -35,6 +36,7 @@ class TakActivity final : public Activity {
   void computerTurn();
   bool computerToMove() const;
   void finishIfOver();
+  void takeBack();
   void loadState();
   void saveState();
   void handleBoardTap(int x, int y);
@@ -62,6 +64,11 @@ class TakActivity final : public Activity {
   // ~165KB: five move lists and the root noise. Allocated the first time the
   // computer moves and kept until the app closes, so a game never asks the
   // heap for it twice.
+  // Positions before each move of the player's, for taking one back (this
+  // visit only), and the record against each level.
+  sologame::History<tak::Game, 12> history;
+  sologame::LevelStats levelStats;
+
   std::unique_ptr<tak::SearchBuffers> buffers;
 
   takui::BoardModel boardModel;

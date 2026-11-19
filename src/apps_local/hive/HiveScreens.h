@@ -14,6 +14,7 @@ enum : fui::ActionId {
   ActionStart = 1,  // value: 0..2 a level against the device, 3 two players
   ActionContinue,
   ActionHand,  // value: hive::Bug
+  ActionUndo,
 };
 
 // Where the hive sits and how big a cell is. The activity turns taps into
@@ -28,6 +29,9 @@ Layout layoutOf(const fui::DeviceContext& device, const hive::Game& game);
 
 struct MenuModel {
   bool canContinue = false;
+  // Against each level: won and lost.
+  int won[3] = {};
+  int lost[3] = {};
 };
 
 struct PlayModel {
@@ -40,6 +44,7 @@ struct PlayModel {
   int targetCount = 0;
   int lastPiece = -1;  // the piece that moved last
   bool trayEnabled = true;
+  bool canUndo = false;
 };
 
 void buildMenu(toybox::Screen& screen, const MenuModel& model);

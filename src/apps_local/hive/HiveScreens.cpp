@@ -172,9 +172,14 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
     y += 62 + 8;
   };
   if (model.canContinue) row("CONTINUE", ActionContinue, 0, true);
-  row("PLAY THE DEVICE: EASY", ActionStart, 0, false);
-  row("PLAY THE DEVICE: MEDIUM", ActionStart, 1, false);
-  row("PLAY THE DEVICE: HARD", ActionStart, 2, false);
+  // Each level with the record against it.
+  static const char* const kLevels[3] = {"EASY", "MEDIUM", "HARD"};
+  char levelRows[3][40];
+  for (int i = 0; i < 3; ++i) {
+    std::snprintf(levelRows[i], sizeof(levelRows[i]), "DEVICE, %s  %d-%d", kLevels[i], model.won[i] % 1000,
+                  model.lost[i] % 1000);
+    row(levelRows[i], ActionStart, i, false);
+  }
   row("TWO PLAYERS", ActionStart, 3, false);
   toyboxhowto::button(screen, rect(toybox::kMargin, y + 4, inner, toybox::kPillHeight));
 }
@@ -229,7 +234,17 @@ void buildPlay(toybox::Screen& screen, const PlayModel& model) {
   std::snprintf(rest, sizeof(rest), "%s HAS  Q%d  B%d  S%d  G%d  A%d", other == 0 ? "WHITE" : "BLACK",
                 g.inHand(other, hv::Bug::Queen), g.inHand(other, hv::Bug::Beetle), g.inHand(other, hv::Bug::Spider),
                 g.inHand(other, hv::Bug::Hopper), g.inHand(other, hv::Bug::Ant));
-  caption(screen, toybox::kMargin, trayY - toybox::kTileCut.inkHeight - 10, inner, rest);
+  const int undoW = model.canUndo ? 96 : 0;
+  caption(screen, toybox::kMargin, trayY - toybox::kTileCut.inkHeight - 10, inner - undoW, rest);
+  if (model.canUndo) {
+    fui::ButtonProps undo;
+    undo.label = "UNDO";
+    undo.action = ActionUndo;
+    undo.styles = toybox::rowStyles();
+    undo.text = toybox::buttonText(screen.theme());
+    undo.radius = kRadius;
+    screen.button(undo, rect(toybox::kMargin + inner - undoW, trayY - 44, undoW, 38));
+  }
   const int gap = 6;
   const int w = (inner - gap * (hv::kBugTypes - 1)) / hv::kBugTypes;
   for (int b = 0; b < hv::kBugTypes; ++b) {

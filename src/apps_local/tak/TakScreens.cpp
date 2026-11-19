@@ -226,8 +226,9 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   static const char* const kLevels[] = {"EASY", "MEDIUM", "HARD"};
   char sizeLabel[2 * toybox::kIntChars + toybox::literalChars("BOARD X") + 1];
   std::snprintf(sizeLabel, sizeof(sizeLabel), "BOARD %dX%d", model.size, model.size);
-  char levelLabel[24];
-  std::snprintf(levelLabel, sizeof(levelLabel), "LEVEL %s", kLevels[static_cast<int>(model.level) % 3]);
+  char levelLabel[40];
+  std::snprintf(levelLabel, sizeof(levelLabel), "LEVEL %s  %d-%d", kLevels[static_cast<int>(model.level) % 3],
+                model.levelWon % 10000, model.levelLost % 10000);
 
   fui::ListItem rows[static_cast<int>(MenuRow::Count)] = {};
   int count = 0;
@@ -400,7 +401,17 @@ void buildBoard(toybox::Screen& screen, const BoardModel& model) {
   y = static_cast<int16_t>(y + 34 + toybox::kGutter);
 
   // The tray: what a tap on an empty square will place, or what is in hand.
-  const fui::Rect tray = fui::makeRect(content.x, y, content.width, toybox::kPillHeight);
+  fui::Rect tray = fui::makeRect(content.x, y, content.width, toybox::kPillHeight);
+  if (model.canUndo && !model.holding) {
+    // UNDO takes the right end of the tray; the stones share what is left.
+    const int16_t undoW = 110;
+    fui::ButtonProps undo;
+    undo.label = "UNDO";
+    undo.action = ActionUndo;
+    undo.styles = toybox::rowStyles();
+    screen.button(undo, fui::makeRect(static_cast<int16_t>(tray.right() - undoW), tray.y, undoW, tray.height));
+    tray.width = static_cast<int16_t>(tray.width - undoW - toybox::kGutter);
+  }
   if (model.holding) {
     const int16_t cancelW = 150;
     fui::ButtonProps cancel;
