@@ -385,8 +385,10 @@ void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
   rows[static_cast<int>(SettingsRow::Level)].label = "LEVEL";
   // Dimmed rather than gone when two people share the device: a control that
   // vanishes takes its space with it and the list jumps under the finger.
-  rows[static_cast<int>(SettingsRow::Level)].value =
-      model.opponent == go::Opponent::Computer ? go::levelName(model.level) : "--";
+  char levelText[32];
+  std::snprintf(levelText, sizeof(levelText), "%s  %d-%d", go::levelName(model.level), model.levelWon % 10000,
+                model.levelLost % 10000);
+  rows[static_cast<int>(SettingsRow::Level)].value = model.opponent == go::Opponent::Computer ? levelText : "--";
   rows[static_cast<int>(SettingsRow::Level)].enabled = model.opponent == go::Opponent::Computer;
   rows[static_cast<int>(SettingsRow::Level)].actionValue = static_cast<int16_t>(SettingsRow::Level);
   rows[static_cast<int>(SettingsRow::Level)].icon = fui::bitmapFromIcon(icon_go_level_32);
@@ -488,7 +490,18 @@ void buildBoard(toybox::Screen& screen, const BoardModel& model) {
   pass.action = ActionPass;
   pass.enabled = model.yourTurn;
   pass.borderEdges = fui::EdgesNone;
-  screen.button(pass, bottom);
+  if (model.canUndo) {
+    const int16_t undoW = 130;
+    screen.button(pass,
+                  fui::makeRect(bottom.x, bottom.y, static_cast<int16_t>(bottom.width - undoW - 6), bottom.height));
+    fui::ButtonProps undo;
+    undo.label = "UNDO";
+    undo.action = ActionUndo;
+    undo.borderEdges = fui::EdgesNone;
+    screen.button(undo, fui::makeRect(static_cast<int16_t>(bottom.right() - undoW), bottom.y, undoW, bottom.height));
+  } else {
+    screen.button(pass, bottom);
+  }
 
   // Three things on one band: the stone, who it is, and what they hold. They get
   // three bands of their own rather than one centre line, because a label that
