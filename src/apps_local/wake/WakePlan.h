@@ -15,7 +15,7 @@
 
 namespace wakeplan {
 
-constexpr uint32_t kMagic = 0x57414B33;  // "WAK3"
+constexpr uint32_t kMagic = 0x57414B34;  // "WAK4"
 // A job this close to its time when the timer fires is done on that wake
 // rather than on one of its own a moment later.
 constexpr uint32_t kSlack = 20;
@@ -28,12 +28,14 @@ struct State {
   uint32_t casaEvery;   // seconds between readings, 0 = off
   uint32_t frameLeft;   // seconds of sleep until the next picture, 0 = not scheduled
   uint32_t casaLeft;
-  uint32_t armed;  // what the timer was last set to, 0 = not set
+  uint32_t bellLeft;  // seconds of sleep until a one-off bell, 0 = none
+  uint32_t armed;     // what the timer was last set to, 0 = not set
 };
 
 struct Due {
   bool frame;
   bool casa;
+  bool bell;
 };
 
 // Called on the way into a sleep, with what the settings say now. Schedules
@@ -41,7 +43,10 @@ struct Due {
 // none. `liveSeconds` is Live's own request, 0 when it has none. `fresh` is a
 // sleep a person began: the sleep screen has just drawn a new picture, so the
 // frame's interval starts over.
-uint32_t arm(State& state, uint32_t frameEvery, uint32_t casaEvery, uint32_t liveSeconds, bool fresh);
+// `bellIn` is taken on a fresh (attended) sleep only: a re-arm between wakes
+// keeps counting the bell it already has.
+uint32_t arm(State& state, uint32_t frameEvery, uint32_t casaEvery, uint32_t liveSeconds, bool fresh,
+             uint32_t bellIn = 0);
 
 // The same answer from the state alone, for a sleep that begins before the
 // card can be read. Records what the timer is armed for and nothing else.

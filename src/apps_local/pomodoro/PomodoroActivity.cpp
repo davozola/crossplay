@@ -10,15 +10,7 @@
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
-
-// The Buzzer library is in the device builds' lib_deps; the browser build does
-// not have it, and a board without a buzzer links stubs whose begin() is false.
-#if __has_include(<Buzzer.h>)
-#include <Buzzer.h>
-#define POMODORO_HAS_BUZZER 1
-#else
-#define POMODORO_HAS_BUZZER 0
-#endif
+#include "PomodoroBell.h"
 
 namespace {
 
@@ -68,6 +60,7 @@ void PomodoroActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadState();
+  pomodorobell::cancelPending();
   view = View::Timer;
   shownMinutes = -1;
   justFinished = false;
@@ -134,25 +127,13 @@ void PomodoroActivity::route(const fui::ActionEvent& event) {
 }
 
 void PomodoroActivity::ring() {
+  // The bell rang while something else was on the panel: once is enough.
+  const bool heard = pomodorobell::takeRang();
   flashOnNextPaint = true;
   justFinished = true;
+  if (heard) return;
   haptic_feedback::touchAction(true);
-#if POMODORO_HAS_BUZZER
-  Buzzer buzzer;
-  if (buzzer.begin()) {
-    // Three short rising beeps. tone() blocks, which is fine here: the whole
-    // thing is under a second and there is nothing else to do at the bell.
-    const uint32_t notes[] = {1760, 2093, 2637};
-    for (int round = 0; round < 2; ++round) {
-      for (const uint32_t f : notes) {
-        buzzer.tone(f, 120);
-        delay(60);
-      }
-      delay(250);
-    }
-    buzzer.end();
-  }
-#endif
+  pomodorobell::chime();
 }
 
 void PomodoroActivity::loop() {
@@ -275,6 +256,14 @@ void PomodoroActivity::saveState() {
   file.flush();
   leftMillisKnown = true;
   leftMillis = now;
+  // Left running, it still rings at the end: from another app, or by waking
+  // the device. That needs the wall clock; without one the bell waits for the
+  // app to come back.
+  if (timer.state() == pd::State::Running && c.leftEpoch != 0) {
+    pomodorobell::set(c.leftEpoch + (timer.remainingMs(now) + 999u) / 1000u);
+  } else {
+    pomodorobell::clear();
+  }
 }
 
 void PomodoroActivity::loadState() {

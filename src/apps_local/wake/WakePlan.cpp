@@ -37,7 +37,7 @@ bool count(uint32_t& left, const uint32_t every, const uint32_t elapsed) {
 }  // namespace
 
 uint32_t arm(State& state, const uint32_t frameEvery, const uint32_t casaEvery, const uint32_t liveSeconds,
-             const bool fresh) {
+             const bool fresh, const uint32_t bellIn) {
   if (state.magic != kMagic) {
     state = State{};
     state.magic = kMagic;
@@ -46,23 +46,27 @@ uint32_t arm(State& state, const uint32_t frameEvery, const uint32_t casaEvery, 
   state.casaEvery = casaEvery;
   schedule(state.frameLeft, frameEvery, fresh);
   schedule(state.casaLeft, casaEvery, false);
+  if (fresh) state.bellLeft = bellIn;
   return rearm(state, liveSeconds);
 }
 
 uint32_t rearm(State& state, const uint32_t liveSeconds) {
   if (state.magic != kMagic) return liveSeconds;
-  state.armed = soonest(liveSeconds, soonest(floored(state.frameLeft), floored(state.casaLeft)));
+  state.armed = soonest(soonest(liveSeconds, floored(state.bellLeft)),
+                        soonest(floored(state.frameLeft), floored(state.casaLeft)));
   return state.armed;
 }
 
 Due onTimer(State& state) {
-  Due due = {false, false};
+  Due due = {false, false, false};
   if (state.magic != kMagic) return due;
   const uint32_t elapsed = state.armed;
   state.armed = 0;
   if (elapsed == 0) return due;
   due.frame = count(state.frameLeft, state.frameEvery, elapsed);
   due.casa = count(state.casaLeft, state.casaEvery, elapsed);
+  // The bell is counted like the others and rings once: its interval is none.
+  due.bell = count(state.bellLeft, 0, elapsed);
   return due;
 }
 
