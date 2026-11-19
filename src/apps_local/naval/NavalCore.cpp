@@ -230,7 +230,7 @@ int hoursOfDay(const Sea& sea, const int d, int& first) {
   return n;
 }
 
-DayStats statsOf(const Sea& sea, const int d) {
+DayStats statsOf(const Sea& sea, const int d, const int fromHour, const int toHour) {
   DayStats s;
   int first = 0;
   const int n = hoursOfDay(sea, d, first);
@@ -238,6 +238,7 @@ DayStats statsOf(const Sea& sea, const int d) {
     const Hour& h = sea.hours[i];
     s.month = h.month;
     s.day = h.day;
+    if (h.hour < fromHour || h.hour > toHour) continue;
     if (h.wind > s.windMax) {
       s.windMax = h.wind;
       s.windFrom = h.windFrom;

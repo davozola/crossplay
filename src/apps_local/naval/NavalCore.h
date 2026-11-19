@@ -78,7 +78,9 @@ struct DayStats {
   int8_t month = 0;
   int8_t day = 0;
 };
-DayStats statsOf(const Sea& sea, int d);
+// Over the hours `fromHour`..`toHour` of the day, both included: the whole
+// day unasked, or the hours somebody would actually be out in.
+DayStats statsOf(const Sea& sea, int d, int fromHour = 0, int toHour = 23);
 
 int beaufort(float knots);
 const char* beaufortName(int force);

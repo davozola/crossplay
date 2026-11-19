@@ -106,6 +106,17 @@ int main() {
   windUrl(41.38f, 2.17f, url, sizeof(url));
   check(std::strstr(url, "wind_speed_unit=kn") && std::strstr(url, "wind_gusts_10m"), "wind url in knots");
 
+  // The sailing hours only: a night gale does not make the day's maximum.
+  {
+    auto night = std::make_unique<Sea>(*sea);
+    int first = 0;
+    const int n = hoursOfDay(*night, 1, first);
+    for (int i = first; i < first + n; ++i) night->hours[i].wind = night->hours[i].hour == 3 ? 60.0f : 10.0f;
+    check(statsOf(*night, 1).windMax > 59, "the whole day sees the 03:00 gale");
+    check(statsOf(*night, 1, 8, 21).windMax < 11, "08 to 21 does not");
+    check(statsOf(*night, 1, 8, 21).day == night->hours[first].day, "and still says which day it is");
+  }
+
   // meteoblue's wind over the same hours: metres a second in, knots on the page.
   {
     const Hour first = sea->hours[0];
