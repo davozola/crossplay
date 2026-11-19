@@ -76,7 +76,7 @@ static void scan(const char* json, news::JsonHandler& handler, const size_t chun
 
 int main() {
   CHECK(news::kDefaultSectionCount >= 3 && news::kDefaultSectionCount <= news::kMaxSections);
-  CHECK(news::storiesUrl("abc") == "https://news.kagi.com/api/batches/latest/categories/abc/stories?limit=12");
+  CHECK(news::storiesUrl("abc") == "https://news.kagi.com/api/batches/latest/categories/abc/stories?limit=10");
 
   CHECK(news::cleanText("A fact [france24.com#1][bbc.co.uk#22]. Next [sic] one.") == "A fact. Next [sic] one.");
   CHECK(news::cleanText("  two   spaces\nand a line  ") == "two spaces\n\nand a line");
