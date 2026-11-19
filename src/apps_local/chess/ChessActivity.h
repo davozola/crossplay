@@ -77,22 +77,11 @@ class ChessActivity final : public linkplay::LinkActivity {
   // Material one side has taken, drawn small in a strip. This is what turns the
   // slack above and below a width-constrained board from dead space into
   // information, which matters on a screen that sits showing one frame for hours.
-  void drawCapturedStrip(int y, bool capturedFromBlack, int x = -1) const;
+  void drawCapturedStrip(int y, bool capturedFromBlack) const;
   // The running score sheet, in the band between the captures and the status
   // capsule. That band was dead space; a move list is the thing you actually
   // want to look at on a board you are staring at anyway.
-  // `left`/`width` bound the column the lines are centred in; the whole screen
-  // when width is not given.
-  void drawMoveList(int top, int height, int left = 0, int width = -1) const;
-
-  // --- on its side --------------------------------------------------------
-  // A swipe up or down lays the board on its side: the board fills the short
-  // edge and everything else moves into a panel beside it.
-  bool wide = false;
-  bool wideActive() const { return wide && !showingMenu && !showingSettings && !linkPlaying(); }
-  void drawWidePanel(toybox::Screen& screen, const BoardGeometry& geometry);
-  void loadView();
-  void saveView() const;
+  void drawMoveList(int top, int height) const;
 
   // --- settings overlay ---------------------------------------------------
   // Drawn in place rather than as its own Activity: leaving and re-entering

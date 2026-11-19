@@ -21,7 +21,6 @@ enum : fui::ActionId {
   ActionCloseSettings = 2,
   ActionOpenSettings = 3,
   ActionPlayAgain = 4,
-  ActionTakeBack = 5,  // the side panel's UNDO, board on its side
   ActionStartRow = 5,
 };
 
