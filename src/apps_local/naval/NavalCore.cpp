@@ -137,6 +137,75 @@ bool parseWind(const char* json, const size_t len, Sea& sea) {
   return sea.hasWind;
 }
 
+void meteoblueUrl(const float lat, const float lon, const char* key, char* out, const size_t cap) {
+  std::snprintf(out, cap, "https://my.meteoblue.com/packages/basic-1h?lat=%.4f&lon=%.4f&format=json&apikey=%s",
+                static_cast<double>(lat), static_cast<double>(lon), key);
+}
+
+bool tidyKey(const char* in, char* out, const size_t cap) {
+  size_t n = 0;
+  for (const char* p = in; *p && n + 1 < cap; ++p) {
+    const char c = *p;
+    const bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_';
+    if (ok) out[n++] = c;
+  }
+  out[n] = 0;
+  return n >= 8;
+}
+
+bool parseMeteoblueWind(const char* json, const size_t len, Sea& sea) {
+  const Span doc = root(json, len);
+  if (!doc.ok()) return false;
+  const Span data = member(doc, "data_1h");
+  if (!data.ok()) return false;
+  // The answer names its own unit; knots are what the page reads in.
+  char unit[12] = "";
+  string(member(member(doc, "units"), "windspeed"), unit, sizeof(unit));
+  float toKnots = 1.943844f;  // metres a second, which is what it sends unasked
+  if (std::strcmp(unit, "kn") == 0 || std::strcmp(unit, "kt") == 0) toKnots = 1;
+  if (std::strcmp(unit, "kmh") == 0 || std::strcmp(unit, "km/h") == 0) toKnots = 0.539957f;
+  if (std::strcmp(unit, "mph") == 0) toKnots = 0.868976f;
+
+  int16_t slot[kHours];
+  Hour* hours = sea.hours;
+  const int have = sea.count;
+  int16_t* slots = slot;
+  // "2026-11-19 14:00": the same places in the string as the other answers' "T" form.
+  const int count = forEach(member(data, "time"), kHours, [hours, have, slots](const int i, const Span& el) {
+    char stamp[20];
+    string(el, stamp, sizeof(stamp));
+    const int month = digits(stamp + 5, 2);
+    const int day = digits(stamp + 8, 2);
+    const int hour = std::strlen(stamp) >= 13 ? digits(stamp + 11, 2) : 0;
+    slots[i] = -1;
+    for (int k = 0; k < have; ++k) {
+      const int at = (i + k) % have;
+      if (hours[at].month == month && hours[at].day == day && hours[at].hour == hour) {
+        slots[i] = static_cast<int16_t>(at);
+        break;
+      }
+    }
+  });
+  if (count == 0 || have == 0) return false;
+  int laid = 0;
+  int* laidOut = &laid;
+  forEach(member(data, "windspeed"), count, [hours, slots, toKnots, laidOut](const int i, const Span& el) {
+    float v = 0;
+    if (slots[i] < 0 || !number(el, v) || v < 0) return;
+    Hour& h = hours[slots[i]];
+    h.wind = v * toKnots;
+    if (h.gust >= 0 && h.gust < h.wind) h.gust = kMissing;
+    ++*laidOut;
+  });
+  if (laid == 0) return false;
+  forEach(member(data, "winddirection"), count, [hours, slots](const int i, const Span& el) {
+    if (slots[i] >= 0) hours[slots[i]].windFrom = bearing(el);
+  });
+  sea.hasWind = true;
+  sea.windIsMeteoblue = true;
+  return true;
+}
+
 int nowIndex(const Sea& sea) {
   if (sea.count == 0 || !sea.now[0]) return 0;
   const int month = digits(sea.now + 5, 2);

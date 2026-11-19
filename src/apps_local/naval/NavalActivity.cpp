@@ -14,6 +14,7 @@
 #include "../../DevMode.h"
 #include "../../SilentRestart.h"
 #include "../../activities/network/WifiSelectionActivity.h"
+#include "../../activities/util/KeyboardEntryActivity.h"
 #include "../../components/UITheme.h"
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
@@ -35,6 +36,13 @@ namespace {
 using naval::kCacheDir;
 constexpr size_t kMaxBody = 48 * 1024;  // the marine answer is ~14 KB
 constexpr char kAutoPath[] = "/.crosspoint/naval-auto.cfg";
+constexpr char kSourcePath[] = "/.crosspoint/naval-source.cfg";
+// The owner's meteoblue key, as text. It can be typed in the app or the file
+// can be put here by hand.
+constexpr char kKeyPath[] = "/.crosspoint/naval/meteoblue.key";
+// Each meteoblue answer spends the owner's credits, so a page left on auto
+// asks it again only this often.
+constexpr uint32_t kMeteoblueRestMs = 3u * 60u * 60u * 1000u;
 
 enum : fui::ActionId {
   ActionPlace = 1,  // value: 0 the one before, 1 the one after
@@ -43,6 +51,10 @@ enum : fui::ActionId {
   ActionStepDay,  // value: 0 the day before, 1 the day after
   ActionDismiss,
   ActionAuto,
+  ActionSource,
+  ActionChooseSource,  // value: 0 Open-Meteo, 1 meteoblue
+  ActionEnterKey,
+  ActionRemoveKey,
 };
 
 const fui::Paint kInk = fui::Paint::solid(fui::Color::Black);
@@ -152,6 +164,7 @@ void NavalActivity::onEnter() {
     showStatus("NO PLACES YET", "THIS READS THE PLACES KEPT IN WEATHER. ADD A PORT OR A BEACH THERE AND COME BACK.",
                false);
   } else {
+    loadSource();
     haveSea_ = loadCache();
   }
   loadAuto();
@@ -227,6 +240,11 @@ bool NavalActivity::loadCache() {
   body.reset();
   cachePath("wind", path, sizeof(path));
   if (readFile(path, body, size)) nv::parseWind(body.get(), size, *sea_);
+  if (useMeteoblue_) {
+    body.reset();
+    cachePath("mbwind", path, sizeof(path));
+    if (readFile(path, body, size)) nv::parseMeteoblueWind(body.get(), size, *sea_);
+  }
   return true;
 }
 
@@ -266,7 +284,7 @@ void NavalActivity::startFetch() {
   }
 }
 
-NavalActivity::Fetched NavalActivity::fetchSea() {
+NavalActivity::Fetched NavalActivity::fetchSea(const bool asked) {
   const weather::Place& p = places_[selected_];
   char url[512];
   char path[80];
@@ -304,6 +322,38 @@ NavalActivity::Fetched NavalActivity::fetchSea() {
   } else {
     LOG_ERR("NAVL", "wind fetch failed: status %d", HttpDownloader::lastStatus());
   }
+  // meteoblue's wind over that, when the owner chose it and has a key.
+  meteoblueFailed_ = false;
+  if (useMeteoblue_ && key_[0]) {
+    const uint32_t now = static_cast<uint32_t>(millis());
+    const bool rested =
+        asked || meteobluePlace_ != selected_ || meteoblueAtMs_ == 0 || now - meteoblueAtMs_ >= kMeteoblueRestMs;
+    cachePath("mbwind", path, sizeof(path));
+    if (!rested) {
+      std::unique_ptr<char[]> kept;
+      size_t size = 0;
+      if (readFile(path, kept, size)) nv::parseMeteoblueWind(kept.get(), size, *fresh);
+    } else {
+      body.clear();
+      nv::meteoblueUrl(p.lat, p.lon, key_, url, sizeof(url));
+      if (HttpDownloader::fetchUrl(url, body) && body.size() <= kMaxBody &&
+          nv::parseMeteoblueWind(body.data(), body.size(), *fresh)) {
+        HalFile file;
+        if (Storage.openFileForWrite("NAVL", path, file)) {
+          file.write(reinterpret_cast<const uint8_t*>(body.data()), body.size());
+          file.flush();
+        }
+        meteoblueAtMs_ = now == 0 ? 1 : now;
+        meteobluePlace_ = selected_;
+      } else {
+        // The status and nothing else: the URL carries the key.
+        meteoblueFailed_ = true;
+        meteoblueStatus_ = HttpDownloader::lastStatus();
+        LOG_ERR("NAVL", "meteoblue wind failed: status %d, %u bytes", meteoblueStatus_,
+                static_cast<unsigned>(body.size()));
+      }
+    }
+  }
   *sea_ = *fresh;
   haveSea_ = true;
   return Fetched::Ok;
@@ -316,9 +366,17 @@ void NavalActivity::runFetch() {
     if (!radio.online()) {
       showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK. THE LAST FORECAST FETCHED STAYS HERE.", true);
     } else {
-      switch (fetchSea()) {
+      switch (fetchSea(true)) {
         case Fetched::Ok:
           view_ = View::Now;
+          if (meteoblueFailed_) {
+            const bool refused = meteoblueStatus_ == 401 || meteoblueStatus_ == 403;
+            showStatus(refused ? "KEY REFUSED" : "NO METEOBLUE",
+                       refused ? "METEOBLUE DID NOT TAKE THE KEY, OR IT HAS NO CREDITS LEFT. THE WIND SHOWN IS "
+                                 "OPEN-METEO'S. CHECK THE KEY UNDER SOURCE."
+                               : "METEOBLUE DID NOT ANSWER. THE WIND SHOWN IS OPEN-METEO'S.",
+                       true);
+          }
           break;
         case Fetched::NoSea:
           showStatus("NO SEA HERE", "THERE IS NO WAVE FORECAST FOR THIS PLACE. IT IS PROBABLY TOO FAR INLAND.", true);
@@ -353,6 +411,70 @@ void NavalActivity::saveAuto() {
   file.flush();
 }
 
+void NavalActivity::loadSource() {
+  useMeteoblue_ = false;
+  key_[0] = 0;
+  {
+    HalFile file;
+    uint8_t saved = 0;
+    if (Storage.exists(kSourcePath) && Storage.openFileForRead("NAVL", kSourcePath, file) &&
+        file.read(&saved, 1) == 1) {
+      useMeteoblue_ = saved == 1;
+    }
+  }
+  if (!Storage.exists(kKeyPath)) return;
+  HalFile file;
+  if (!Storage.openFileForRead("NAVL", kKeyPath, file)) return;
+  char raw[64] = "";
+  const int got = file.read(raw, sizeof(raw) - 1);
+  if (got <= 0) return;
+  raw[got] = 0;
+  if (!nv::tidyKey(raw, key_, sizeof(key_))) key_[0] = 0;
+}
+
+void NavalActivity::saveSource() {
+  HalFile file;
+  if (!Storage.openFileForWrite("NAVL", kSourcePath, file)) return;
+  const uint8_t saved = useMeteoblue_ ? 1 : 0;
+  file.write(&saved, 1);
+  file.flush();
+}
+
+void NavalActivity::saveKey() {
+  if (!key_[0]) {
+    if (Storage.exists(kKeyPath)) Storage.remove(kKeyPath);
+    return;
+  }
+  Storage.mkdir(kCacheDir);
+  HalFile file;
+  if (!Storage.openFileForWrite("NAVL", kKeyPath, file)) return;
+  file.write(reinterpret_cast<const uint8_t*>(key_), std::strlen(key_));
+  file.flush();
+}
+
+void NavalActivity::askKey() {
+  auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, "METEOBLUE API KEY", "", 32);
+  if (!keyboard) {
+    LOG_ERR("NAVL", "OOM: the keyboard");
+    return;
+  }
+  startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
+    interactionsReady_ = false;
+    if (!result.isCancelled) {
+      char typed[40];
+      if (nv::tidyKey(std::get<KeyboardResult>(result.data).text.c_str(), typed, sizeof(typed))) {
+        std::snprintf(key_, sizeof(key_), "%s", typed);
+        saveKey();
+        useMeteoblue_ = true;
+        saveSource();
+        meteoblueAtMs_ = 0;
+      }
+    }
+    view_ = View::Source;
+    requestUpdate();
+  });
+}
+
 void NavalActivity::requestUpdate(const bool immediate) {
   quiet_.paintPending = true;
   Activity::requestUpdate(immediate);
@@ -384,7 +506,7 @@ void NavalActivity::loop() {
       autorefresh::Radio radio;
       if (!radio.online()) {
         autorefresh::retrySoon(now, intervalMs, lastFetchMs_);
-      } else if (fetchSea() == Fetched::Ok) {
+      } else if (fetchSea(false) == Fetched::Ok) {
         requestUpdate();
       }
       return;
@@ -398,6 +520,8 @@ void NavalActivity::loop() {
       shelf::leave(renderer, mappedInput);
       return;
     }
+    // Leaving the source page shows the wind of whichever source is now chosen.
+    if (view_ == View::Source) haveSea_ = loadCache();
     view_ = View::Now;
     requestUpdate();
     return;
@@ -449,10 +573,31 @@ void NavalActivity::loop() {
       dayOpen_ = (dayOpen_ + (event.value ? 1 : sea_->dayCount - 1)) % (sea_->dayCount ? sea_->dayCount : 1);
       break;
     case ActionDismiss:
+      if (view_ == View::Source) haveSea_ = loadCache();
       view_ = View::Now;
       break;
     case ActionAuto:
       view_ = View::AutoPicker;
+      break;
+    case ActionSource:
+      view_ = View::Source;
+      break;
+    case ActionChooseSource:
+      if (event.value == 1 && !key_[0]) {
+        askKey();
+        return;
+      }
+      useMeteoblue_ = event.value == 1;
+      saveSource();
+      break;
+    case ActionEnterKey:
+      askKey();
+      return;
+    case ActionRemoveKey:
+      key_[0] = 0;
+      saveKey();
+      useMeteoblue_ = false;
+      saveSource();
       break;
     default:
       return;
@@ -481,7 +626,9 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
     lab::paragraph(screen, x, y + 40, inner,
                    "NOTHING FETCHED FOR THIS PLACE YET. REFRESH WHILE THERE IS WI-FI AND THE WEEK STAYS ON THE CARD.",
                    3);
-    lab::button(screen, lab::rect(x, bottom - 46, inner, 46), "REFRESH", ActionRefresh, 0);
+    const int half = (inner - 8) / 2;
+    lab::button(screen, lab::rect(x, bottom - 46, half, 46), "SOURCE", ActionSource, 0, useMeteoblue_);
+    lab::button(screen, lab::rect(x + half + 8, bottom - 46, inner - half - 8, 46), "REFRESH", ActionRefresh, 0);
     return;
   }
 
@@ -569,7 +716,7 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
   lab::caption(screen, colSea, y, inner - 280, "SEA MAX", fui::TextAlign::Left, fui::Color::DarkGray);
   y += toybox::kTileCut.inkHeight + 6;
   const int rows = sea.dayCount;
-  const int rowH = (bottom - 52 - y) / (rows ? rows : 1) > 44 ? 44 : (bottom - 52 - y) / (rows ? rows : 1);
+  const int rowH = (bottom - 76 - y) / (rows ? rows : 1) > 44 ? 44 : (bottom - 76 - y) / (rows ? rows : 1);
   for (int dIdx = 0; dIdx < rows; ++dIdx) {
     const nv::DayStats s = nv::statsOf(sea, dIdx);
     const int ry = y + dIdx * rowH;
@@ -598,8 +745,11 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
   // When it was fetched, by the place's own clock, and the way to fetch again.
   std::snprintf(b, sizeof(b), "%.5s  %d %s", sea.now[0] ? sea.now + 11 : "--:--", h.day,
                 kMonths[h.month > 12 ? 0 : h.month]);
-  lab::caption(screen, x, bottom - 46 + (46 - toybox::kTileCut.inkHeight) / 2, inner - 290, b, fui::TextAlign::Left,
+  // Above the buttons, so the three of them have the row.
+  lab::caption(screen, x, bottom - 46 - toybox::kTileCut.inkHeight - 8, inner, b, fui::TextAlign::Left,
                fui::Color::DarkGray);
+  lab::caption(screen, x, bottom - 46 - toybox::kTileCut.inkHeight - 8, inner,
+               sea.windIsMeteoblue ? "WIND: METEOBLUE" : "WIND: ECMWF", fui::TextAlign::Right, fui::Color::DarkGray);
   if (autoMinutes_ <= 0) {
     std::snprintf(a, sizeof(a), "AUTO OFF");
   } else if (autoMinutes_ >= 60) {
@@ -607,8 +757,45 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
   } else {
     std::snprintf(a, sizeof(a), "AUTO %d M", autoMinutes_);
   }
-  lab::button(screen, lab::rect(x + inner - 280, bottom - 46, 136, 46), a, ActionAuto, 0, autoMinutes_ > 0);
-  lab::button(screen, lab::rect(x + inner - 136, bottom - 46, 136, 46), "REFRESH", ActionRefresh, 0);
+  const int gap = 8;
+  const int third = (inner - gap * 2) / 3;
+  lab::button(screen, lab::rect(x, bottom - 46, third, 46), "SOURCE", ActionSource, 0, useMeteoblue_);
+  lab::button(screen, lab::rect(x + third + gap, bottom - 46, third, 46), a, ActionAuto, 0, autoMinutes_ > 0);
+  lab::button(screen, lab::rect(x + (third + gap) * 2, bottom - 46, inner - (third + gap) * 2, 46), "REFRESH",
+              ActionRefresh, 0);
+}
+
+// Whose wind it is, and the key meteoblue's needs.
+void NavalActivity::buildSource(toybox::Screen& screen) {
+  lab::chrome(screen, "WIND SOURCE");
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - x * 2;
+  int y = toybox::kChromeHeight + 16;
+  lab::button(screen, lab::rect(x, y, inner, 56), "OPEN-METEO  ECMWF", ActionChooseSource, 0, !useMeteoblue_);
+  y += 56 + 10;
+  lab::button(screen, lab::rect(x, y, inner, 56), "METEOBLUE", ActionChooseSource, 1, useMeteoblue_);
+  y += 56 + 22;
+  char line[64];
+  if (key_[0]) {
+    // That there is one and how long it is; never the key.
+    std::snprintf(line, sizeof(line), "METEOBLUE KEY SAVED, %d CHARACTERS", static_cast<int>(std::strlen(key_)) % 100);
+  } else {
+    std::snprintf(line, sizeof(line), "NO METEOBLUE KEY YET");
+  }
+  lab::caption(screen, x, y, inner, line);
+  y += toybox::kTileCut.inkHeight + 14;
+  const int half = (inner - 8) / 2;
+  lab::button(screen, lab::rect(x, y, key_[0] ? half : inner, 46), key_[0] ? "CHANGE KEY" : "ENTER KEY", ActionEnterKey,
+              0);
+  if (key_[0]) lab::button(screen, lab::rect(x + half + 8, y, half, 46), "REMOVE KEY", ActionRemoveKey, 0);
+  y += 46 + 22;
+  lab::paragraph(screen, x, y, inner,
+                 "METEOBLUE GIVES THE WIND ONLY. WAVES, SWELL, WATER AND GUSTS STAY OPEN-METEO'S. EACH FETCH SPENDS "
+                 "8000 OF YOUR METEOBLUE CREDITS; ON AUTO IT ASKS AT MOST EVERY 3 HOURS. THE KEY STAYS ON THIS CARD. "
+                 "IT CAN ALSO BE A TEXT FILE: /.crosspoint/naval/meteoblue.key",
+                 8);
+  const int bottom = screen.device().height - lab::kBottomReserve - 6;
+  lab::button(screen, lab::rect(x, bottom - 46, inner, 46), "DONE", ActionDismiss, 0);
 }
 
 void NavalActivity::buildDay(toybox::Screen& screen) {
@@ -733,6 +920,8 @@ void NavalActivity::render(RenderLock&&) {
     buildStatus(screen);
   } else if (view_ == View::AutoPicker) {
     weatherui::buildAutoPicker(screen, autoMinutes_);
+  } else if (view_ == View::Source) {
+    buildSource(screen);
   } else if (view_ == View::Day && haveSea_) {
     buildDay(screen);
   } else {

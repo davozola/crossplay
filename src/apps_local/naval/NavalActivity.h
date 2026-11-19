@@ -10,7 +10,9 @@
 
 // NAVAL WEATHER: wind, waves, swell and water for the places WEATHER keeps,
 // a week ahead, fetched from Open-Meteo on request and kept on the card so it
-// still reads at sea with no network. On auto it stays on the panel and
+// still reads at sea with no network. The wind can be meteoblue's instead, for
+// an owner who has a key of theirs: the key is typed once or left in a file on
+// the card, stays on the card, and is never in the firmware or a log. On auto it stays on the panel and
 // fetches again by itself, with the radio up only for the fetch and a nap in
 // between.
 class NavalActivity final : public Activity {
@@ -28,7 +30,7 @@ class NavalActivity final : public Activity {
   void requestUpdate(bool immediate = false) override;
 
  private:
-  enum class View : uint8_t { Now, Day, Status, AutoPicker };
+  enum class View : uint8_t { Now, Day, Status, AutoPicker, Source };
   enum class Fetched : uint8_t { Ok, NoAnswer, NoSea };
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
 
@@ -39,7 +41,14 @@ class NavalActivity final : public Activity {
   void startFetch();
   void runFetch();
   // The selected place's sea and wind, kept on the card. Needs the radio up.
-  Fetched fetchSea();
+  // `asked` is a fetch the owner tapped for; a round on auto spends meteoblue's
+  // credits no more than once every few hours.
+  Fetched fetchSea(bool asked);
+  void loadSource();
+  void saveSource();
+  void saveKey();
+  void askKey();
+  void buildSource(toybox::Screen& screen);
   void loadAuto();
   void saveAuto();
   void showStatus(const char* headline, const char* detail, bool dismissable);
@@ -62,6 +71,14 @@ class NavalActivity final : public Activity {
   std::unique_ptr<naval::Sea> sea_;
   bool haveSea_ = false;
   int dayOpen_ = 0;
+
+  // The wind's source, and the owner's key for it.
+  bool useMeteoblue_ = false;
+  char key_[40] = "";
+  bool meteoblueFailed_ = false;
+  int meteoblueStatus_ = 0;
+  uint32_t meteoblueAtMs_ = 0;  // 0: not yet this session
+  int meteobluePlace_ = -1;
 
   const char* statusHeadline_ = "";
   const char* statusDetail_ = "";

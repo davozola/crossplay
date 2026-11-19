@@ -5,11 +5,32 @@
 #include <ResumableFetch.h>
 #include <WiFi.h>
 
+#include <cstring>
 #include <functional>
 #include <string>
 
 #include "DeviceReport.h"
 #include "WifiPowerSaveGuard.h"
+
+namespace {
+// The URL as it may be logged: an API key carried in the query is the owner's
+// secret, and a log is read by other people.
+std::string loggable(const std::string& url) {
+  static constexpr const char* kSecret[] = {"apikey=", "api_key=", "token=", "X-Plex-Token="};
+  std::string out = url;
+  for (const char* name : kSecret) {
+    size_t at = 0;
+    while ((at = out.find(name, at)) != std::string::npos) {
+      const size_t from = at + std::strlen(name);
+      size_t to = out.find('&', from);
+      if (to == std::string::npos) to = out.size();
+      out.replace(from, to - from, "***");
+      at = from;
+    }
+  }
+  return out;
+}
+}  // namespace
 
 extern "C" void wolfSSL_Arduino_Serial_Print(const char* const msg) { LOG_DBG("WOLFSSL", "%s", msg); }
 
@@ -49,7 +70,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   // Also correct while a match owns the radio: ESP-NOW leaves status
   // disconnected, so a fetch mid-game is refused rather than fighting for it.
   if (WiFi.status() != WL_CONNECTED) {
-    LOG_ERR("HTTP", "no WiFi connection; refusing to fetch %s", url.c_str());
+    LOG_ERR("HTTP", "no WiFi connection; refusing to fetch %s", loggable(url).c_str());
     return HttpDownloader::HTTP_ERROR;
   }
   WifiPowerSaveGuard psGuard;
@@ -113,7 +134,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
           const int reportHeaders = devreport::headersFor(url.c_str(), report);
           for (int i = 0; i < reportHeaders; ++i) http.addHeader(report[i].name, report[i].value);
         }
-        LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", url.c_str(), (unsigned)ESP.getFreeHeap(),
+        LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", loggable(url).c_str(), (unsigned)ESP.getFreeHeap(),
                 (unsigned)ESP.getMaxAllocHeap());
       },
       tracked, shouldAbort);
@@ -124,11 +145,11 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   if (result.aborted) return HttpDownloader::ABORTED;
   if (result.stopped) return HttpDownloader::FILE_ERROR;
   if (result.status == 401 || result.status == 403) {
-    LOG_ERR("HTTP", "wolfSSL request unauthorized: status %d: %s", result.status, url.c_str());
+    LOG_ERR("HTTP", "wolfSSL request unauthorized: status %d: %s", result.status, loggable(url).c_str());
     return HttpDownloader::UNAUTHORIZED;
   }
   if (result.status < 200 || result.status >= 300) {
-    LOG_ERR("HTTP", "wolfSSL request failed: status %d: %s", result.status, url.c_str());
+    LOG_ERR("HTTP", "wolfSSL request failed: status %d: %s", result.status, loggable(url).c_str());
     return HttpDownloader::HTTP_ERROR;
   }
   if (!result.complete) {
@@ -163,7 +184,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
                               const std::string& password) {
-  LOG_DBG("HTTP", "Fetching: %s", url.c_str());
+  LOG_DBG("HTTP", "Fetching: %s", loggable(url).c_str());
   freeink::FetchSink sink;
   sink.write = onData;
   return runGetSecure(url, username, password, {}, sink) == OK;
@@ -174,7 +195,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                              const std::string& username, const std::string& password,
                                                              const std::vector<Header>& headers,
                                                              bool downgradeRedirectsToHttp) {
-  LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
+  LOG_DBG("HTTP", "Downloading: %s -> %s", loggable(url).c_str(), destPath.c_str());
 
   // Stage in <dest>.part: a failed or cancelled download never replaces an
   // existing copy, and a partial file never sits under the real name.
