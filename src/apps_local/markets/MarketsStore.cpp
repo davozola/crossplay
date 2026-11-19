@@ -241,8 +241,8 @@ bool loadCached(const mk::Asset asset, mk::Quote& out) {
 
 // Everything wanted is fetched one instrument at a time: crypto from Coinbase's
 // candles, the rest from CNBC's bars, and then one CNBC quote laid over all of
-// those. A history asked for within the half day is kept, so most rounds are
-// the quote answers and little else. A quote replaces the one held only once it has parsed, so an error
+// those. A history already on the card is kept and grown by those quotes, so
+// most rounds are the quote answers and little else. A quote replaces the one held only once it has parsed, so an error
 // page never costs a good one.
 int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap) {
   loadPicks();
@@ -292,8 +292,8 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
   const time_t clock = time(nullptr);
   int32_t today = clock > 1700000000 ? static_cast<int32_t>(clock / 86400) : 0;
 
-  // A history fetched within the half day is kept: a year of closes moves once
-  // a day, and asking every instrument for it again was most of a round's time.
+  // A history on the card is kept and grown by the quote answers: asking every
+  // instrument for a year of closes again was most of a round's time.
   int keptCount = 0;
   for (int i = 0; i < count; ++i) {
     const bool always = mk::instrumentAt(wanted[i]).always;
@@ -380,13 +380,18 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
     if (get(url, body, size, status)) {
       for (int i = 0; i < count; ++i) {
         if (!quoted(i)) continue;
-        // What was kept has arrived once its price has.
-        if (mk::applyCnbcQuoteFor(body.get(), size, mk::instrumentAt(wanted[i]).symbol, fetched[i])) have[i] = true;
+        // What was kept has arrived once its price has, and grows by the
+        // session the quote brings; with sessions missing it is asked for whole below.
+        bool gap = false;
+        if (mk::applyCnbcQuoteFor(body.get(), size, mk::instrumentAt(wanted[i]).symbol, fetched[i],
+                                  kept[i] ? &gap : nullptr)) {
+          have[i] = true;
+        }
       }
     }
     body.reset();
   }
-  // Kept, and no quote came for it: asked for whole, as before.
+  // Kept, and no quote came for it or sessions were missing: asked for whole, as before.
   for (int i = 0; i < count; ++i) {
     if (kept[i] && !have[i]) fetchHistory(i);
   }
