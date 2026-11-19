@@ -434,5 +434,29 @@ int main() {
     check(parseLookup(answer, std::strlen(answer), found, 1) == 1, "no more than asked for");
   }
 
+  // A history is kept for half a day, and what never closes only within its UTC day.
+  {
+    using namespace markets;
+    const int64_t noon = 1795000000 - (1795000000 % 86400) + 12 * 3600;
+    Quote q;
+    q.valid = true;
+    q.count = 2;
+    q.days[0] = static_cast<int32_t>(noon / 86400) - 1;
+    q.days[1] = static_cast<int32_t>(noon / 86400);
+    check(!historyFresh(q, noon, false), "never asked: not fresh");
+    q.historyAt = noon;
+    check(historyFresh(q, noon + 60, false) && historyFresh(q, noon + 60, true), "a minute later: kept");
+    check(historyFresh(q, noon + kHistoryFreshSeconds - 1, false), "kept to the end of the half day");
+    check(!historyFresh(q, noon + kHistoryFreshSeconds, false), "and not past it");
+    q.historyAt = noon + 6 * 3600;
+    check(historyFresh(q, noon + 13 * 3600, false), "bars from the evening hold through the night");
+    check(!historyFresh(q, noon + 13 * 3600, true), "past midnight UTC the candles have turned");
+    q.historyAt = noon;
+    check(!historyFresh(q, noon - 60, false), "a clock gone backwards keeps nothing");
+    check(!historyFresh(q, 1000, false), "nor does one that was never set");
+    q.valid = false;
+    check(!historyFresh(q, noon + 60, false), "nothing held, nothing kept");
+  }
+
   return failures == 0 ? 0 : 1;
 }

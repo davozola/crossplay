@@ -235,11 +235,19 @@ void statusLine(const mk::Asset asset, const mk::Quote& q, char* out, const size
 // The page on its side: 800 wide, laid out again rather than stretched.
 bool wide(toybox::Screen& screen) { return screen.device().width > screen.device().height; }
 
-void chrome(toybox::Screen& screen, const char* title) {
+// `right` is a few words at the band's right end: when the quotes are from.
+void chrome(toybox::Screen& screen, const char* title, const char* right = nullptr) {
   fui::HeaderProps header;
   header.title = title;
   header.borderEdges = fui::EdgesNone;
   header.sidePadding = screen.theme().headerSidePadding;
+  if (right != nullptr && right[0] != 0) {
+    // In paper: the band is black, and the label's own style is ink.
+    header.rightLabel = right;
+    header.subtitleText = screen.theme().smallText;
+    header.subtitleText.color = fui::Color::White;
+    header.subtitleText.align = fui::TextAlign::Right;
+  }
   toybox::headerBand(screen, header);
 }
 
@@ -395,14 +403,10 @@ void dashboardFoot(toybox::Screen& screen, const DashboardModel& model, const in
   const int inner = screen.device().width - toybox::kMargin * 2;
   const int gap = 10;
   const int third = (inner - gap * 2) / 3;
-  // With auto on and a fetch behind it, the button says when that was: the
-  // only way to tell a page that is refreshing from one that has stopped.
+  // When the quotes are from is in the band above, auto or not.
   char autoLabel[toybox::kIntChars * 3 + 16];
   if (model.autoMinutes <= 0) {
     std::snprintf(autoLabel, sizeof(autoLabel), "AUTO OFF");
-  } else if (model.fetchedHour >= 0) {
-    std::snprintf(autoLabel, sizeof(autoLabel), "%d M  %02d:%02d", model.autoMinutes % 1000, model.fetchedHour % 24,
-                  model.fetchedMinute % 60);
   } else if (model.autoMinutes >= 60) {
     std::snprintf(autoLabel, sizeof(autoLabel), "AUTO 1 H");
   } else {
@@ -499,8 +503,8 @@ void wideStrip(toybox::Screen& screen, const DashboardModel& model, const int y,
   char text[48];
   autoText(model, text, sizeof(text));
   caption(screen, toybox::kMargin + 2, ty, half - toybox::kMargin, text, fui::TextAlign::Left, fui::Color::White);
-  if (model.fetchedHour >= 0) {
-    std::snprintf(text, sizeof(text), "UPDATED %02d:%02d", model.fetchedHour % 24, model.fetchedMinute % 60);
+  if (model.updated[0] != 0) {
+    std::snprintf(text, sizeof(text), "UPDATED %.20s", model.updated);
     caption(screen, width / 4, ty, half, text, fui::TextAlign::Center, fui::Color::White);
   }
   caption(screen, half, ty, width - half - toybox::kMargin - 2, "REFRESH", fui::TextAlign::Right, fui::Color::White);
@@ -637,7 +641,7 @@ void buildDashboard(toybox::Screen& screen, const DashboardModel& model) {
     wideDashboard(screen, model);
     return;
   }
-  chrome(screen, "MARKETS");
+  chrome(screen, "MARKETS", model.updated);
   const fui::DeviceContext device = screen.device();
   const int width = device.width;
   const int inner = width - toybox::kMargin * 2;
@@ -935,7 +939,7 @@ void buildStatus(toybox::Screen& screen, const StatusModel& model) {
 }
 
 void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
-  chrome(screen, "PORTFOLIO");
+  chrome(screen, "PORTFOLIO", model.updated);
   const fui::DeviceContext device = screen.device();
   const int width = device.width;
   const int inner = width - toybox::kMargin * 2;

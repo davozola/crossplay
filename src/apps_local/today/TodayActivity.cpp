@@ -96,9 +96,10 @@ void TodayActivity::onEnter() {
   statusHeadline_ = nullptr;
   lastFetchMs_ = static_cast<uint32_t>(millis());
   lastInputMs_ = lastFetchMs_;
+  // Left on auto, it comes back on auto: a fetch straight away, behind what
+  // the card holds from last time.
+  if (autoMinutes_ > 0) startRefresh(false);
   ask();
-  // Left on auto, it comes back on auto: the first fetch is what joins the network.
-  if (autoMinutes_ > 0) startRefresh();
 }
 
 void TodayActivity::applyOrientation() {
@@ -121,7 +122,16 @@ void TodayActivity::onExit() {
   }
 }
 
-void TodayActivity::startRefresh() {
+void TodayActivity::startRefresh(const bool asked) {
+  // With a network to join alone the page stays: the join and the fetch
+  // happen behind it.
+  if (step_ == Step::Idle && statusHeadline_ == nullptr &&
+      (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone())) {
+    behindDue_ = true;
+    behindPainted_ = false;
+    behindAsked_ = asked;
+    return;
+  }
   step_ = Step::Joining;
   statusHeadline_ = "WI-FI";
   report_[0] = 0;
@@ -193,9 +203,40 @@ void TodayActivity::loop() {
     return;
   }
 
+  const uint32_t intervalMs = static_cast<uint32_t>(autoMinutes_) * 60000u;
+  if (behindDue_ && step_ == Step::Idle) {
+    if (!behindPainted_) {
+      // The tag has to be on the panel before the radio blocks.
+      behindPainted_ = true;
+      paintPending_ = true;
+      requestUpdateAndWait();
+      return;
+    }
+    wifiActivated_ = true;
+    const int kinds = fetchRound(report_, sizeof(report_));
+    behindDue_ = false;
+    behindPainted_ = false;
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    lastInputMs_ = lastFetchMs_;
+    if (behindAsked_ && kinds < 0) {
+      statusHeadline_ = "SIN WI-FI";
+      std::snprintf(report_, sizeof(report_),
+                    "NO SE PUDO UNIR A LA RED GUARDADA. LO ULTIMO DESCARGADO SIGUE EN LA TARJETA.");
+      statusDismissable_ = true;
+    } else if (behindAsked_ && kinds != 3) {
+      // Say which source it was; what did arrive is on the page behind this.
+      statusHeadline_ = kinds == 0 ? "SIN RESPUESTA" : "FALTA ALGO";
+      statusDismissable_ = true;
+    } else if (kinds < 0 && autoMinutes_ > 0 && intervalMs > kRetryMs) {
+      // Nobody asked: the page keeps what it shows and tries again in a minute.
+      lastFetchMs_ -= intervalMs - kRetryMs;
+    }
+    ask();
+    return;
+  }
+
   // Auto: quietly, with no status page. The radio comes up for the round and
   // goes down after it; a round that cannot join tries again in a minute.
-  const uint32_t intervalMs = static_cast<uint32_t>(autoMinutes_) * 60000u;
   if (autoMinutes_ > 0 && step_ == Step::Idle && statusHeadline_ == nullptr) {
     const uint32_t now = static_cast<uint32_t>(millis());
     if (now - lastFetchMs_ >= intervalMs) {
@@ -444,6 +485,7 @@ void TodayActivity::render(RenderLock&&) {
   toybox::reportOverflow(interactions_, "Today");
   const auto labels = mappedInput.mapLabels("Back", "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (behindDue_ && statusHeadline_ == nullptr) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
   paintPending_ = false;

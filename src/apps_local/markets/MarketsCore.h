@@ -107,7 +107,19 @@ struct Quote {
   float closes[kMaxCloses] = {};
   int32_t days[kMaxCloses] = {};  // each close's day, as days since 1970 in exchange time
   int count = 0;
+  // When the closes were last asked of the source, Unix seconds; 0 when the
+  // clock was not set. The history moves once a day, so a round soon after
+  // asks only for the price.
+  int64_t historyAt = 0;
 };
+
+// How long a fetched history stands in for a new one.
+constexpr int64_t kHistoryFreshSeconds = 12 * 3600;
+// True when `q`'s closes are recent enough to keep and only its price need be
+// asked for. `roundTheClock` is what never closes: its candles turn over at
+// midnight UTC, so a history from before that is not kept. Never true with the
+// clock unset (`now` before 2023).
+bool historyFresh(const Quote& q, int64_t now, bool roundTheClock);
 
 // Coinbase's candles for a product: an array of [time, low, high, open, close,
 // volume], newest first. False unless it holds at least two.

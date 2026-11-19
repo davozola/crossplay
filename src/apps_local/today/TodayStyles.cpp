@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -3510,9 +3511,28 @@ void foot(toybox::Screen& screen, GfxRenderer& r, const Page& page, const int st
     } else {
       std::snprintf(lead, sizeof(lead), "auto %dm", page.autoMinutes % 100);
     }
-    char when[toybox::kIntChars + 24];
-    if (page.data.hasForecast && std::strlen(page.data.forecast.current.time) >= 16) {
-      std::snprintf(when, sizeof(when), "%s %.5s", lead, page.data.forecast.current.time + 11);
+    char when[toybox::kIntChars + 40];
+    const char* stamp = page.data.forecast.current.time;  // "2026-11-19T21:45"
+    if (page.data.hasForecast && std::strlen(stamp) >= 16) {
+      // Data read off the card from another day says which: it must not pass
+      // for today's.
+      const int year = std::atoi(stamp);
+      const int month = std::atoi(stamp + 5);
+      const int day = std::atoi(stamp + 8);
+      const bool today = !page.clockSet ||
+                         (year == page.now.tm_year + 1900 && month == page.now.tm_mon + 1 && day == page.now.tm_mday);
+      if (today) {
+        std::snprintf(when, sizeof(when), "%s %.5s", lead, stamp + 11);
+      } else {
+        static constexpr const char* kMonths[12] = {"ene", "feb", "mar", "abr", "may", "jun",
+                                                    "jul", "ago", "sep", "oct", "nov", "dic"};
+        std::snprintf(when, sizeof(when), "%s %d %s %.5s", lead, day % 32, kMonths[(month + 11) % 12], stamp + 11);
+        // The page dots begin at the middle: with no room, the date goes without its lead.
+        const int room = width / 2 - kStyles * 7 - 8 - toybox::kMargin;
+        if (r.getTextWidth(NOTOSANS_12_FONT_ID, when, page.autoMinutes > 0 ? kBold : kRegular) > room) {
+          std::snprintf(when, sizeof(when), "%d %s %.5s", day % 32, kMonths[(month + 11) % 12], stamp + 11);
+        }
+      }
     } else {
       std::snprintf(when, sizeof(when), "%s", lead);
     }

@@ -654,6 +654,13 @@ void closeRange(const Quote& q, const int sessions, float& lo, float& hi) {
   }
 }
 
+bool historyFresh(const Quote& q, const int64_t now, const bool roundTheClock) {
+  if (!q.valid || q.count < 2 || q.historyAt <= 0 || now < 1700000000) return false;
+  if (now < q.historyAt || now - q.historyAt >= kHistoryFreshSeconds) return false;
+  if (roundTheClock && q.days[q.count - 1] != static_cast<int32_t>(now / 86400)) return false;
+  return true;
+}
+
 bool sessionOpen(const Quote& q) {
   return q.sessionEnd > q.sessionStart && q.time >= q.sessionStart && q.time < q.sessionEnd - 60;
 }
