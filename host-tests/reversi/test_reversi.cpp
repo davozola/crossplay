@@ -73,6 +73,26 @@ int main() {
   check(strongWins * 10 >= games * 8, "the top level beats the bottom one at least four games in five");
   std::printf("reversi: level 2 won %d of %d against level 0\n", strongWins, games);
 
+  // The expert against the hard one, both colours, both boards.
+  int expertWins = 0;
+  int expertLosses = 0;
+  for (int side = 6; side <= 8; side += 2) {
+    for (int n = 0; n < 8; ++n) {
+      Board g;
+      start(g, side);
+      const uint8_t expert = n % 2 ? Black : White;
+      int guard = 0;
+      while (!over(g) && guard++ < 200) {
+        const int at = choose(g, g.turn == expert ? 3 : 2, rng);
+        if (at < 0 || play(g, at) == Played::No) break;
+      }
+      expertWins += g.count(expert) > g.count(other(expert));
+      expertLosses += g.count(expert) < g.count(other(expert));
+    }
+  }
+  std::printf("reversi: level 3 won %d and lost %d of 16 against level 2\n", expertWins, expertLosses);
+  check(expertWins > expertLosses, "the expert beats the hard level more often than not");
+
   if (failures == 0) std::printf("reversi: all tests passed\n");
   return failures == 0 ? 0 : 1;
 }

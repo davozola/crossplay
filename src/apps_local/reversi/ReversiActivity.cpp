@@ -34,12 +34,14 @@ struct Option {
   const char* const* values;
   uint8_t count;
 };
-constexpr const char* kOpponents[] = {"DEVICE, EASY", "DEVICE, MEDIUM", "DEVICE, HARD", "TWO PLAYERS"};
+constexpr const char* kOpponents[] = {"DEVICE, EASY", "DEVICE, MEDIUM", "DEVICE, HARD", "DEVICE, EXPERT",
+                                      "TWO PLAYERS"};
+constexpr int kTwoPlayers = 4;
 constexpr const char* kBoards[] = {"8 BY 8", "6 BY 6"};
 constexpr const char* kColours[] = {"BLACK, MOVES FIRST", "WHITE"};
 constexpr const char* kYesNo[] = {"YES", "NO"};
 constexpr Option kOptionTable[] = {
-    {"OPPONENT", kOpponents, 4},
+    {"OPPONENT", kOpponents, 5},
     {"BOARD", kBoards, 2},
     {"YOU PLAY", kColours, 2},
     {"SHOW WHERE YOU CAN GO", kYesNo, 2},
@@ -97,7 +99,7 @@ void ReversiActivity::newGame() {
 }
 
 bool ReversiActivity::deviceToMove() const {
-  if (options_[OptOpponent] == 3 || reversi::over(board_)) return false;
+  if (options_[OptOpponent] == kTwoPlayers || reversi::over(board_)) return false;
   const uint8_t mine = options_[OptColour] == 0 ? reversi::Black : reversi::White;
   return board_.turn != mine;
 }
@@ -153,8 +155,8 @@ void ReversiActivity::loop() {
       }
       note_ = "";
       if (played == reversi::Played::YesAndOtherPasses) {
-        note_ =
-            options_[OptOpponent] == 3 ? "NO MOVE FOR THE OTHER SIDE: GO AGAIN" : "THE DEVICE HAS NO MOVE: GO AGAIN";
+        note_ = options_[OptOpponent] == kTwoPlayers ? "NO MOVE FOR THE OTHER SIDE: GO AGAIN"
+                                                     : "THE DEVICE HAS NO MOVE: GO AGAIN";
       }
       // Painted before the device thinks, so the move is seen first.
       requestUpdateAndWait();
@@ -211,7 +213,7 @@ void ReversiActivity::buildPlay(toybox::Screen& screen) {
   const int x = toybox::kMargin;
   const int inner = width - 2 * toybox::kMargin;
   const bool over = reversi::over(board_);
-  const bool two = options_[OptOpponent] == 3;
+  const bool two = options_[OptOpponent] == kTwoPlayers;
   const uint8_t mine = options_[OptColour] == 0 ? reversi::Black : reversi::White;
   const int black = board_.count(reversi::Black);
   const int white = board_.count(reversi::White);
