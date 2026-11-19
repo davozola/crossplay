@@ -79,6 +79,10 @@ class BatchActivity final : public Activity {
   int pressX_ = -1;
   uint8_t fastPaints_ = 0;
   bool cleanNext_ = true;
+  // A fetch nobody asked for, behind what is already on the page: 1 the mark
+  // is being painted, 2 the fetch runs. Its failures are kept to itself.
+  uint8_t quietStage_ = 0;
+  void quietFetch();
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;

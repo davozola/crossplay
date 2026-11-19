@@ -78,9 +78,11 @@ void HistoryActivity::onEnter() {
     day_ = local.tm_mday;
     thisYear_ = year;
   }
-  loadDay();
+  const bool have = loadDay();
   view_ = View::Day;
   cleanNext_ = true;
+  // Today not on the card yet: fetched behind the page, no status screen.
+  quietStage_ = (!have && thisYear_ != 0 && autorefresh::canJoinAlone()) ? 1 : 0;
   requestUpdate();
 }
 
@@ -141,6 +143,13 @@ void HistoryActivity::startFetch() {
   }
 }
 
+void HistoryActivity::quietFetch() {
+  std::vector<hs::Event> fresh;
+  if (!historystore::fetchDay(month_, day_, fresh)) return;
+  events_.swap(fresh);
+  cleanNext_ = true;
+}
+
 void HistoryActivity::runFetch() {
   view_ = statusBack_;
   std::vector<hs::Event> fresh;
@@ -170,6 +179,21 @@ int HistoryActivity::listed(const int row) const {
 }
 
 void HistoryActivity::loop() {
+  if (quietStage_ == 1 && step_ == Step::Idle) {
+    quietStage_ = 2;
+    // The page with its mark has to be on the panel before the fetch blocks.
+    requestUpdateAndWait();
+    return;
+  }
+  if (quietStage_ == 2) {
+    quietStage_ = 0;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) quietFetch();
+    }
+    requestUpdate();
+    return;
+  }
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = "BUSCANDO";
@@ -488,6 +512,7 @@ void HistoryActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (!cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) cleanNext_ = true;
   if (cleanNext_) fastPaints_ = 0;
+  if (quietStage_ != 0) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
 }
