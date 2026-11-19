@@ -26,6 +26,9 @@ enum : fui::ActionId {
   ActionPlay = 20,
   ActionNewGame,
   ActionOptions,
+  ActionContinue,
+  ActionUndo,
+  ActionHint,
 };
 
 enum { OptOpponent, OptBoard, OptColour, OptHints };
@@ -47,6 +50,8 @@ constexpr Option kOptionTable[] = {
     {"SHOW WHERE YOU CAN GO", kYesNo, 2},
 };
 constexpr char kOptionsPath[] = "/.crosspoint/reversi.cfg";
+constexpr char kGamePath[] = "/.crosspoint/reversi-game.sav";
+constexpr char kStatsPath[] = "/.crosspoint/reversi-levels.cfg";
 constexpr uint8_t kCleanAfterPaints = 14;
 
 void disc(const GfxRenderer& r, const int cx, const int cy, const int radius, const bool black) {
@@ -84,6 +89,8 @@ void ReversiActivity::onEnter() {
   toybox::ensureFonts(renderer);
   rng_.state = static_cast<uint32_t>(millis()) * 2654435761u + 1u;
   loadOptions();
+  sologame::loadStats("RVS", kStatsPath, stats_);
+  hasSaved_ = Storage.exists(kGamePath);
   view_ = View::Setup;
   requestUpdate();
 }
@@ -96,6 +103,66 @@ void ReversiActivity::newGame() {
   reversi::start(board_, options_[OptBoard] == 0 ? 8 : 6);
   note_ = "";
   clean_ = true;
+  history_.clear();
+  hint_ = -1;
+  recorded_ = false;
+  sologame::drop(kGamePath);
+  hasSaved_ = false;
+}
+
+void ReversiActivity::saveGame() {
+  if (reversi::over(board_)) return;
+  hasSaved_ = sologame::save("RVS", kGamePath, board_, history_, options_[OptOpponent], options_[OptColour]);
+}
+
+void ReversiActivity::continueGame() {
+  uint8_t opponent = options_[OptOpponent];
+  uint8_t colour = options_[OptColour];
+  if (!sologame::load("RVS", kGamePath, board_, history_, opponent, colour) || (board_.side != 6 && board_.side != 8) ||
+      reversi::over(board_)) {
+    newGame();
+    return;
+  }
+  // The game goes on against who, and as what, it was begun.
+  if (opponent < kOptionTable[OptOpponent].count) options_[OptOpponent] = opponent;
+  if (colour < kOptionTable[OptColour].count) options_[OptColour] = colour;
+  options_[OptBoard] = board_.side == 8 ? 0 : 1;
+  note_ = "";
+  hint_ = -1;
+  recorded_ = false;
+  clean_ = true;
+}
+
+// Back to before the player's last move, the device's answer undone with it.
+void ReversiActivity::takeBack() {
+  if (deviceToMove() || !history_.pop(board_)) return;
+  note_ = "";
+  hint_ = -1;
+  recorded_ = false;
+  clean_ = true;
+  saveGame();
+}
+
+// The square the expert would play for the side to move.
+void ReversiActivity::showHint() {
+  if (deviceToMove() || reversi::over(board_)) return;
+  hint_ = reversi::choose(board_, reversi::kLevels - 1, rng_);
+}
+
+// A finished game against the device is counted against the level it was
+// played at, once, and is no longer one to continue.
+void ReversiActivity::recordIfOver() {
+  if (recorded_ || !reversi::over(board_)) return;
+  recorded_ = true;
+  sologame::drop(kGamePath);
+  hasSaved_ = false;
+  history_.clear();
+  if (options_[OptOpponent] == kTwoPlayers) return;
+  const uint8_t mine = options_[OptColour] == 0 ? reversi::Black : reversi::White;
+  const int me = board_.count(mine);
+  const int them = board_.count(reversi::other(mine));
+  stats_.count(options_[OptOpponent], me > them ? 0 : (me < them ? 1 : 2));
+  sologame::saveStats("RVS", kStatsPath, stats_);
 }
 
 bool ReversiActivity::deviceToMove() const {
@@ -109,6 +176,9 @@ void ReversiActivity::deviceMoves() {
   if (at < 0) return;
   const reversi::Played played = reversi::play(board_, at);
   note_ = played == reversi::Played::YesAndOtherPasses ? "YOU HAVE NO MOVE: THE DEVICE GOES AGAIN" : "";
+  // Kept after every answer, so leaving at any point loses nothing.
+  saveGame();
+  recordIfOver();
 }
 
 void ReversiActivity::boardRect(int& x, int& y, int& cell) const {
@@ -148,11 +218,16 @@ void ReversiActivity::loop() {
     boardRect(bx, by, cell);
     if (tapX >= bx && tapY >= by && tapX < bx + cell * board_.side && tapY < by + cell * board_.side) {
       const int at = ((tapY - by) / cell) * board_.side + (tapX - bx) / cell;
+      const reversi::Board before = board_;
       const reversi::Played played = reversi::play(board_, at);
       if (played == reversi::Played::No) {
         haptic_feedback::touchAction();
         return;
       }
+      history_.push(before);
+      hint_ = -1;
+      saveGame();
+      recordIfOver();
       note_ = "";
       if (played == reversi::Played::YesAndOtherPasses) {
         note_ = options_[OptOpponent] == kTwoPlayers ? "NO MOVE FOR THE OTHER SIDE: GO AGAIN"
@@ -172,6 +247,13 @@ void ReversiActivity::loop() {
   if (event.action == ActionPlay || event.action == ActionNewGame) {
     newGame();
     view_ = View::Play;
+  } else if (event.action == ActionContinue) {
+    continueGame();
+    view_ = View::Play;
+  } else if (event.action == ActionUndo && view_ == View::Play) {
+    takeBack();
+  } else if (event.action == ActionHint && view_ == View::Play) {
+    showHint();
   } else if (event.action == ActionOptions) {
     view_ = View::Setup;
     clean_ = true;
@@ -205,7 +287,21 @@ void ReversiActivity::buildSetup(toybox::Screen& screen) {
       "PUT A STONE WHERE IT TRAPS THE OTHER COLOUR BETWEEN TWO OF YOURS. EVERYTHING TRAPPED TURNS OVER. MOST "
       "STONES AT THE END WINS.",
       4);
-  lab::button(screen, lab::rect(x, pageBottom() - 90, inner, 90), "PLAY", ActionPlay, 0, true, false);
+  // How it stands against the opponent chosen.
+  if (options_[OptOpponent] != kTwoPlayers) {
+    char record[64];
+    std::snprintf(record, sizeof(record), "AGAINST %s: %d WON, %d LOST, %d DRAWN", kOpponents[options_[OptOpponent]],
+                  stats_.won[options_[OptOpponent]] % 10000, stats_.lost[options_[OptOpponent]] % 10000,
+                  stats_.drawn[options_[OptOpponent]] % 10000);
+    lab::caption(screen, x, pageBottom() - 90 - toybox::kTileCut.inkHeight - 12, inner, record);
+  }
+  if (hasSaved_) {
+    const int half = (inner - 8) / 2;
+    lab::button(screen, lab::rect(x, pageBottom() - 90, half, 90), "CONTINUE", ActionContinue, 0, true, false);
+    lab::button(screen, lab::rect(x + half + 8, pageBottom() - 90, half, 90), "NEW GAME", ActionPlay, 0, false, false);
+  } else {
+    lab::button(screen, lab::rect(x, pageBottom() - 90, inner, 90), "PLAY", ActionPlay, 0, true, false);
+  }
 }
 
 void ReversiActivity::buildPlay(toybox::Screen& screen) {
@@ -258,6 +354,11 @@ void ReversiActivity::buildPlay(toybox::Screen& screen) {
       disc(renderer, cx, cy, radius, true);
       disc(renderer, cx, cy, radius - 4, false);
       if (at == board_.last) disc(renderer, cx, cy, 4, true);
+    } else if (at == hint_ && !over) {
+      // The hinted square: a ring the size of a stone.
+      disc(renderer, cx, cy, radius, true);
+      disc(renderer, cx, cy, radius - 3, false);
+      disc(renderer, cx, cy, 6, true);
     } else if (hints && reversi::legal(board_, at, board_.turn)) {
       disc(renderer, cx, cy, 5, true);
     }
@@ -285,10 +386,22 @@ void ReversiActivity::buildPlay(toybox::Screen& screen) {
   lab::label(screen, lab::rect(x, below, inner, toybox::kUiCut.inkHeight), status, toybox::kUiFont, toybox::kUiCut);
 
   const int buttonH = 60;
-  const int half2 = (inner - 8) / 2;
-  lab::button(screen, lab::rect(x, pageBottom() - buttonH, half2, buttonH), "NEW GAME", ActionNewGame, 0, over, false);
-  lab::button(screen, lab::rect(x + half2 + 8, pageBottom() - buttonH, half2, buttonH), "OPTIONS", ActionOptions, 0,
-              false, false);
+  if (!two && !over) {
+    // Against the device: take a move back and ask for one, beside the two that were here.
+    const int quarter = (inner - 8 * 3) / 4;
+    const int by2 = pageBottom() - buttonH;
+    lab::button(screen, lab::rect(x, by2, quarter, buttonH), "UNDO", ActionUndo, 0, false);
+    lab::button(screen, lab::rect(x + (quarter + 8), by2, quarter, buttonH), "HINT", ActionHint, 0, false);
+    lab::button(screen, lab::rect(x + (quarter + 8) * 2, by2, quarter, buttonH), "NEW", ActionNewGame, 0, false);
+    lab::button(screen, lab::rect(x + (quarter + 8) * 3, by2, inner - (quarter + 8) * 3, buttonH), "OPTIONS",
+                ActionOptions, 0, false);
+  } else {
+    const int half2 = (inner - 8) / 2;
+    lab::button(screen, lab::rect(x, pageBottom() - buttonH, half2, buttonH), "NEW GAME", ActionNewGame, 0, over,
+                false);
+    lab::button(screen, lab::rect(x + half2 + 8, pageBottom() - buttonH, half2, buttonH), "OPTIONS", ActionOptions, 0,
+                false, false);
+  }
 }
 
 void ReversiActivity::render(RenderLock&&) {
