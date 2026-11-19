@@ -123,10 +123,11 @@ int minutesOf(const char* hhmm) {
   return ((hhmm[0] - '0') * 10 + (hhmm[1] - '0')) * 60 + (hhmm[3] - '0') * 10 + (hhmm[4] - '0');
 }
 
-// Sixteen points of the compass for a bearing in degrees, or "" for none.
+// Sixteen points of the compass for a bearing in degrees, or "" for none. The
+// pages on their side are in Spanish, so west is O.
 const char* compassPoint(const int degrees) {
   static const char* const kPoints[16] = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-                                          "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
+                                          "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"};
   if (degrees < 0) return "";
   return kPoints[((degrees % 360) * 2 + 22) / 45 % 16];
 }
@@ -139,27 +140,101 @@ void updatedLine(const weatherui::ForecastModel& m, char* out, const size_t cap)
   } else if (m.autoMinutes > 0) {
     std::snprintf(autoPart, sizeof(autoPart), "  ·  AUTO %d M", m.autoMinutes);
   }
-  std::snprintf(out, cap, "UPDATED %.5s%s", f.current.time[0] ? f.current.time + 11 : "--:--", autoPart);
+  std::snprintf(out, cap, "ACTUALIZADO %.5s%s", f.current.time[0] ? f.current.time + 11 : "--:--", autoPart);
+}
+
+// --- the words --------------------------------------------------------------------
+
+// A sky in Spanish, as a sentence starts it and as a panel labels it.
+struct SkyWords {
+  const char* phrase;
+  const char* label;
+};
+
+SkyWords skyWords(const int wmo) {
+  switch (wmo) {
+    case 0:
+      return {"Despejado", "DESPEJADO"};
+    case 1:
+      return {"Poco nuboso", "POCO NUBOSO"};
+    case 2:
+      return {"Intervalos nubosos", "INTERVALOS NUBOSOS"};
+    case 3:
+      return {"Cubierto", "CUBIERTO"};
+    case 45:
+      return {"Niebla", "NIEBLA"};
+    case 48:
+      return {"Niebla helada", "NIEBLA HELADA"};
+    case 51:
+      return {"Llovizna débil", "LLOVIZNA DÉBIL"};
+    case 53:
+      return {"Llovizna", "LLOVIZNA"};
+    case 55:
+      return {"Llovizna intensa", "LLOVIZNA INTENSA"};
+    case 56:
+    case 57:
+      return {"Llovizna helada", "LLOVIZNA HELADA"};
+    case 61:
+      return {"Lluvia débil", "LLUVIA DÉBIL"};
+    case 63:
+      return {"Lluvia", "LLUVIA"};
+    case 65:
+      return {"Lluvia intensa", "LLUVIA INTENSA"};
+    case 66:
+    case 67:
+      return {"Lluvia helada", "LLUVIA HELADA"};
+    case 71:
+      return {"Nevada débil", "NEVADA DÉBIL"};
+    case 73:
+      return {"Nieve", "NIEVE"};
+    case 75:
+      return {"Nevada intensa", "NEVADA INTENSA"};
+    case 77:
+      return {"Granos de nieve", "GRANOS DE NIEVE"};
+    case 80:
+      return {"Chubascos débiles", "CHUBASCOS DÉBILES"};
+    case 81:
+      return {"Chubascos", "CHUBASCOS"};
+    case 82:
+      return {"Chubascos fuertes", "CHUBASCOS FUERTES"};
+    case 85:
+    case 86:
+      return {"Chubascos de nieve", "CHUBASCOS DE NIEVE"};
+    case 95:
+      return {"Tormenta", "TORMENTA"};
+    case 96:
+    case 99:
+      return {"Tormenta con granizo", "TORMENTA CON GRANIZO"};
+    default:
+      return {"Nublado", "NUBLADO"};
+  }
+}
+
+// 0 = Monday, as weather::weekday counts.
+const char* weekdayShort(const int wd) {
+  static const char* const kNames[7] = {"LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"};
+  return wd >= 0 && wd < 7 ? kNames[wd] : "";
+}
+
+const char* weekdayFull(const int wd) {
+  static const char* const kNames[7] = {"LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"};
+  return wd >= 0 && wd < 7 ? kNames[wd] : "";
+}
+
+const char* monthShort(const int month) {
+  static const char* const kNames[12] = {"ENE", "FEB", "MAR", "ABR", "MAY", "JUN",
+                                         "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"};
+  return month >= 1 && month <= 12 ? kNames[month - 1] : "";
 }
 
 // --- editorial -------------------------------------------------------------------
 
-// "PARTLY CLOUDY" as a sentence would have it: "Partly cloudy".
-void sentenceCase(const char* upper, char* out, const size_t cap) {
-  size_t i = 0;
-  for (; upper[i] != '\0' && i + 1 < cap; ++i) {
-    const char c = upper[i];
-    out[i] = (i > 0 && c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
-  }
-  out[i] = '\0';
-}
-
 const char* partOfDay(const int hour) {
-  if (hour >= 6 && hour < 12) return "the morning";
-  if (hour >= 12 && hour < 15) return "midday";
-  if (hour >= 15 && hour < 19) return "late afternoon";
-  if (hour >= 19 && hour < 23) return "the evening";
-  return "tonight";
+  if (hour >= 6 && hour < 12) return "por la mañana";
+  if (hour >= 12 && hour < 15) return "a mediodía";
+  if (hour >= 15 && hour < 20) return "por la tarde";
+  if (hour >= 20 && hour < 24) return "por la noche";
+  return "de madrugada";
 }
 
 bool wet(const int code) {
@@ -179,77 +254,136 @@ void outlook(const wx::Forecast& f, char* out, const size_t cap) {
   if (wet(f.current.code)) {
     for (int i = first + 1; i < last; ++i) {
       if (f.hours[i].precip < 20) {
-        std::snprintf(out, cap, "easing by %s.", partOfDay(f.hours[i].hour));
+        std::snprintf(out, cap, "amaina %s.", partOfDay(f.hours[i].hour));
         return;
       }
     }
-    std::snprintf(out, cap, "rain through the day.");
+    std::snprintf(out, cap, "lluvia todo el día.");
     return;
   }
   int peak = 0;
   for (int i = first + 1; i < last; ++i) {
     if (f.hours[i].precip >= 50) {
-      std::snprintf(out, cap, "rain by %s.", partOfDay(f.hours[i].hour));
+      std::snprintf(out, cap, "lluvia %s.", partOfDay(f.hours[i].hour));
       return;
     }
     if (f.hours[i].precip > peak) peak = f.hours[i].precip;
   }
-  std::snprintf(out, cap, "%s", peak >= 25 ? "showers possible later." : "dry through tomorrow.");
+  std::snprintf(out, cap, "%s", peak >= 25 ? "quizá llueva luego." : "seco hasta mañana.");
 }
 
-void editorial(const Page& p, const weatherui::ForecastModel& m) {
-  using namespace weathertype;
+// `text` broken at its spaces into lines no wider than `room`. Returns how
+// many it took, which is more than `max` when it does not fit in that many.
+constexpr int kPhraseLines = 3;
+constexpr int kPhraseChars = 72;
+int wrap(const Font& font, const char* text, const int room, const int max, char lines[kPhraseLines][kPhraseChars]) {
+  int count = 0;
+  char line[kPhraseChars] = "";
+  while (*text != '\0') {
+    const char* end = std::strchr(text, ' ');
+    const int whole = end != nullptr ? static_cast<int>(end - text) : static_cast<int>(std::strlen(text));
+    const int wordLen = whole < kPhraseChars ? whole : kPhraseChars - 1;
+    char tried[kPhraseChars * 2 + 2];
+    std::snprintf(tried, sizeof(tried), "%s%s%.*s", line, line[0] ? " " : "", wordLen, text);
+    if (line[0] != '\0' && widthOf(font, tried) > room) {
+      if (count >= max) return max + 1;
+      std::snprintf(lines[count++], kPhraseChars, "%s", line);
+      std::snprintf(line, sizeof(line), "%.*s", wordLen, text);
+    } else {
+      std::snprintf(line, sizeof(line), "%.*s", kPhraseChars - 1, tried);
+    }
+    text += wordLen;
+    while (*text == ' ') ++text;
+  }
+  if (line[0] != '\0') {
+    if (count >= max || widthOf(font, line) > room) return max + 1;
+    std::snprintf(lines[count++], kPhraseChars, "%s", line);
+  }
+  return count;
+}
+
+// The type one editorial page is set in.
+struct Dress {
+  const Font& huge;
+  const Font& phrase;
+  const Font& phraseSmall;
+  const Font& figure;     // a day's high
+  const Font& figureLow;  // and its low
+  const Font& stat;
+  const Font& statTight;
+  const Font& labelBold;
+  const Font& label;
+};
+
+constexpr Dress kSerifDress = {
+    weathertype::kSerifHuge,   weathertype::kSerifPhrase,       weathertype::kSerifPhraseSmall,
+    weathertype::kSerifFigure, weathertype::kSerifFigureItalic, weathertype::kMonoBig,
+    weathertype::kMonoBold,    weathertype::kMonoBold,          weathertype::kMono};
+constexpr Dress kGroteskDress = {
+    weathertype::kGroteskHuge,      weathertype::kGroteskPhrase,      weathertype::kGroteskPhraseSmall,
+    weathertype::kGroteskFigure,    weathertype::kGroteskFigureLight, weathertype::kGroteskStat,
+    weathertype::kGroteskStatTight, weathertype::kGroteskLabelBold,   weathertype::kGroteskLabel};
+
+void editorial(const Page& p, const weatherui::ForecastModel& m, const Dress& t) {
   const wx::Forecast& f = *m.forecast;
   const bool fahr = m.fahrenheit;
   const int margin = 28;
   const int right = p.w - margin;
 
   // The masthead: the place, and the day this is from.
-  type(p, kMonoBold, margin, 34, m.place->name);
-  char dateline[48] = "";
+  type(p, t.labelBold, margin, 34, m.place->name);
+  char dateline[56] = "";
   if (f.current.time[0]) {
     int y = 0, mo = 0, d = 0;
     std::sscanf(f.current.time, "%d-%d-%d", &y, &mo, &d);
-    std::snprintf(dateline, sizeof(dateline), "%s %d %s  ·  %.5s", wx::weekdayLong(wx::weekday(y, mo, d)), d % 100,
-                  wx::monthName(mo), f.current.time + 11);
+    std::snprintf(dateline, sizeof(dateline), "%s %d %s  ·  %.5s", weekdayFull(wx::weekday(y, mo, d)), d % 100,
+                  monthShort(mo), f.current.time + 11);
   }
-  type(p, kMono, right, 34, dateline, 1);
+  type(p, t.label, right, 34, dateline, 1);
   bar(p, margin, 48, p.w - margin * 2, 2);
 
   // The figure, with air under it before the rule.
   const int figureBase = 262;
   char temp[8];
   std::snprintf(temp, sizeof(temp), "%d", wx::displayTemp(f.current.temp, fahr));
-  const int figureEnd = type(p, kSerifHuge, margin - 8, figureBase, temp);
-  ring(p, figureEnd + 26, figureBase - kSerifHuge.capTop + 22, 20, 7);
+  const int figureEnd = type(p, t.huge, margin - 8, figureBase, temp);
+  ring(p, figureEnd + 26, figureBase - t.huge.capTop + 22, 20, 7);
 
   // Beside it: the day in a sentence, then the figures large enough to read
   // from across a desk.
   int textX = figureEnd + 76;
   if (textX < 392) textX = 392;
   const int room = right - textX;
-  char now[40];
-  char lead[48];
-  sentenceCase(wx::labelOf(f.current.code), now, sizeof(now));
-  std::snprintf(lead, sizeof(lead), "%s now,", now);
-  char next[48];
+  // Two lines of the large cut when the sentence fits them, else the small
+  // one on as many as three.
+  char next[40];
   outlook(f, next, sizeof(next));
-  if (next[0] == '\0') std::snprintf(lead, sizeof(lead), "%s.", now);
-  const bool small = widthOf(kSerifPhrase, lead) > room || widthOf(kSerifPhrase, next) > room;
-  const Font& phrase = small ? kSerifPhraseSmall : kSerifPhrase;
-  type(p, phrase, textX, 104, lead);
-  type(p, phrase, textX, small ? 140 : 148, next);
+  char sentence[kPhraseChars];
+  if (next[0] != '\0') {
+    std::snprintf(sentence, sizeof(sentence), "%s ahora, %s", skyWords(f.current.code).phrase, next);
+  } else {
+    std::snprintf(sentence, sizeof(sentence), "%s.", skyWords(f.current.code).phrase);
+  }
+  char lines[kPhraseLines][kPhraseChars];
+  int count = wrap(t.phrase, sentence, room, 2, lines);
+  const bool small = count > 2;
+  if (small) count = wrap(t.phraseSmall, sentence, room, kPhraseLines, lines);
+  if (count > kPhraseLines) count = kPhraseLines;
+  const Font& phrase = small ? t.phraseSmall : t.phrase;
+  const int leading = !small ? 46 : (count == 3 ? 36 : 38);
+  const int firstLine = count == 3 ? 86 : 104;
+  for (int i = 0; i < count; ++i) type(p, phrase, textX, firstLine + i * leading, lines[i]);
 
   char line[3][64];
-  std::snprintf(line[0], sizeof(line[0]), "FEELS %d°  HIGH %d°  LOW %d°", wx::displayTemp(f.current.feels, fahr),
-                wx::displayTemp(f.days[0].max, fahr), wx::displayTemp(f.days[0].min, fahr));
-  std::snprintf(line[1], sizeof(line[1]), "WIND %d %s %s", wx::displayWind(f.current.wind, fahr),
+  std::snprintf(line[0], sizeof(line[0]), "MÁX %d°  MÍN %d°  SENS. %d°", wx::displayTemp(f.days[0].max, fahr),
+                wx::displayTemp(f.days[0].min, fahr), wx::displayTemp(f.current.feels, fahr));
+  std::snprintf(line[1], sizeof(line[1]), "VIENTO %d %s %s", wx::displayWind(f.current.wind, fahr),
                 fahr ? "MPH" : "KM/H", compassPoint(f.current.windDir));
-  std::snprintf(line[2], sizeof(line[2]), "HUMIDITY %d%%  SUN %s > %s", f.current.humidity, f.days[0].sunrise,
+  std::snprintf(line[2], sizeof(line[2]), "HUMEDAD %d%%  SOL %s > %s", f.current.humidity, f.days[0].sunrise,
                 f.days[0].sunset);
   bool tight = false;
-  for (const auto& l : line) tight = tight || widthOf(kMonoBig, l) > room;
-  const Font& stat = tight ? kMonoBold : kMonoBig;
+  for (const auto& l : line) tight = tight || widthOf(t.stat, l) > room;
+  const Font& stat = tight ? t.statTight : t.stat;
   for (int i = 0; i < 3; ++i) type(p, stat, textX, 198 + i * 30, line[i]);
 
   bar(p, margin, 300, p.w - margin * 2, 1);
@@ -269,13 +403,13 @@ void editorial(const Page& p, const weatherui::ForecastModel& m) {
       const wx::Day& d = f.days[i];
       const int x = margin + colW * i;
       if (i > 0) bar(p, x - 7, 312, 1, 108);
-      type(p, i == 0 ? kMonoBold : kMono, x + 2, 326,
-           i == 0 ? "TODAY" : wx::weekdayName(wx::weekday(d.year, d.month, d.day)));
+      type(p, i == 0 ? t.labelBold : t.label, x + 2, 326,
+           i == 0 ? "HOY" : weekdayShort(wx::weekday(d.year, d.month, d.day)));
       char figure[8];
       std::snprintf(figure, sizeof(figure), "%d", wx::displayTemp(d.max, fahr));
-      const int after = type(p, kSerifFigure, x + 2, 368, figure);
+      const int after = type(p, t.figure, x + 2, 368, figure);
       std::snprintf(figure, sizeof(figure), "%d", wx::displayTemp(d.min, fahr));
-      type(p, kSerifFigureItalic, after + 14, 368, figure);
+      type(p, t.figureLow, after + 12, 368, figure);
       const int x0 = x + 2;
       const int x1 = x + colW - 18;
       bar(p, x0, 388, x1 - x0, 1);
@@ -284,19 +418,24 @@ void editorial(const Page& p, const weatherui::ForecastModel& m) {
       if (b - a < 8) b = a + 8;
       bar(p, a, 384, b - a, 9);
       if (d.precip >= 20) {
-        char rain[16];
-        std::snprintf(rain, sizeof(rain), "RAIN %d%%", d.precip % 1000);
-        type(p, kMono, x + 2, 416, rain);
+        // A drop, then the chance of it.
+        disc(p, x + 7, 410, 5);
+        const int xs[3] = {x + 7, x + 3, x + 11};
+        const int ys[3] = {398, 407, 407};
+        p.r.fillPolygon(xs, ys, 3, p.ink);
+        char rain[8];
+        std::snprintf(rain, sizeof(rain), "%d%%", d.precip % 1000);
+        type(p, t.label, x + 20, 416, rain);
       }
     }
   }
 
   bar(p, margin, p.h - kFootHeight, p.w - margin * 2, 2);
-  char updated[48];
+  char updated[56];
   updatedLine(m, updated, sizeof(updated));
-  type(p, kMonoBold, margin, p.h - 18, "CITIES");
-  type(p, kMono, p.w / 2, p.h - 18, updated, 0);
-  type(p, kMonoBold, right, p.h - 18, "REFRESH", 1);
+  type(p, t.labelBold, margin, p.h - 18, "CIUDADES");
+  type(p, t.label, p.w / 2, p.h - 18, updated, 0);
+  type(p, t.labelBold, right, p.h - 18, "ACTUALIZAR", 1);
 }
 
 // --- instruments -----------------------------------------------------------------
@@ -327,12 +466,12 @@ void instruments(const Page& p, const weatherui::ForecastModel& m) {
 
   // The header: where, and when this was read.
   char where[64];
-  std::snprintf(where, sizeof(where), "%s  %.2f%c %.2f%c", m.place->name,
-                static_cast<double>(std::fabs(m.place->lat)), m.place->lat < 0 ? 'S' : 'N',
-                static_cast<double>(std::fabs(m.place->lon)), m.place->lon < 0 ? 'W' : 'E');
+  std::snprintf(where, sizeof(where), "%s  %.2f%c %.2f%c", m.place->name, static_cast<double>(std::fabs(m.place->lat)),
+                m.place->lat < 0 ? 'S' : 'N', static_cast<double>(std::fabs(m.place->lon)),
+                m.place->lon < 0 ? 'W' : 'E');
   if (widthOf(kMonoBold, where) > 440) std::snprintf(where, sizeof(where), "%s", m.place->name);
   type(p, kMonoBold, margin, 28, where);
-  char updated[48];
+  char updated[56];
   updatedLine(m, updated, sizeof(updated));
   type(p, kMono, right, 28, updated, 1);
   bar(p, margin, 40, p.w - margin * 2, 1);
@@ -342,10 +481,10 @@ void instruments(const Page& p, const weatherui::ForecastModel& m) {
   std::snprintf(temp, sizeof(temp), "%d", wx::displayTemp(f.current.temp, fahr));
   const int after = type(p, kMonoHuge, margin - 4, 158, temp);
   type(p, kMonoUnit, after + 8, 158 - kMonoHuge.capTop + kMonoUnit.capTop, fahr ? "°F" : "°C");
-  type(p, kMonoBold, margin + 2, 198, wx::labelOf(f.current.code));
+  type(p, kMonoBold, margin + 2, 198, skyWords(f.current.code).label);
   char day[48];
-  std::snprintf(day, sizeof(day), "FEELS %d  HI %d  LO %d", wx::displayTemp(f.current.feels, fahr),
-                wx::displayTemp(f.days[0].max, fahr), wx::displayTemp(f.days[0].min, fahr));
+  std::snprintf(day, sizeof(day), "MÁX %d  MÍN %d  SENS %d", wx::displayTemp(f.days[0].max, fahr),
+                wx::displayTemp(f.days[0].min, fahr), wx::displayTemp(f.current.feels, fahr));
   type(p, kMono, margin + 2, 222, day);
 
   // The wind: a card with its needle pointing where it blows from.
@@ -362,7 +501,7 @@ void instruments(const Page& p, const weatherui::ForecastModel& m) {
   type(p, kMonoBold, cx, cy - r + 30, "N", 0);
   type(p, kMonoBold, cx, cy + r - 20, "S", 0);
   type(p, kMonoBold, cx + r - 26, cy + 6, "E", 0);
-  type(p, kMonoBold, cx - r + 26, cy + 6, "W", 0);
+  type(p, kMonoBold, cx - r + 26, cy + 6, "O", 0);
   if (f.current.windDir >= 0) {
     const float a = (static_cast<float>(f.current.windDir) - 90.0f) * kPi / 180.0f;
     const float tx = cx + std::cos(a) * (r - 34);
@@ -378,18 +517,18 @@ void instruments(const Page& p, const weatherui::ForecastModel& m) {
   }
   disc(p, cx, cy, 7);
   char wind[40];
-  std::snprintf(wind, sizeof(wind), "WIND %d %s %s", wx::displayWind(f.current.wind, fahr), fahr ? "MPH" : "KM/H",
+  std::snprintf(wind, sizeof(wind), "VIENTO %d %s %s", wx::displayWind(f.current.wind, fahr), fahr ? "MPH" : "KM/H",
                 compassPoint(f.current.windDir));
   type(p, kMonoBold, cx, cy + r + 24, wind, 0);
 
   // Three gauges and the sun's hours.
   const int gx = 500;
   const int gw = right - gx;
-  gauge(p, gx, 52, gw, "HUMIDITY", f.current.humidity);
-  gauge(p, gx, 104, gw, "RAIN TODAY", f.days[0].precip);
-  if (f.current.cloud >= 0) gauge(p, gx, 156, gw, "CLOUD", f.current.cloud);
+  gauge(p, gx, 52, gw, "HUMEDAD", f.current.humidity);
+  gauge(p, gx, 104, gw, "LLUVIA HOY", f.days[0].precip);
+  if (f.current.cloud >= 0) gauge(p, gx, 156, gw, "NUBES", f.current.cloud);
   char sun[32];
-  std::snprintf(sun, sizeof(sun), "SUN %s > %s", f.days[0].sunrise, f.days[0].sunset);
+  std::snprintf(sun, sizeof(sun), "SOL %s > %s", f.days[0].sunrise, f.days[0].sunset);
   type(p, kMono, gx, 226, sun);
   bar(p, margin, 244, p.w - margin * 2, 1);
 
@@ -448,13 +587,13 @@ void instruments(const Page& p, const weatherui::ForecastModel& m) {
       type(p, kMono, x, py1 + 22, hour, 0);
     }
   } else {
-    type(p, kMono, p.w / 2, (py0 + py1) / 2, "NO HOURLY DATA. REFRESH.", 0);
+    type(p, kMono, p.w / 2, (py0 + py1) / 2, "SIN DATOS POR HORAS. ACTUALIZA.", 0);
   }
 
   bar(p, margin, p.h - kFootHeight, p.w - margin * 2, 1);
-  type(p, kMonoBold, margin, p.h - 18, "[ CITIES ]");
-  type(p, kMono, p.w / 2, p.h - 18, fahr ? "TEMP °F / RAIN %  NEXT 24 H" : "TEMP °C / RAIN %  NEXT 24 H", 0);
-  type(p, kMonoBold, right, p.h - 18, "[ REFRESH ]", 1);
+  type(p, kMonoBold, margin, p.h - 18, "[ CIUDADES ]");
+  type(p, kMono, p.w / 2, p.h - 18, fahr ? "TEMP °F / LLUVIA %  24 H" : "TEMP °C / LLUVIA %  24 H", 0);
+  type(p, kMonoBold, right, p.h - 18, "[ ACTUALIZAR ]", 1);
 }
 
 }  // namespace
@@ -462,11 +601,13 @@ void instruments(const Page& p, const weatherui::ForecastModel& m) {
 void draw(GfxRenderer& renderer, const weatherui::ForecastModel& model, const int face) {
   if (model.forecast == nullptr || model.place == nullptr) return;
   const int which = ((face % kFaces) + kFaces) % kFaces;
-  const bool onPaper = which == 0 || which == 3;
+  const bool onPaper = which == 0 || which == 3 || which == 4;
   const Page page{renderer, renderer.getScreenWidth(), renderer.getScreenHeight(), onPaper};
   renderer.fillRect(0, 0, page.w, page.h, !onPaper);
   if (which <= 1) {
-    editorial(page, model);
+    editorial(page, model, kSerifDress);
+  } else if (which >= 4) {
+    editorial(page, model, kGroteskDress);
   } else {
     instruments(page, model);
   }

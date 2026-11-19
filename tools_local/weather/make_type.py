@@ -6,32 +6,63 @@ format is the clock's (tools_local/clock/make_type.py).
     python3 tools_local/weather/make_type.py <folder with the .ttf files>
 
 The folder holds these files from github.com/google/fonts (SIL Open Font
-License): InstrumentSerif-Regular.ttf, InstrumentSerif-Italic.ttf,
-GeistMono-Regular.ttf, GeistMono-Bold.ttf. Only the glyphs a page draws are
-taken.
+License), under the names they have there: InstrumentSerif-Regular.ttf,
+InstrumentSerif-Italic.ttf, GeistMono[wght].ttf,
+BricolageGrotesque[opsz,wdth,wght].ttf. Only the glyphs a page draws are
+taken. Needs Pillow and fontTools.
 """
+import io
 import sys
 
+from fontTools.ttLib import TTFont
+from fontTools.varLib import instancer
 from PIL import Image, ImageDraw, ImageFont
 
 DIG = "0123456789-"
 LOW = "abcdefghijklmnopqrstuvwxyz"
 UPP = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-MONO = UPP + DIG + " .:%°>/[],+·"
+PHRASE = LOW + UPP + " ,.'-" + "\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1"
+MONO = UPP + DIG + " .:%\u00b0>/[],+\u00b7" + "\u00c1\u00c9\u00cd\u00d3\u00da\u00d1"
 
-# name, file, size in pixels, characters
+SERIF = "InstrumentSerif-Regular.ttf"
+SERIF_IT = "InstrumentSerif-Italic.ttf"
+GEIST = "GeistMono[wght].ttf"
+BRICOLAGE = "BricolageGrotesque[opsz,wdth,wght].ttf"
+
+# name, file, size in pixels, characters, then optionally the axes of a
+# variable file and a stroke: Instrument Serif is cut in one weight, so its
+# bold is that weight drawn with an outline this many pixels wide.
 FONTS = [
-    ("SerifHuge", "InstrumentSerif-Regular.ttf", 250, DIG),
-    ("SerifPhrase", "InstrumentSerif-Italic.ttf", 40, LOW + UPP + " ,.'-"),
-    ("SerifPhraseSmall", "InstrumentSerif-Italic.ttf", 31, LOW + UPP + " ,.'-"),
-    ("SerifFigure", "InstrumentSerif-Regular.ttf", 36, DIG),
-    ("SerifFigureItalic", "InstrumentSerif-Italic.ttf", 25, DIG),
-    ("MonoHuge", "GeistMono-Bold.ttf", 124, DIG),
-    ("MonoUnit", "GeistMono-Bold.ttf", 36, "°CF"),
-    ("MonoBig", "GeistMono-Bold.ttf", 20, MONO),
-    ("MonoBold", "GeistMono-Bold.ttf", 16, MONO),
-    ("Mono", "GeistMono-Regular.ttf", 16, MONO),
+    ("SerifHuge", SERIF, 250, DIG, None, 2),
+    ("SerifPhrase", SERIF_IT, 48, PHRASE),
+    ("SerifPhraseSmall", SERIF_IT, 39, PHRASE),
+    ("SerifFigure", SERIF, 40, DIG, None, 1),
+    ("SerifFigureItalic", SERIF_IT, 30, DIG, None, 1),
+    ("GroteskHuge", BRICOLAGE, 262, DIG, {"opsz": 96, "wght": 800, "wdth": 75}),
+    ("GroteskPhrase", BRICOLAGE, 38, PHRASE, {"opsz": 36, "wght": 700, "wdth": 100}),
+    ("GroteskPhraseSmall", BRICOLAGE, 29, PHRASE, {"opsz": 28, "wght": 700, "wdth": 100}),
+    ("GroteskFigure", BRICOLAGE, 36, DIG, {"opsz": 36, "wght": 800, "wdth": 100}),
+    ("GroteskFigureLight", BRICOLAGE, 27, DIG, {"opsz": 28, "wght": 500, "wdth": 100}),
+    ("GroteskStat", BRICOLAGE, 23, MONO, {"opsz": 24, "wght": 700, "wdth": 100}),
+    ("GroteskStatTight", BRICOLAGE, 19, MONO, {"opsz": 18, "wght": 700, "wdth": 100}),
+    ("GroteskLabelBold", BRICOLAGE, 18, MONO, {"opsz": 18, "wght": 800, "wdth": 100}),
+    ("GroteskLabel", BRICOLAGE, 18, MONO, {"opsz": 18, "wght": 500, "wdth": 100}),
+    ("MonoHuge", GEIST, 124, DIG, {"wght": 700}),
+    ("MonoUnit", GEIST, 36, "\u00b0CF", {"wght": 700}),
+    ("MonoBig", GEIST, 20, MONO, {"wght": 700}),
+    ("MonoBold", GEIST, 16, MONO, {"wght": 700}),
+    ("Mono", GEIST, 16, MONO, {"wght": 400}),
 ]
+
+
+def load(folder, file, size, axes):
+    path = "%s/%s" % (folder, file)
+    if not axes:
+        return ImageFont.truetype(path, size)
+    static = io.BytesIO()
+    instancer.instantiateVariableFont(TTFont(path), axes).save(static)
+    static.seek(0)
+    return ImageFont.truetype(static, size)
 
 
 def main():
@@ -45,17 +76,20 @@ def main():
            "struct Font {", "  const Glyph* glyphs;", "  uint16_t count;", "  const uint8_t* runs;",
            "  int16_t capTop;  // how far a numeral or a capital stands above the baseline", "};", ""]
     total = 0
-    for name, file, size, chars in FONTS:
-        font = ImageFont.truetype("%s/%s" % (folder, file), size)
+    for name, file, size, chars, *more in FONTS:
+        axes = more[0] if more else None
+        bold = more[1] if len(more) > 1 else 0
+        font = load(folder, file, size, axes)
         data, glyphs = [], []
         for ch in sorted(set(chars)):
-            advance = int(round(font.getlength(ch)))
-            box = font.getbbox(ch, anchor="ls")
+            advance = int(round(font.getlength(ch))) + bold
+            box = font.getbbox(ch, anchor="ls", stroke_width=bold)
             w, h = box[2] - box[0], box[3] - box[1]
             rows = []
             if w > 0 and h > 0:
                 im = Image.new("L", (w + 2, h + 2), 0)
-                ImageDraw.Draw(im).text((-box[0] + 1, -box[1] + 1), ch, font=font, fill=255, anchor="ls")
+                ImageDraw.Draw(im).text((-box[0] + 1, -box[1] + 1), ch, font=font, fill=255, anchor="ls", stroke_width=bold,
+                                        stroke_fill=255)
                 px = im.load()
                 for y in range(1, h + 1):
                     runs, start = [], None
@@ -76,7 +110,7 @@ def main():
             glyphs.append((ord(ch), advance, box[0], -box[1], len(rows), offset))
         assert not data or max(data) < 256, (name, max(data))
         ref = "0" if "0" in chars else ("H" if "H" in chars else "C")
-        cap = -font.getbbox(ref, anchor="ls")[1]
+        cap = -font.getbbox(ref, anchor="ls", stroke_width=bold)[1]
         out.append("inline constexpr uint8_t k%sRuns[] = {" % name)
         for i in range(0, len(data), 32):
             out.append("    " + ", ".join(map(str, data[i:i + 32])) + ",")
