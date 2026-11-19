@@ -26,6 +26,7 @@ void ConnectFourActivity::onEnter() {
   screen = c4::Screen::Menu;
   menuSelected = -1;
   loadHistory();
+  loadLevel();
   requestUpdate();
 }
 
@@ -33,12 +34,30 @@ void ConnectFourActivity::onEnter() {
 // fork-local file, the pattern knucklebones.sav set.
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
 constexpr char kHistoryPath[] = "/.crosspoint/connectfour.sav";
+constexpr char kLevelPath[] = "/.crosspoint/connectfour-level.cfg";
 #endif
 
 // wins losses draws outcome, the four winning cells as flat indices (-1s on a
 // draw), then the 42 cells column-major bottom-up -- colours normalised so
 // light is always the seat this device played.
 constexpr int kHistoryValues = 4 + c4::kLine + c4::kCells;
+
+void ConnectFourActivity::loadLevel() {
+  level = c4::Level::Medium;
+  if (!Storage.exists(kLevelPath)) return;
+  HalFile file;
+  uint8_t saved = 1;
+  if (!Storage.openFileForRead("C4", kLevelPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved < c4::kLevels) level = static_cast<c4::Level>(saved);
+}
+
+void ConnectFourActivity::saveLevel() {
+  HalFile file;
+  if (!Storage.openFileForWrite("C4", kLevelPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(level);
+  file.write(&saved, 1);
+  file.flush();
+}
 
 void ConnectFourActivity::loadHistory() {
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
@@ -135,7 +154,7 @@ void ConnectFourActivity::takeOpponentTurn() {
   // repaint, so playing several of their moves before showing anything would
   // look like a freeze followed by a skip.
   if (c4::over(game) || game.turn == seat) return;
-  const int column = c4::chooseColumn(game);
+  const int column = c4::chooseColumnFor(game, level);
   if (column == c4::kNoColumn) return;
   c4::drop(game, column);
   requestUpdate();
@@ -285,6 +304,13 @@ void ConnectFourActivity::gameLoop() {
         case c4ui::MenuRow::Play:
           beginSoloGame();
           return;
+        case c4ui::MenuRow::Level:
+          // A tap is the next one round: easy, medium, strong.
+          level = static_cast<c4::Level>((static_cast<int>(level) + 1) % c4::kLevels);
+          saveLevel();
+          menuSelected = static_cast<int>(c4ui::MenuRow::Level);
+          requestUpdate();
+          return;
         case c4ui::MenuRow::PlayNearby:
           enterLink(linkplay::GameId::ConnectFour);
           return;
@@ -346,6 +372,7 @@ void ConnectFourActivity::gameRender() {
     case c4::Screen::Menu: {
       c4ui::MenuModel model;
       model.selected = menuSelected;
+      model.levelName = c4::levelName(level);
       model.hasHistory = hasHistory;
       model.wins = wins;
       model.losses = losses;

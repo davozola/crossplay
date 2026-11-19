@@ -17,10 +17,11 @@ enum : fui::ActionId {
   ActionDone = 4,
 };
 
-enum class MenuRow : int { Play = 0, PlayNearby, HowTo, Count };
+enum class MenuRow : int { Play = 0, Level, PlayNearby, HowTo, Count };
 
 struct MenuModel {
   const char* nearbyName = nullptr;
+  const char* levelName = "";  // how hard the built-in opponent plays
   int selected = -1;
   // The record and the last game's final slab, for the front door's ornament.
   // Cells are column-major bottom-up with light normalised to this device's

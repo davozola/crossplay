@@ -145,7 +145,7 @@ inline int negamax(Game game, const uint8_t side, const int depth, int alpha, co
 // uses, and then toward the lower index. Never toward randomness: a brain that
 // rolls a die is not reproducible, and every screenshot recipe in this repo
 // depends on being able to replay a game exactly.
-inline int chooseColumn(const Game& game) {
+inline int chooseColumnAt(const Game& game, const int depth) {
   if (over(game)) return kNoColumn;
   const uint8_t side = game.turn;
 
@@ -155,7 +155,7 @@ inline int chooseColumn(const Game& game) {
     if (!canDrop(game, column)) continue;
     Game next = game;
     drop(next, column);
-    const int score = -negamax(next, other(side), kDepth - 1, -kWinScore * 2, kWinScore * 2);
+    const int score = -negamax(next, other(side), depth - 1, -kWinScore * 2, kWinScore * 2);
     const bool better =
         bestColumn == kNoColumn || score > bestScore ||
         (score == bestScore && kLinesThrough[column] > kLinesThrough[bestColumn]) ||
@@ -166,6 +166,32 @@ inline int chooseColumn(const Game& game) {
     }
   }
   return bestColumn;
+}
+
+inline int chooseColumn(const Game& game) { return chooseColumnAt(game, kDepth); }
+
+// Three strengths, by how far ahead it reads. All odd, for the reason given
+// at kDepth: the leaves are then all judged from the same side.
+enum class Level : uint8_t { Easy = 0, Medium = 1, Strong = 2 };
+constexpr int kLevels = 3;
+// The strong one is the depth this has always played at: nine plies measured
+// ten times the work of seven, which is too long to wait for a disc.
+constexpr int kDepthOf[kLevels] = {3, 5, kDepth};
+
+inline int chooseColumnFor(const Game& game, const Level level) {
+  return chooseColumnAt(game, kDepthOf[static_cast<int>(level) % kLevels]);
+}
+
+inline const char* levelName(const Level level) {
+  switch (level) {
+    case Level::Easy:
+      return "EASY";
+    case Level::Strong:
+      return "STRONG";
+    case Level::Medium:
+    default:
+      return "MEDIUM";
+  }
 }
 
 }  // namespace connectfour

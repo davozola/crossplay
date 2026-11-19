@@ -9,6 +9,7 @@
 
 #include "../link/LinkActivity.h"
 #include "../ui/ToyboxScreen.h"
+#include "ConnectFourBrain.h"
 #include "ConnectFourCore.h"
 #include "ConnectFourFlow.h"
 
@@ -48,6 +49,8 @@ class ConnectFourActivity final : public linkplay::LinkActivity {
   // Written when a game ends, read once on entry -- knucklebones' pattern.
   void recordResult();
   void loadHistory();
+  void loadLevel();
+  void saveLevel();
 
   connectfour::Screen screen = connectfour::Screen::Menu;
   connectfour::Game game{};
@@ -72,6 +75,8 @@ class ConnectFourActivity final : public linkplay::LinkActivity {
   // Which colour this device plays. Light in a solo game; the coin toss decides
   // it in a match, and nothing else in the app has to learn seats exist.
   uint8_t seat = connectfour::kLight;
+  // How hard the built-in opponent plays.
+  connectfour::Level level = connectfour::Level::Medium;
 
   linkplay::Play<connectfour::Game> play;
 

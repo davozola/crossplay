@@ -724,8 +724,10 @@ void ChessActivity::playEngineMove() {
   // Depth 3 with a node cap. The cap is the safety net: if a position blows up
   // combinatorially the search stops early and still returns its best move so
   // far, rather than stalling the loop and tripping the watchdog.
-  static constexpr int kDepthForLevel[3] = {1, 3, 4};
-  constexpr uint32_t kNodeBudget = 60000;
+  // The easy one reads a single ply, as it always has. The other two deepen
+  // to a budget and follow captures to the end (chess::think).
+  static constexpr int kDepthForLevel[3] = {1, 3, chess::kThinkDepth};
+  static constexpr uint32_t kBudgetForLevel[3] = {60000, 40000, 110000};
   // A COPY, and this is the whole of the flicker fix. search() makes and
   // unmakes thousands of moves on whatever position it is handed, and the
   // render task reads `position` straight out of this object while the main
@@ -738,7 +740,9 @@ void ChessActivity::playEngineMove() {
   // task. The repaint it asks for is still in flight when the search starts,
   // so deferring by a pass moved the race rather than closing it.
   chess::Position scratch = position;
-  const chess::SearchResult result = chess::search(scratch, kDepthForLevel[level], searchBuffers, kNodeBudget);
+  const chess::SearchResult result =
+      level == 0 ? chess::search(scratch, kDepthForLevel[0], searchBuffers, kBudgetForLevel[0])
+                 : chess::think(scratch, kDepthForLevel[level], searchBuffers, kBudgetForLevel[level]);
   LOG_DBG("CHESS", "engine: %u nodes, score %d%s", static_cast<unsigned>(result.nodes), result.score,
           result.budgetExhausted ? " (budget hit)" : "");
   if (!result.hasMove) {

@@ -177,6 +177,67 @@ int negamax(Position& position, const int depth, int alpha, const int beta, cons
   return best;
 }
 
+// Captures and promotions only, until nothing is hanging.
+int quiesce(Position& position, int alpha, const int beta, const int ply, SearchContext& context) {
+  if (context.nodeBudget != 0 && context.nodes >= context.nodeBudget) {
+    context.budgetExhausted = true;
+    return 0;
+  }
+  ++context.nodes;
+  const int stand = evaluate(position);
+  if (ply >= kThinkPlies - 1) return stand;
+  if (stand >= beta) return stand;
+  if (stand > alpha) alpha = stand;
+
+  MoveList& list = context.buffers->plies[ply];
+  generateLegalMoves(position, list);
+  if (list.count == 0) return isInCheck(position) ? -kMateScore + ply : 0;
+  int best = stand;
+  const int count = list.count;
+  for (int i = 0; i < count; ++i) {
+    pickBestMoveTo(position, list, i);
+    const Move move = list.moves[i];
+    // Sorted with the captures first: the first quiet move ends them.
+    if ((move.flags & (FlagCapture | FlagPromotion)) == 0) break;
+    Undo undo;
+    makeMove(position, move, undo);
+    const int score = -quiesce(position, -beta, -alpha, ply + 1, context);
+    unmakeMove(position, move, undo);
+    if (context.budgetExhausted) return 0;
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+int deep(Position& position, const int depth, int alpha, const int beta, const int ply, SearchContext& context) {
+  if (depth <= 0 || ply >= kThinkPlies - 1) return quiesce(position, alpha, beta, ply, context);
+  if (context.nodeBudget != 0 && context.nodes >= context.nodeBudget) {
+    context.budgetExhausted = true;
+    return 0;
+  }
+  ++context.nodes;
+  MoveList& list = context.buffers->plies[ply];
+  generateLegalMoves(position, list);
+  if (list.count == 0) return isInCheck(position) ? -kMateScore + ply : 0;
+  int best = -kMateScore * 2;
+  const int count = list.count;
+  for (int i = 0; i < count; ++i) {
+    pickBestMoveTo(position, list, i);
+    const Move move = list.moves[i];
+    Undo undo;
+    makeMove(position, move, undo);
+    const int score = -deep(position, depth - 1, -beta, -alpha, ply + 1, context);
+    unmakeMove(position, move, undo);
+    if (context.budgetExhausted) return 0;
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
 }  // namespace
 
 int evaluate(const Position& position) {
@@ -226,6 +287,56 @@ SearchResult search(Position& position, int depth, SearchBuffers& buffers, const
     if (context.budgetExhausted) break;
   }
 
+  result.nodes = context.nodes;
+  result.budgetExhausted = context.budgetExhausted;
+  return result;
+}
+
+SearchResult think(Position& position, int maxDepth, SearchBuffers& buffers, const uint32_t nodeBudget,
+                   int* depthReached) {
+  SearchResult result{};
+  if (depthReached != nullptr) *depthReached = 0;
+  if (maxDepth < 1) maxDepth = 1;
+  if (maxDepth > kThinkDepth) maxDepth = kThinkDepth;
+
+  // The root's moves are kept apart from the plies the search writes over.
+  MoveList root;
+  generateLegalMoves(position, root);
+  if (root.count == 0) return result;
+  for (int i = 0; i < root.count; ++i) pickBestMoveTo(position, root, i);
+  result.best = root.moves[0];
+  result.hasMove = true;
+
+  SearchContext context{&buffers, 0, nodeBudget, false};
+  for (int depth = 1; depth <= maxDepth; ++depth) {
+    int alpha = -kMateScore * 2;
+    const int beta = kMateScore * 2;
+    int bestAt = -1;
+    int bestScore = -kMateScore * 2;
+    for (int i = 0; i < root.count; ++i) {
+      const Move move = root.moves[i];
+      Undo undo;
+      makeMove(position, move, undo);
+      const int score = -deep(position, depth - 1, -beta, -alpha, 1, context);
+      unmakeMove(position, move, undo);
+      if (context.budgetExhausted) break;
+      if (score > bestScore) {
+        bestScore = score;
+        bestAt = i;
+      }
+      if (bestScore > alpha) alpha = bestScore;
+    }
+    if (context.budgetExhausted || bestAt < 0) break;
+    // The best of this depth is looked at first at the next.
+    const Move best = root.moves[bestAt];
+    for (int i = bestAt; i > 0; --i) root.moves[i] = root.moves[i - 1];
+    root.moves[0] = best;
+    result.best = best;
+    result.score = bestScore;
+    if (depthReached != nullptr) *depthReached = depth;
+    // A mate found needs no deeper look.
+    if (bestScore > kMateThreshold || bestScore < -kMateThreshold) break;
+  }
   result.nodes = context.nodes;
   result.budgetExhausted = context.budgetExhausted;
   return result;

@@ -26,8 +26,12 @@ constexpr int kMaxSearchDepth = 4;
 // One MoveList per ply, ~1KB each. Far too big for a stack frame on the C3, so
 // the caller owns it: the activity holds one as a member. Handing the search a
 // pre-allocated buffer is also what keeps the engine allocation-free.
+// think() goes deeper and follows captures past its depth, so it needs more
+// plies than search() does.
+constexpr int kThinkDepth = 6;
+constexpr int kThinkPlies = 22;
 struct SearchBuffers {
-  MoveList plies[kMaxSearchDepth + 1];
+  MoveList plies[kThinkPlies];
 };
 
 struct SearchResult {
@@ -47,5 +51,15 @@ int evaluate(const Position& position);
 // `nodeBudget` caps the work; pass 0 for no cap. Returns hasMove == false only
 // when the position has no legal moves (checkmate or stalemate).
 SearchResult search(Position& position, int depth, SearchBuffers& buffers, uint32_t nodeBudget = 0);
+
+// The stronger opponent. Deepens a ply at a time to `maxDepth` or until
+// `nodeBudget` positions have been looked at, and answers with the last depth
+// it finished, so a budget that runs out never returns a half-considered move.
+// At the end of a line it goes on through the captures until the position is
+// quiet, which is what stops it taking a defended piece with its queen because
+// the recapture was one move past where it stopped looking. `depthReached`,
+// when given, is the last depth finished.
+SearchResult think(Position& position, int maxDepth, SearchBuffers& buffers, uint32_t nodeBudget,
+                   int* depthReached = nullptr);
 
 }  // namespace chess
