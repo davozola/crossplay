@@ -117,7 +117,35 @@ static void pickersAcceptOnlyTheirChoices() {
   for (int i = 0; i < kBreakChoiceCount; ++i) CHECK(t.setBreak(kBreakChoices[i]));
 }
 
+void leftAndComeBack() {
+  // Ten minutes in, away for five: fifteen gone, ten left, still running.
+  Timer t;
+  t.start(1000);
+  const uint32_t gone = t.elapsedMs(1000 + 10 * 60000u);
+  CHECK(gone == 10 * 60000u);
+  Timer back;
+  back.restore(Phase::Focus, 0);
+  back.resume(true, gone + 5 * 60000u, 500);
+  CHECK(back.state() == State::Running);
+  CHECK(back.remainingMinutes(500) == 10);
+  CHECK(!back.tick(500));
+  // Away past the end: the first tick finishes it and counts the session.
+  Timer late;
+  late.restore(Phase::Focus, 0);
+  late.resume(true, 40 * 60000u, 500);
+  CHECK(late.tick(500));
+  CHECK(late.phase() == Phase::ShortBreak);
+  CHECK(late.totalDone() == 1);
+  // Paused stays where it was however long it was left.
+  Timer held;
+  held.restore(Phase::Focus, 0);
+  held.resume(false, 7 * 60000u, 99);
+  CHECK(held.state() == State::Paused);
+  CHECK(held.remainingMinutes(123456) == 18);
+}
+
 int main() {
+  leftAndComeBack();
   freshTimerReadsFullLength();
   minutesRoundUp();
   pauseFreezesTheClock();

@@ -41,10 +41,14 @@ class Timer {
   // Focus sessions finished since the counter was last cleared.
   uint32_t totalDone() const { return totalDone_; }
   void setTotalDone(uint32_t n) { totalDone_ = n; }
-  // Puts back where a saved cycle was, stopped. A running clock is not saved:
-  // millis() starts again at zero after a sleep, so a saved start time would
-  // be a number from another life.
+  // Puts back where a saved cycle was, stopped.
   void restore(Phase phase, int doneInCycle);
+  // How much of the phase has gone by: what is saved when the app is left.
+  uint32_t elapsedMs(uint32_t nowMs) const;
+  // After restore(): the clock picks up `elapsedMs` into the phase, running or
+  // paused. The caller has already added the time spent away, so a phase that
+  // ended meanwhile is Running past its length and the next tick() finishes it.
+  void resume(bool running, uint32_t elapsedMs, uint32_t nowMs);
 
   uint32_t phaseLengthMs() const;
   uint32_t remainingMs(uint32_t nowMs) const;

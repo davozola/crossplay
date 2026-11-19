@@ -89,6 +89,23 @@ void Timer::restore(const Phase phase, const int doneInCycle) {
   elapsedAtPauseMs_ = 0;
 }
 
+uint32_t Timer::elapsedMs(const uint32_t nowMs) const {
+  if (state_ == State::Running) return nowMs - startMs_;
+  if (state_ == State::Paused) return elapsedAtPauseMs_;
+  return 0;
+}
+
+void Timer::resume(const bool running, const uint32_t elapsedMs, const uint32_t nowMs) {
+  if (running) {
+    startMs_ = nowMs - elapsedMs;
+    elapsedAtPauseMs_ = 0;
+    state_ = State::Running;
+  } else {
+    elapsedAtPauseMs_ = elapsedMs;
+    state_ = State::Paused;
+  }
+}
+
 void Timer::advance(const bool countFocus) {
   state_ = State::Ready;
   elapsedAtPauseMs_ = 0;
