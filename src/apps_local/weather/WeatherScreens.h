@@ -119,6 +119,11 @@ struct BoardModel {
 };
 void buildBoard(toybox::Screen& screen, const BoardModel& model);
 
+// The same pages with the panel on its side: one city across the whole width,
+// and the board as columns.
+void buildWideForecast(toybox::Screen& screen, const ForecastModel& model);
+void buildWideBoard(toybox::Screen& screen, const BoardModel& model);
+
 // The sky glyph in a `size` square centred on (cx, cy).
 void skyIcon(toybox::Screen& screen, weather::Sky sky, bool day, int cx, int cy, int size);
 

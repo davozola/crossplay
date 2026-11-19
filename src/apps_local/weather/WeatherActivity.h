@@ -68,6 +68,9 @@ class WeatherActivity final : public Activity {
   int autoMinutes_ = 0;
   // 0: one city full screen. 1: three on a board. 2: five. A swipe changes it.
   int layout_ = 0;
+  // On its side: a swipe up or down turns the forecast and the board over.
+  bool wide_ = false;
+  bool onItsSide() const;
   int pressX_ = -1;
   weatherui::BoardCard cards_[weather::kMaxPlaces];
   uint32_t lastFetchMs_ = 0;

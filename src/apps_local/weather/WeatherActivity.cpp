@@ -67,6 +67,7 @@ void WeatherActivity::requestUpdate(const bool immediate) {
 }
 
 void WeatherActivity::onExit() {
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -103,21 +104,24 @@ void WeatherActivity::loadState() {
 void WeatherActivity::loadAuto() {
   autoMinutes_ = 0;
   layout_ = 0;
+  wide_ = false;
   if (!Storage.exists(kAutoPath)) return;
   HalFile file;
-  uint8_t saved[2] = {0, 0};
-  if (!Storage.openFileForRead("WTHR", kAutoPath, file) || file.read(saved, 2) < 1) return;
+  uint8_t saved[3] = {0, 0, 0};
+  if (!Storage.openFileForRead("WTHR", kAutoPath, file) || file.read(saved, 3) < 1) return;
   for (const int choice : weatherui::kAutoChoices) {
     if (choice == saved[0]) autoMinutes_ = choice;
   }
   layout_ = saved[1] <= 2 ? saved[1] : 0;
+  wide_ = saved[2] == 1;
 }
 
 void WeatherActivity::saveAuto() {
   HalFile file;
   if (!Storage.openFileForWrite("WTHR", kAutoPath, file)) return;
-  const uint8_t saved[2] = {static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(layout_)};
-  file.write(saved, 2);
+  const uint8_t saved[3] = {static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(layout_),
+                            static_cast<uint8_t>(wide_ ? 1 : 0)};
+  file.write(saved, 3);
   file.flush();
 }
 
@@ -160,6 +164,11 @@ void WeatherActivity::loadBoard() {
     if (std::strlen(scratch->current.time) >= 16)
       std::snprintf(c.time, sizeof(c.time), "%.5s", scratch->current.time + 11);
   }
+}
+
+bool WeatherActivity::onItsSide() const {
+  if (!wide_ || step_ != Step::Idle) return false;
+  return view_ == View::Board || (view_ == View::Forecast && haveForecast_ && placeCount_ > 0);
 }
 
 void WeatherActivity::setLayout(const int layout) {
@@ -474,6 +483,13 @@ void WeatherActivity::loop() {
   if (mappedInput.wasScreenTouchPressed(pressX, pressY)) pressX_ = pressX;
   if (step_ == Step::Idle && placeCount_ > 0 && (view_ == View::Forecast || view_ == View::Board)) {
     const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
+    // Up or down turns the page on its side and back.
+    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+      wide_ = !wide_;
+      saveAuto();
+      requestUpdate();
+      return;
+    }
     if (swipe == MappedInputManager::SwipeDir::Left) {
       setLayout(layout_ + 1);
       return;
@@ -660,6 +676,10 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
 }
 
 void WeatherActivity::render(RenderLock&&) {
+  const bool side = onItsSide();
+  renderer.setOrientation(side ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                               : GfxRenderer::Orientation::Portrait);
+  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();
@@ -680,7 +700,11 @@ void WeatherActivity::render(RenderLock&&) {
         static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
                                                            huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
       };
-      weatherui::buildForecast(surface, m);
+      if (side) {
+        weatherui::buildWideForecast(surface, m);
+      } else {
+        weatherui::buildForecast(surface, m);
+      }
       break;
     }
     case View::AutoPicker:
@@ -699,7 +723,11 @@ void WeatherActivity::render(RenderLock&&) {
         static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
                                                            huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
       };
-      weatherui::buildBoard(surface, m);
+      if (side) {
+        weatherui::buildWideBoard(surface, m);
+      } else {
+        weatherui::buildBoard(surface, m);
+      }
       break;
     }
     case View::Day: {
@@ -747,8 +775,10 @@ void WeatherActivity::render(RenderLock&&) {
 
   interactionsReady_ = true;
   toybox::reportOverflow(interactions_, "Weather");
-  const auto labels = mappedInput.mapLabels("Back", "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (!side) {
+    const auto labels = mappedInput.mapLabels("Back", "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  }
   if (quietDue_) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer();
   quiet_.paintPending = false;

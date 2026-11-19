@@ -1280,4 +1280,235 @@ void buildBoard(toybox::Screen& screen, const BoardModel& model) {
   footer(screen, nullptr, footTop, footH, width, model.autoMinutes, "SWIPE: 1 / 3 / 5 CITIES");
 }
 
+// --- on its side -----------------------------------------------------------------
+
+namespace {
+
+constexpr int kWideStrip = 46;
+
+// The foot of a page on its side: where the cities are, when this is from, and
+// the way to fetch it again.
+void wideStrip(toybox::Screen& screen, const char* when, const int autoMinutes) {
+  const fui::DeviceContext device = screen.device();
+  const int y = device.height - kWideStrip;
+  const int side = 150;
+  const int gap = 2;
+  char middle[64];
+  if (autoMinutes <= 0) {
+    std::snprintf(middle, sizeof(middle), "%s", when);
+  } else if (autoMinutes >= 60) {
+    std::snprintf(middle, sizeof(middle), "%s   AUTO %d H", when, autoMinutes / 60);
+  } else {
+    std::snprintf(middle, sizeof(middle), "%s   AUTO %d M", when, autoMinutes);
+  }
+  const auto bar = [&](const int x, const int w, const char* text, const fui::ActionId action) {
+    fui::ButtonProps b;
+    b.label = text;
+    b.action = action;
+    b.borderEdges = fui::EdgesNone;
+    b.text = toybox::buttonText(screen.theme());
+    screen.button(b, rect(x, y, w, kWideStrip));
+  };
+  bar(0, side, "CITIES", ActionCities);
+  bar(side + gap, device.width - 2 * (side + gap), middle, ActionAuto);
+  bar(device.width - side, side, "REFRESH", ActionRefresh);
+}
+
+// A temperature in the display or the huge cut with its ring, ink centred on cx.
+void bigTemp(toybox::Screen& screen, const FaceSwap& faces, const bool huge, const int cx, const int top,
+             const float celsius, const bool fahr) {
+  const toybox::CutMetrics& cut = huge ? toybox::kHugeCut : toybox::kDisplayCut;
+  char t[toybox::kIntChars + 1];
+  tempText(t, sizeof(t), celsius, fahr);
+  if (huge && faces.bindTitle) faces.bindTitle(faces.ctx, true);
+  const int tw = textWidth(screen, t, toybox::kDisplayFont);
+  const int ringR = cut.inkHeight / 7 > 4 ? cut.inkHeight / 7 : 4;
+  const int ringW = ringR * 2 / 5 > 2 ? ringR * 2 / 5 : 2;
+  const int x = cx - (tw + 6 + ringR * 2) / 2;
+  label(screen, rect(x, top, tw + 4, cut.inkHeight), t, toybox::kDisplayFont, cut, fui::TextAlign::Left);
+  if (huge && faces.bindTitle) faces.bindTitle(faces.ctx, false);
+  degree(screen, x + tw + 6 + ringR, top + ringR, ringR, ringW);
+}
+
+}  // namespace
+
+void buildWideForecast(toybox::Screen& screen, const ForecastModel& model) {
+  const fui::DeviceContext device = screen.device();
+  const int width = device.width;
+  const int bottom = device.height - kWideStrip - 8;
+  const int m = toybox::kMargin;
+  if (!model.forecast || !model.place) {
+    wideStrip(screen, "NOT FETCHED YET", model.autoMinutes);
+    return;
+  }
+  const wx::Forecast& f = *model.forecast;
+  const bool fahr = model.fahrenheit;
+  const bool huge = model.faces.bindTitle != nullptr;
+
+  // Left: now. The city, the sky, the temperature as large as it goes, and the
+  // three figures that go with it.
+  const int leftW = 268;
+  label(screen, rect(m, 12, leftW, toybox::kUiCut.inkHeight), model.place->name, toybox::kUiFont, toybox::kUiCut,
+        fui::TextAlign::Left);
+  const int iconSize = 96;
+  skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, m + iconSize / 2, 104, iconSize);
+  const toybox::CutMetrics& cut = huge ? toybox::kHugeCut : toybox::kDisplayCut;
+  bigTemp(screen, model.faces, huge, m + iconSize + (leftW - iconSize) / 2 + 4, 104 - cut.inkHeight / 2, f.current.temp,
+          fahr);
+  caption(screen, m, 168, leftW, wx::labelOf(f.current.code));
+  hairline(screen, m, 194, leftW);
+
+  char hum[toybox::kIntChars + 2];
+  std::snprintf(hum, sizeof(hum), "%d%%", f.current.humidity);
+  char wind[toybox::kIntChars + 8];
+  std::snprintf(wind, sizeof(wind), "%d %s", wx::displayWind(f.current.wind, fahr), fahr ? "MPH" : "KM/H");
+  char feels[toybox::kIntChars + 1];
+  tempText(feels, sizeof(feels), f.current.feels, fahr);
+  // The next sun event, as the upright page has it.
+  const char* sunName = "SUNSET";
+  const char* sunValue = f.days[0].sunset;
+  const int nowMinutes = f.current.time[0] ? minutesOf(f.current.time + 11) : -1;
+  if (nowMinutes >= 0 && nowMinutes < minutesOf(f.days[0].sunrise)) {
+    sunName = "SUNRISE";
+    sunValue = f.days[0].sunrise;
+  } else if (nowMinutes >= 0 && nowMinutes >= minutesOf(f.days[0].sunset) && f.dayCount > 1) {
+    sunName = "SUNRISE";
+    sunValue = f.days[1].sunrise;
+  }
+  const char* names[4] = {"FEELS LIKE", "WIND", "HUMIDITY", sunName};
+  const char* values[4] = {feels, wind, hum, sunValue};
+  const int rowH = (bottom - 198) / 4;
+  for (int i = 0; i < 4; ++i) {
+    const int y = 198 + rowH * i + (rowH - toybox::kUiCut.inkHeight) / 2;
+    caption(screen, m, y + (toybox::kUiCut.inkHeight - toybox::kTileCut.inkHeight) / 2, 110, names[i]);
+    label(screen, rect(m + 100, y, leftW - 100, toybox::kUiCut.inkHeight), values[i], toybox::kUiFont, toybox::kUiCut,
+          fui::TextAlign::Right);
+  }
+  box(screen, m + leftW + 12, 12, toybox::kHairline, bottom - 12, kInk);
+
+  // Right, above: the next hours, three apart.
+  const int x0 = m + leftW + 26;
+  const int rw = width - m - x0;
+  const int cols = 8;
+  const int colW = rw / cols;
+  const int start = wx::nowIndex(f);
+  for (int i = 0; i < cols; ++i) {
+    const int at = start + i * 3;
+    if (at < 0 || at >= f.hourCount) break;
+    const wx::Hour& h = f.hours[at];
+    const int cx = x0 + colW * i + colW / 2;
+    char hour[8];
+    std::snprintf(hour, sizeof(hour), i == 0 ? "NOW" : "%02d", h.hour % 100);
+    caption(screen, cx - colW / 2, 14, colW, hour, fui::TextAlign::Center);
+    const bool light = h.day >= 0 && h.day < f.dayCount ? isDaylight(h.hour, f.days[h.day]) : true;
+    skyIcon(screen, wx::skyOf(h.code), light, cx, 60, 40);
+    smallTemp(screen, cx, 104, h.temp, fahr);
+    if (h.precip >= 20) {
+      char rain[8];
+      std::snprintf(rain, sizeof(rain), "%d%%", h.precip % 1000);
+      caption(screen, cx - colW / 2, 126, colW, rain, fui::TextAlign::Center);
+    }
+  }
+  hairline(screen, x0, 152, rw);
+
+  // Right, below: the week, a column a day.
+  const int n = f.dayCount > 7 ? 7 : f.dayCount;
+  const int dayW = n > 0 ? rw / n : rw;
+  const int top = 164;
+  for (int i = 0; i < n; ++i) {
+    const wx::Day& d = f.days[i];
+    const int cx = x0 + dayW * i + dayW / 2;
+    char name[12];
+    dayName(name, sizeof(name), d, i);
+    caption(screen, cx - dayW / 2, top, dayW, name, fui::TextAlign::Center);
+    skyIcon(screen, wx::skyOf(d.code), true, cx, top + 62, 50);
+    smallTemp(screen, cx, top + 124, d.max, fahr);
+    smallTemp(screen, cx, top + 164, d.min, fahr);
+    char rain[8];
+    std::snprintf(rain, sizeof(rain), "%d%%", d.precip % 1000);
+    caption(screen, cx - dayW / 2, top + 196, dayW, rain, fui::TextAlign::Center);
+    if (i > 0) box(screen, x0 + dayW * i, top, toybox::kHairline, bottom - top, kInk);
+  }
+
+  char when[24] = "NOT FETCHED YET";
+  if (f.current.time[0]) std::snprintf(when, sizeof(when), "UPDATED %.5s", f.current.time + 11);
+  wideStrip(screen, when, model.autoMinutes);
+}
+
+void buildWideBoard(toybox::Screen& screen, const BoardModel& model) {
+  const fui::DeviceContext device = screen.device();
+  const int m = toybox::kMargin;
+  const int bottom = device.height - kWideStrip - 8;
+  const int size = model.size;
+  const int gap = 8;
+  const int colW = (device.width - m * 2 - gap * (size - 1)) / size;
+  const int top = 10;
+  const int tileH = bottom - top;
+  const bool roomy = size <= 3;
+  const bool huge = roomy && model.faces.bindTitle != nullptr;
+  const toybox::CutMetrics& cut = huge ? toybox::kHugeCut : toybox::kDisplayCut;
+
+  for (int i = 0; i < size; ++i) {
+    const int x = m + (colW + gap) * i;
+    const int cx = x + colW / 2;
+    fui::ButtonProps tile;
+    tile.label = "";
+    tile.styles = toybox::rowStyles();
+    tile.radius = toybox::kPillRadius / 2;
+    if (i >= model.count) {
+      tile.action = ActionCities;
+      screen.button(tile, rect(x, top, colW, tileH));
+      caption(screen, x, top + (tileH - toybox::kTileCut.inkHeight) / 2, colW, "+ ADD A CITY", fui::TextAlign::Center);
+      continue;
+    }
+    tile.action = ActionBoardOpen;
+    tile.value = static_cast<int16_t>(i);
+    screen.button(tile, rect(x, top, colW, tileH));
+    const wx::Place& p = model.places[i];
+    const BoardCard& c = model.cards[i];
+    const int pad = roomy ? 14 : 8;
+    // The name in the cut that fits the column.
+    if (roomy) {
+      label(screen, rect(x + pad, top + 14, colW - pad * 2, toybox::kUiCut.inkHeight), p.name, toybox::kUiFont,
+            toybox::kUiCut, fui::TextAlign::Center);
+    } else {
+      caption(screen, x + pad, top + 18, colW - pad * 2, p.name, fui::TextAlign::Center);
+    }
+    if (!c.have) {
+      caption(screen, x + pad, top + 70, colW - pad * 2, "NO DATA YET", fui::TextAlign::Center);
+      continue;
+    }
+    const int iconSize = roomy ? 100 : 72;
+    const int iconCy = top + 50 + iconSize / 2 + 6;
+    skyIcon(screen, wx::skyOf(c.code), c.day, cx, iconCy, iconSize);
+    const int tempTop = iconCy + iconSize / 2 + 14;
+    bigTemp(screen, model.faces, huge, cx, tempTop, c.temp, model.fahrenheit);
+    const int labelY = tempTop + cut.inkHeight + 12;
+    caption(screen, x + pad, labelY, colW - pad * 2, wx::labelOf(c.code), fui::TextAlign::Center);
+
+    // The day's high, low and chance of rain along the foot of the column.
+    if (c.hasDay) {
+      const int rowTop = top + tileH - 62;
+      box(screen, x + pad, rowTop - 8, colW - pad * 2, toybox::kHairline, kInk);
+      const char* names[3] = {"HIGH", "LOW", "RAIN"};
+      char values[3][toybox::kIntChars + 2];
+      tempText(values[0], sizeof(values[0]), c.max, model.fahrenheit);
+      tempText(values[1], sizeof(values[1]), c.min, model.fahrenheit);
+      std::snprintf(values[2], sizeof(values[2]), "%d%%", static_cast<int>(c.precip) % 1000);
+      const int cellW = (colW - pad * 2) / 3;
+      for (int k = 0; k < 3; ++k) {
+        const int kx = x + pad + cellW * k;
+        caption(screen, kx, rowTop, cellW, names[k], fui::TextAlign::Center);
+        if (roomy) {
+          label(screen, rect(kx, rowTop + toybox::kTileCut.inkHeight + 8, cellW, toybox::kUiCut.inkHeight), values[k],
+                toybox::kUiFont, toybox::kUiCut, fui::TextAlign::Center);
+        } else {
+          caption(screen, kx, rowTop + toybox::kTileCut.inkHeight + 12, cellW, values[k], fui::TextAlign::Center);
+        }
+      }
+    }
+  }
+  wideStrip(screen, "SWIPE: 1 / 3 / 5 CITIES", model.autoMinutes);
+}
+
 }  // namespace weatherui
