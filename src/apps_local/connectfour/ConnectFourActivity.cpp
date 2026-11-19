@@ -20,6 +20,11 @@ std::unique_ptr<Activity> ConnectFourActivity::create(GfxRenderer& renderer, Map
   return makeUniqueNoThrow<ConnectFourActivity>(renderer, mappedInput);
 }
 
+namespace {
+constexpr char kGamePath[] = "/.crosspoint/connectfour-game.sav";
+constexpr char kStatsPath[] = "/.crosspoint/connectfour-levels.cfg";
+}  // namespace
+
 void ConnectFourActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
@@ -27,6 +32,8 @@ void ConnectFourActivity::onEnter() {
   menuSelected = -1;
   loadHistory();
   loadLevel();
+  sologame::loadStats("C4", kStatsPath, levelStats);
+  hasSavedGame = Storage.exists(kGamePath);
   requestUpdate();
 }
 
@@ -103,6 +110,15 @@ void ConnectFourActivity::recordResult() {
     ++wins;
   else
     ++losses;
+  if (!inMatch()) {
+    // Against the device: counted against the level it was played at, and the
+    // game is no longer one to continue.
+    levelStats.count(static_cast<int>(level), lastOutcome);
+    sologame::saveStats("C4", kStatsPath, levelStats);
+    sologame::drop(kGamePath);
+    hasSavedGame = false;
+    history.clear();
+  }
 
   // Colours normalised so light is always this device's seat. The board never
   // rotates in Connect Four -- gravity reads the same from both chairs -- so a
@@ -146,7 +162,51 @@ void ConnectFourActivity::beginSoloGame() {
   c4::start(game);
   seat = c4::kLight;
   resultRecorded = false;
+  history.clear();
+  hintColumn = -1;
+  sologame::drop(kGamePath);
+  hasSavedGame = false;
   goTo(c4::Screen::Board);
+}
+
+void ConnectFourActivity::saveSolo() {
+  if (inMatch() || c4::over(game)) return;
+  hasSavedGame = sologame::save("C4", kGamePath, game, history, static_cast<uint8_t>(level), seat);
+}
+
+void ConnectFourActivity::continueSoloGame() {
+  uint8_t savedLevel = static_cast<uint8_t>(level);
+  uint8_t savedSeat = c4::kLight;
+  if (!sologame::load("C4", kGamePath, game, history, savedLevel, savedSeat) || c4::over(game)) {
+    beginSoloGame();
+    return;
+  }
+  // The game is finished at the level it was begun at.
+  if (savedLevel < c4::kLevels) level = static_cast<c4::Level>(savedLevel);
+  seat = savedSeat == c4::kDark ? c4::kDark : c4::kLight;
+  resultRecorded = false;
+  hintColumn = -1;
+  goTo(c4::Screen::Board);
+}
+
+// Back to the position before this player's last drop, the device's answer
+// to it undone with it.
+void ConnectFourActivity::takeBack() {
+  if (inMatch() || game.turn != seat) return;
+  if (!history.pop(game)) return;
+  hintColumn = -1;
+  saveSolo();
+  requestUpdate();
+}
+
+// The column the strong opponent would play from here: the lip shows that one
+// waiting disc and no other.
+void ConnectFourActivity::showHint() {
+  if (inMatch() || game.turn != seat || c4::over(game)) return;
+  const int column = c4::chooseColumnFor(game, c4::Level::Strong);
+  if (column == c4::kNoColumn) return;
+  hintColumn = column;
+  requestUpdate();
 }
 
 void ConnectFourActivity::takeOpponentTurn() {
@@ -157,6 +217,8 @@ void ConnectFourActivity::takeOpponentTurn() {
   const int column = c4::chooseColumnFor(game, level);
   if (column == c4::kNoColumn) return;
   c4::drop(game, column);
+  // Kept after every answer, so leaving at any point loses nothing.
+  saveSolo();
   requestUpdate();
 }
 
@@ -290,8 +352,14 @@ void ConnectFourActivity::gameLoop() {
       // A full column changes nothing, so it must not repaint. A refresh that
       // leaves the screen identical is worse than doing nothing: the panel
       // visibly blinks and comes back the same, which is what a bug looks like.
+      const c4::Game before = game;
       if (!c4::drop(game, column)) return;
-      if (inMatch()) play.play(game);
+      hintColumn = -1;
+      if (inMatch()) {
+        play.play(game);
+      } else {
+        history.push(before);
+      }
       requestUpdate();
       return;
     }
@@ -301,6 +369,9 @@ void ConnectFourActivity::gameLoop() {
   switch (event.action) {
     case c4ui::ActionMenuRow:
       switch (static_cast<c4ui::MenuRow>(event.value)) {
+        case c4ui::MenuRow::Continue:
+          continueSoloGame();
+          return;
         case c4ui::MenuRow::Play:
           beginSoloGame();
           return;
@@ -330,6 +401,14 @@ void ConnectFourActivity::gameLoop() {
         return;
       }
       goTo(c4::Screen::Menu);
+      return;
+
+    case c4ui::ActionUndo:
+      takeBack();
+      return;
+
+    case c4ui::ActionHint:
+      showHint();
       return;
 
     case c4ui::ActionAgain:
@@ -373,6 +452,9 @@ void ConnectFourActivity::gameRender() {
       c4ui::MenuModel model;
       model.selected = menuSelected;
       model.levelName = c4::levelName(level);
+      model.hasSavedGame = hasSavedGame;
+      model.levelWon = levelStats.won[static_cast<int>(level)];
+      model.levelLost = levelStats.lost[static_cast<int>(level)];
       model.hasHistory = hasHistory;
       model.wins = wins;
       model.losses = losses;
@@ -392,7 +474,9 @@ void ConnectFourActivity::gameRender() {
     case c4::Screen::Board: {
       c4ui::BoardModel model;
       model.game = game;
-      model.open = c4::openColumns(game);
+      model.open = hintColumn >= 0 ? static_cast<uint8_t>(1u << hintColumn) : c4::openColumns(game);
+      model.solo = !inMatch();
+      model.canUndo = history.count > 0;
       model.seat = seat;
       model.yourTurn = inMatch() ? linkYourTurn() : game.turn == seat;
       model.opponentName = inMatch() ? opponentName() : nullptr;

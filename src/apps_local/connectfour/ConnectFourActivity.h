@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "ConnectFourBrain.h"
 #include "ConnectFourCore.h"
@@ -51,6 +52,11 @@ class ConnectFourActivity final : public linkplay::LinkActivity {
   void loadHistory();
   void loadLevel();
   void saveLevel();
+  // A game against the device, kept so it can be left and come back to.
+  void saveSolo();
+  void continueSoloGame();
+  void takeBack();
+  void showHint();
 
   connectfour::Screen screen = connectfour::Screen::Menu;
   connectfour::Game game{};
@@ -77,6 +83,12 @@ class ConnectFourActivity final : public linkplay::LinkActivity {
   uint8_t seat = connectfour::kLight;
   // How hard the built-in opponent plays.
   connectfour::Level level = connectfour::Level::Medium;
+  // The positions it was this player's turn in, for taking a drop back; whether
+  // the card holds a game to continue; and the column a hint is pointing at.
+  sologame::History<connectfour::Game, 24> history;
+  bool hasSavedGame = false;
+  sologame::LevelStats levelStats;
+  int hintColumn = -1;
 
   linkplay::Play<connectfour::Game> play;
 
