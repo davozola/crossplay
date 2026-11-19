@@ -95,10 +95,10 @@ void drawList(toybox::Screen& screen, GfxRenderer& renderer, const ListModel& mo
   y += tabRows * (kTabH + kTabGap) + 2;
 
   if (model.rowCount == 0) {
-    // Only the home tab can be empty: nothing starred and nothing opened yet.
+    // Only the favourites tab can be empty: nothing starred yet.
     toyboxserif::draw(renderer, toybox::kReadingSmallFontId, 25, x + 12, y + 40, inner - 24,
-                      "Aqu\xC3\xAD aparecen tus favoritas y lo \xC3\xBAltimo que has abierto. Mant\xC3\xA9n pulsada "
-                      "cualquier entrada de las otras pesta\xC3\xB1"
+                      "Aqu\xC3\xAD aparecen tus favoritas. Mant\xC3\xA9n pulsada cualquier entrada de las otras "
+                      "pesta\xC3\xB1"
                       "as para ver su ficha y marcarla como favorita.",
                       6);
     return;

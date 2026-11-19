@@ -53,6 +53,8 @@ class ShelfFolderActivity final : public Activity {
   // afterwards, or about whether the folder comes back here. Returns false when
   // there is nowhere to go, which is a folder of one page.
   bool showPage(int page);
+  // The tab one step of `delta` away that has something on it; see the .cpp.
+  bool stepSection(int delta);
   void setFavouritesOnly(bool on);
 
   // One screen's worth of rows, not one folder's worth of items.
