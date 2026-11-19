@@ -448,10 +448,13 @@ void NavalActivity::loadView() {
   daylight_ = true;
   wide_ = false;
   wideLayout_ = 1;
+  tallLayout_ = 0;
   if (!Storage.exists(kViewPath)) return;
   HalFile file;
-  uint8_t saved[3] = {1, 0, 1};
-  if (!Storage.openFileForRead("NAVL", kViewPath, file) || file.read(saved, 3) < 2) return;
+  uint8_t saved[5] = {1, 0, 1, 0, 0};
+  if (!Storage.openFileForRead("NAVL", kViewPath, file) || file.read(saved, 5) < 2) return;
+  if (saved[4] < placeCount_) selected_ = saved[4];
+  tallLayout_ = saved[3] < kWideLayouts ? saved[3] : 0;
   daylight_ = saved[0] != 0;
   wide_ = saved[1] == 1;
   wideLayout_ = saved[2] < kWideLayouts ? saved[2] : 1;
@@ -460,9 +463,10 @@ void NavalActivity::loadView() {
 void NavalActivity::saveView() {
   HalFile file;
   if (!Storage.openFileForWrite("NAVL", kViewPath, file)) return;
-  const uint8_t saved[3] = {static_cast<uint8_t>(daylight_ ? 1 : 0), static_cast<uint8_t>(wide_ ? 1 : 0),
-                            static_cast<uint8_t>(wideLayout_)};
-  file.write(saved, 3);
+  const uint8_t saved[5] = {static_cast<uint8_t>(daylight_ ? 1 : 0), static_cast<uint8_t>(wide_ ? 1 : 0),
+                            static_cast<uint8_t>(wideLayout_), static_cast<uint8_t>(tallLayout_),
+                            static_cast<uint8_t>(selected_)};
+  file.write(saved, 5);
   file.flush();
 }
 
@@ -583,7 +587,7 @@ void NavalActivity::loop() {
   }
 
   // A swipe up or down turns the week's page on its side and back.
-  // And on its side a swipe sideways is the next arrangement of the week.
+  // A swipe sideways is the next arrangement of the week, either way up.
   if (step_ == Step::Idle && (view_ == View::Now || view_ == View::Day) && haveSea_) {
     const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
     if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
@@ -592,10 +596,11 @@ void NavalActivity::loop() {
       requestUpdate();
       return;
     }
-    if (wide_ && view_ == View::Now &&
+    if (view_ == View::Now &&
         (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right)) {
       const int stepBy = swipe == MappedInputManager::SwipeDir::Left ? 1 : kWideLayouts - 1;
-      wideLayout_ = (wideLayout_ + stepBy) % kWideLayouts;
+      int& layout = wide_ ? wideLayout_ : tallLayout_;
+      layout = (layout + stepBy) % kWideLayouts;
       saveView();
       requestUpdate();
       return;
@@ -633,6 +638,7 @@ void NavalActivity::loop() {
     case ActionPlace:
       if (placeCount_ < 2) return;
       selected_ = (selected_ + (event.value ? 1 : placeCount_ - 1)) % placeCount_;
+      saveView();
       haveSea_ = loadCache();
       break;
     case ActionRefresh:
@@ -814,88 +820,196 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
   const nv::Hour& h = sea.hours[nv::nowIndex(sea)];
   char a[24];
   char b[48];
+  const int listBottom = bottom - 52 - kCap.inkHeight - 10;
 
-  const int roseR = 60;
-  drawRose(screen, x + roseR + 12, y + roseR + 2, roseR, h);
-  const int tx = x + roseR * 2 + 40;
-  const int tw = x + inner - tx;
-  cap(screen, tx, y, tw, "WIND NOW", fui::TextAlign::Left, fui::Color::DarkGray);
-  knots(h.wind, a, sizeof(a));
-  std::snprintf(b, sizeof(b), "%s KN", a);
-  lab::label(screen, lab::rect(tx, y + 26, tw, toybox::kDisplayCut.inkHeight), b, toybox::kDisplayFont,
-             toybox::kDisplayCut, fui::TextAlign::Left);
-  if (h.wind >= 0) {
-    const int force = nv::beaufort(h.wind);
-    std::snprintf(b, sizeof(b), "F%d %s", force, nv::beaufortName(force));
-    cap(screen, tx, y + 74, tw, b);
-    knots(h.gust, a, sizeof(a));
-    std::snprintf(b, sizeof(b), "%s  GUSTS %s", nv::compass(h.windFrom), a);
-    cap(screen, tx, y + 100, tw, b);
-  } else {
-    cap(screen, tx, y + 74, tw, "NO WIND FETCHED");
-  }
-  y += roseR * 2 + 14;
-
-  // The sea in three cells.
-  lab::ink(screen, x, y, inner, toybox::kHairline);
-  y += 12;
-  const int cw = inner / 3;
-  char d[32];
-  metres(h.wave, a, sizeof(a));
-  std::snprintf(b, sizeof(b), "%s M", a);
-  std::snprintf(d, sizeof(d), "%dS %s", static_cast<int>(std::lround(h.wavePeriod < 0 ? 0 : h.wavePeriod)),
-                nv::compass(h.waveFrom));
-  cell(screen, x, y, cw, "WAVES", b, d);
-  metres(h.swell, a, sizeof(a));
-  std::snprintf(b, sizeof(b), "%s M", a);
-  std::snprintf(d, sizeof(d), "%dS %s", static_cast<int>(std::lround(h.swellPeriod < 0 ? 0 : h.swellPeriod)),
-                nv::compass(h.swellFrom));
-  cell(screen, x + cw, y, cw, "SWELL", b, d);
-  if (h.water > -50)
-    std::snprintf(b, sizeof(b), "%d C", static_cast<int>(std::lround(h.water)));
-  else
-    std::snprintf(b, sizeof(b), "--");
-  cell(screen, x + cw * 2, y, cw, "WATER", b, h.wave >= 0 ? nv::seaStateName(nv::seaState(h.wave)) : "");
-  y += kCap.inkHeight * 2 + toybox::kUiCut.inkHeight + 16 + 12;
-
-  // The week: one row a day, the windiest hour and the highest sea. Tap for the hours.
-  lab::ink(screen, x, y, inner, toybox::kHairline);
-  y += 8;
-  const int colDay = x + 8;
-  const int colWind = x + 104;
-  const int colDir = x + 226;
-  const int colSea = x + 322;
-  const int headH = 34;
-  cap(screen, colDay, y + (headH - kCap.inkHeight) / 2, inner - 190, "WIND MAX, SEA MAX", fui::TextAlign::Left,
-      fui::Color::DarkGray);
-  drawWindow(screen, x + inner - 176, y, 176, headH);
-  y += headH + 6;
-  const int rows = sea.dayCount;
-  const int room = bottom - 52 - kCap.inkHeight - 10 - y;
-  const int rowH = room / (rows ? rows : 1) > 44 ? 44 : room / (rows ? rows : 1);
-  for (int dIdx = 0; dIdx < rows; ++dIdx) {
-    const nv::DayStats s = statsFor(dIdx);
-    const int ry = y + dIdx * rowH;
-    fui::ButtonProps row;
-    row.label = "";
-    row.action = ActionDay;
-    row.value = static_cast<int16_t>(dIdx);
-    row.styles = toybox::rowStyles();
-    row.radius = lab::kRadius;
-    screen.button(row, lab::rect(x, ry, inner, rowH - 4));
-    const int ty = ry + (rowH - 4 - kCap.inkHeight) / 2;
-    std::snprintf(b, sizeof(b), "%s %d", kWeekdays[nv::weekday(sea.year, s.month, s.day)], s.day);
-    cap(screen, colDay, ty, 96, dIdx == 0 ? "TODAY" : b);
-    if (s.windMax >= 0) {
-      knots(s.windMax, a, sizeof(a));
-      std::snprintf(b, sizeof(b), "%s KN F%d", a, nv::beaufort(s.windMax));
-      cap(screen, colWind, ty, 120, b);
-      arrow(screen, colDir + 12, ry + (rowH - 4) / 2, 24, s.windFrom, kInk);
-      cap(screen, colDir + 32, ty, 60, nv::compass(s.windFrom));
+  if (tallLayout_ == 1) {
+    // The week in big rows, with now as one line over them.
+    knots(h.wind, a, sizeof(a));
+    cap(screen, x, y + (toybox::kUiCut.inkHeight - kCap.inkHeight), 60, "NOW", fui::TextAlign::Left,
+        fui::Color::DarkGray);
+    if (h.wind >= 0) {
+      std::snprintf(b, sizeof(b), "%s KN %s", a, nv::compass(h.windFrom));
+      lab::value(screen, x + 62, y, 220, b);
     }
-    metres(s.waveMax, a, sizeof(a));
+    metres(h.wave, a, sizeof(a));
     std::snprintf(b, sizeof(b), "%s M", a);
-    cap(screen, colSea, ty, x + inner - colSea - 10, b, fui::TextAlign::Right);
+    lab::value(screen, x + inner - 130, y, 130, b, fui::TextAlign::Right);
+    y += toybox::kUiCut.inkHeight + 12;
+    lab::ink(screen, x, y, inner, toybox::kHairline);
+    y += 8;
+    const int headH = 34;
+    cap(screen, x + 8, y + (headH - kCap.inkHeight) / 2, inner - 190, "WIND MAX, SEA MAX", fui::TextAlign::Left,
+        fui::Color::DarkGray);
+    drawWindow(screen, x + inner - 176, y, 176, headH);
+    y += headH + 6;
+    const int rows = sea.dayCount;
+    const int rowH = (listBottom - y) / (rows ? rows : 1);
+    for (int dIdx = 0; dIdx < rows; ++dIdx) {
+      const nv::DayStats s = statsFor(dIdx);
+      const int ry = y + dIdx * rowH;
+      dayHit(screen, lab::rect(x, ry, inner, rowH), dIdx);
+      if (dIdx > 0) lab::box(screen, x, ry, inner, 1, fui::Paint::dither(fui::Color::DarkGray));
+      const int cy = ry + (rowH - kCap.inkHeight) / 2;
+      std::snprintf(b, sizeof(b), "%s %d", kWeekdays[nv::weekday(sea.year, s.month, s.day)], s.day);
+      cap(screen, x + 8, cy, 96, dIdx == 0 ? "TODAY" : b);
+      if (s.windMax >= 0) {
+        knots(s.windMax, a, sizeof(a));
+        lab::label(screen, lab::rect(x + 108, ry, 66, rowH), a, toybox::kDisplayFont, toybox::kDisplayCut,
+                   fui::TextAlign::Right);
+        std::snprintf(b, sizeof(b), "KN F%d", nv::beaufort(s.windMax));
+        cap(screen, x + 182, cy, 80, b);
+        arrow(screen, x + 280, ry + rowH / 2, 28, s.windFrom, kInk);
+        cap(screen, x + 300, cy, 56, nv::compass(s.windFrom));
+      }
+      metres(s.waveMax, a, sizeof(a));
+      std::snprintf(b, sizeof(b), "%s M", a);
+      lab::label(screen, lab::rect(x + 350, ry, inner - 358, rowH), b, toybox::kUiFont, toybox::kUiCut,
+                 fui::TextAlign::Right);
+    }
+  } else {
+    const int roseR = 60;
+    drawRose(screen, x + roseR + 12, y + roseR + 2, roseR, h);
+    const int tx = x + roseR * 2 + 40;
+    const int tw = x + inner - tx;
+    cap(screen, tx, y, tw, "WIND NOW", fui::TextAlign::Left, fui::Color::DarkGray);
+    knots(h.wind, a, sizeof(a));
+    std::snprintf(b, sizeof(b), "%s KN", a);
+    lab::label(screen, lab::rect(tx, y + 26, tw, toybox::kDisplayCut.inkHeight), b, toybox::kDisplayFont,
+               toybox::kDisplayCut, fui::TextAlign::Left);
+    if (h.wind >= 0) {
+      const int force = nv::beaufort(h.wind);
+      std::snprintf(b, sizeof(b), "F%d %s", force, nv::beaufortName(force));
+      cap(screen, tx, y + 74, tw, b);
+      knots(h.gust, a, sizeof(a));
+      std::snprintf(b, sizeof(b), "%s  GUSTS %s", nv::compass(h.windFrom), a);
+      cap(screen, tx, y + 100, tw, b);
+    } else {
+      cap(screen, tx, y + 74, tw, "NO WIND FETCHED");
+    }
+    y += roseR * 2 + 14;
+
+    if (tallLayout_ == 2) {
+      // Today by the hour, and the week as a strip under it.
+      lab::ink(screen, x, y, inner, toybox::kHairline);
+      y += 8;
+      const int headH = 34;
+      cap(screen, x + 8, y + (headH - kCap.inkHeight) / 2, inner - 190, "TODAY, KNOTS", fui::TextAlign::Left,
+          fui::Color::DarkGray);
+      drawWindow(screen, x + inner - 176, y, 176, headH);
+      y += headH + 10;
+      const int weekH = 92;
+      const int plotH = listBottom - weekH - 86 - y;
+      dayHit(screen, lab::rect(x, y, inner, plotH + 86), 0);
+      const float top = scaleOf(0);
+      for (float line = 10; line <= top; line += 10) {
+        const int ly = y + plotH - static_cast<int>(line / top * static_cast<float>(plotH));
+        lab::box(screen, x, ly, inner, 1, fui::Paint::dither(fui::Color::LightGray));
+      }
+      drawBars(screen, lab::rect(x, y, inner, plotH), 0, top, true);
+      lab::ink(screen, x, y + plotH, inner, 2);
+      {
+        int first = 0;
+        const int n = windowOf(0, first);
+        const int slots = daylight_ ? kDayTo - kDayFrom + 1 : 24;
+        const int base = daylight_ ? kDayFrom : 0;
+        const int slot = inner / slots;
+        const int x0 = x + (inner - slot * slots) / 2;
+        const int step = daylight_ ? 1 : 3;
+        for (int i = first; i < first + n; ++i) {
+          const nv::Hour& hr = sea.hours[i];
+          if ((hr.hour - base) % step != 0) continue;
+          const int sx = x0 + (hr.hour - base) * slot;
+          const int sw = slot * step;
+          std::snprintf(b, sizeof(b), "%02d", hr.hour);
+          cap(screen, sx, y + plotH + 10, sw, b, fui::TextAlign::Center, fui::Color::DarkGray);
+          if (hr.wind >= 0) {
+            knots(hr.wind, a, sizeof(a));
+            cap(screen, sx, y + plotH + 36, sw, a, fui::TextAlign::Center);
+            arrow(screen, sx + sw / 2, y + plotH + 70, 20, hr.windFrom, kInk);
+          }
+        }
+      }
+      y += plotH + 86;
+      lab::ink(screen, x, y, inner, toybox::kHairline);
+      const int cellW = inner / kDaysShown;
+      for (int dIdx = 0; dIdx < sea.dayCount && dIdx < kDaysShown; ++dIdx) {
+        const nv::DayStats s = statsFor(dIdx);
+        const int cx = x + dIdx * cellW;
+        dayHit(screen, lab::rect(cx, y + 1, cellW, weekH - 1), dIdx);
+        if (dIdx > 0) lab::box(screen, cx, y + 10, 1, weekH - 20, fui::Paint::dither(fui::Color::DarkGray));
+        int cy = y + 10;
+        cap(screen, cx, cy, cellW, kWeekdays[nv::weekday(sea.year, s.month, s.day)], fui::TextAlign::Center,
+            dIdx == 0 ? fui::Color::Black : fui::Color::DarkGray);
+        cy += kCap.inkHeight + 8;
+        knots(s.windMax, a, sizeof(a));
+        lab::value(screen, cx, cy, cellW, a, fui::TextAlign::Center);
+        cy += toybox::kUiCut.inkHeight + 8;
+        metres(s.waveMax, a, sizeof(a));
+        cap(screen, cx, cy, cellW, a, fui::TextAlign::Center);
+      }
+    } else {
+      // The sea in three cells.
+      lab::ink(screen, x, y, inner, toybox::kHairline);
+      y += 12;
+      const int cw = inner / 3;
+      char d[32];
+      metres(h.wave, a, sizeof(a));
+      std::snprintf(b, sizeof(b), "%s M", a);
+      std::snprintf(d, sizeof(d), "%dS %s", static_cast<int>(std::lround(h.wavePeriod < 0 ? 0 : h.wavePeriod)),
+                    nv::compass(h.waveFrom));
+      cell(screen, x, y, cw, "WAVES", b, d);
+      metres(h.swell, a, sizeof(a));
+      std::snprintf(b, sizeof(b), "%s M", a);
+      std::snprintf(d, sizeof(d), "%dS %s", static_cast<int>(std::lround(h.swellPeriod < 0 ? 0 : h.swellPeriod)),
+                    nv::compass(h.swellFrom));
+      cell(screen, x + cw, y, cw, "SWELL", b, d);
+      if (h.water > -50)
+        std::snprintf(b, sizeof(b), "%d C", static_cast<int>(std::lround(h.water)));
+      else
+        std::snprintf(b, sizeof(b), "--");
+      cell(screen, x + cw * 2, y, cw, "WATER", b, h.wave >= 0 ? nv::seaStateName(nv::seaState(h.wave)) : "");
+      y += kCap.inkHeight * 2 + toybox::kUiCut.inkHeight + 16 + 12;
+
+      // The week: one row a day, the windiest hour and the highest sea. Tap for the hours.
+      lab::ink(screen, x, y, inner, toybox::kHairline);
+      y += 8;
+      const int colDay = x + 8;
+      const int colWind = x + 104;
+      const int colDir = x + 226;
+      const int colSea = x + 322;
+      const int headH = 34;
+      cap(screen, colDay, y + (headH - kCap.inkHeight) / 2, inner - 190, "WIND MAX, SEA MAX", fui::TextAlign::Left,
+          fui::Color::DarkGray);
+      drawWindow(screen, x + inner - 176, y, 176, headH);
+      y += headH + 6;
+      const int rows = sea.dayCount;
+      const int room = listBottom - y;
+      const int rowH = room / (rows ? rows : 1) > 44 ? 44 : room / (rows ? rows : 1);
+      for (int dIdx = 0; dIdx < rows; ++dIdx) {
+        const nv::DayStats s = statsFor(dIdx);
+        const int ry = y + dIdx * rowH;
+        fui::ButtonProps row;
+        row.label = "";
+        row.action = ActionDay;
+        row.value = static_cast<int16_t>(dIdx);
+        row.styles = toybox::rowStyles();
+        row.radius = lab::kRadius;
+        screen.button(row, lab::rect(x, ry, inner, rowH - 4));
+        const int ty = ry + (rowH - 4 - kCap.inkHeight) / 2;
+        std::snprintf(b, sizeof(b), "%s %d", kWeekdays[nv::weekday(sea.year, s.month, s.day)], s.day);
+        cap(screen, colDay, ty, 96, dIdx == 0 ? "TODAY" : b);
+        if (s.windMax >= 0) {
+          knots(s.windMax, a, sizeof(a));
+          std::snprintf(b, sizeof(b), "%s KN F%d", a, nv::beaufort(s.windMax));
+          cap(screen, colWind, ty, 120, b);
+          arrow(screen, colDir + 12, ry + (rowH - 4) / 2, 24, s.windFrom, kInk);
+          cap(screen, colDir + 32, ty, 60, nv::compass(s.windFrom));
+        }
+        metres(s.waveMax, a, sizeof(a));
+        std::snprintf(b, sizeof(b), "%s M", a);
+        cap(screen, colSea, ty, x + inner - colSea - 10, b, fui::TextAlign::Right);
+      }
+    }
   }
 
   // When it was fetched, by the place's own clock, whose wind it is, and the way to fetch again.

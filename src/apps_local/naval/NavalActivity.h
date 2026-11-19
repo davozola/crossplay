@@ -92,6 +92,7 @@ class NavalActivity final : public Activity {
   bool daylight_ = true;
   bool wide_ = false;
   int wideLayout_ = 1;  // 0 a table, 1 seven columns, 2 today by the hour
+  int tallLayout_ = 0;  // upright: 0 now and a table, 1 the week in big rows, 2 today by the hour
 
   // The wind's source, and the owner's key for it.
   bool useMeteoblue_ = false;
