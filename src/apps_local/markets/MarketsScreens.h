@@ -53,6 +53,10 @@ struct DashboardModel {
   // When the quotes were last fetched, by this reader's clock; -1 when not yet.
   int fetchedHour = -1;
   int fetchedMinute = 0;
+  // The portfolio's line on the page on its side; null leaves it out.
+  const markets::Portfolio* portfolio = nullptr;
+  const markets::Priced* priced = nullptr;
+  markets::Period period = markets::Period::Day;
   FaceSwap faces;
 };
 

@@ -503,6 +503,9 @@ void MarketsActivity::render(RenderLock&&) {
       m.autoMinutes = autoMinutes_;
       m.fetchedHour = fetchedHour_;
       m.fetchedMinute = fetchedMinute_;
+      m.portfolio = &portfolio_;
+      m.priced = priced_;
+      m.period = period_;
       m.faces = faces;
       marketsui::buildDashboard(surface, m);
       break;
@@ -574,8 +577,11 @@ void MarketsActivity::render(RenderLock&&) {
 
   interactionsReady_ = true;
   toybox::reportOverflow(interactions_, "Markets");
-  const auto labels = mappedInput.mapLabels("Back", "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  // On its side the dashboard is the whole panel: no hints under it.
+  if (!(wide_ && view_ == View::Dashboard)) {
+    const auto labels = mappedInput.mapLabels("Back", "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  }
   renderer.displayBuffer();
   quiet_.paintPending = false;
 }
