@@ -15,13 +15,20 @@ enum : fui::ActionId {
   ActionHowToNext = 2,
   ActionAgain = 3,
   ActionDone = 4,
+  ActionUndo = 5,  // take the last move back
+  ActionHint = 6,  // show a move worth playing
 };
 
-enum class MenuRow : int { Play = 0, Level, PlayNearby, HowTo, Count };
+// Continue is only on the menu while there is a game to go back to.
+enum class MenuRow : int { Continue = 0, Play, Level, PlayNearby, HowTo, Count };
 
 struct MenuModel {
   const char* nearbyName = nullptr;
   const char* levelName = "";  // how hard the built-in opponent plays
+  bool hasSavedGame = false;
+  // Against that level: won and lost.
+  int levelWon = 0;
+  int levelLost = 0;
   int selected = -1;
   // The record and the last game's final position, for the front door's
   // ornament. Cells are always light-perspective; null until a game has been
@@ -63,6 +70,9 @@ struct BoardModel {
   int yourPieces = checkers::kMen;
   int theirPieces = checkers::kMen;
   bool yourTurn = true;
+  // Against the device: UNDO and HINT sit either side of the status.
+  bool solo = false;
+  bool canUndo = false;
   // A capture is available, so every legal move is one.
   bool mustTake = false;
   const char* opponentName = nullptr;
