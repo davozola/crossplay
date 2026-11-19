@@ -5,6 +5,7 @@
 #include "../../components/UITheme.h"  // Rect
 #include "../link/LinkActivity.h"
 #include "../player/PlayerName.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "JaipurBrain.h"
 #include "JaipurCore.h"
@@ -192,6 +193,7 @@ class JaipurActivity final : public linkplay::LinkActivity {
   // (the round-over view, or the link endgame hold), so the loop sees GameOver
   // on many passes; this latches the count to the first of them.
   bool recorded = false;
+  sologame::LevelStats levelStats;  // won and lost against each level
 
   // Set when the opponent owes a move, consumed on the next loop pass.
   bool opponentPending = false;

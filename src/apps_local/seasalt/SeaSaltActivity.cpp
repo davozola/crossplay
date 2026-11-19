@@ -49,6 +49,7 @@ void SeaSaltActivity::onEnter() {
   seed = toybox::seed();
   loadStats();
   loadSkill();
+  sologame::loadStats("SEASALT", "/.crosspoint/seasalt-levels.cfg", levelStats);
   hasSavedGame = loadGame();
   if (!hasSavedGame) {
     game.newGame(nextSeed(), 0);
@@ -172,7 +173,9 @@ seasaltui::StartModel SeaSaltActivity::startModel() const {
   model.played = played;
   model.won = won;
   model.selected = menuSelected;
-  model.levelName = skill == seasalt::Skill::Navigator ? "HARD" : "EASY";
+  const int at = skill == seasalt::Skill::Navigator ? 1 : 0;
+  std::snprintf(model.levelName, sizeof(model.levelName), "%s  %d-%d", at == 1 ? "HARD" : "EASY",
+                levelStats.won[at] % 10000, levelStats.lost[at] % 10000);
   return model;
 }
 
@@ -566,6 +569,10 @@ void SeaSaltActivity::countMatchEnd() {
   statsCounted = true;
   ++played;
   if (game.matchWinner() == seat) ++won;
+  if (!inMatch()) {
+    levelStats.count(skill == seasalt::Skill::Navigator ? 1 : 0, game.matchWinner() == seat ? 0 : 1);
+    sologame::saveStats("SEASALT", "/.crosspoint/seasalt-levels.cfg", levelStats);
+  }
   saveStats();
 }
 
@@ -720,11 +727,8 @@ void SeaSaltActivity::playOpponentTurn() {
 
   const seasalt::Phase phase = game.currentPhase();
   if (phase == seasalt::Phase::RoundOver || phase == seasalt::Phase::GameOver) {
-    if (phase == seasalt::Phase::GameOver && !statsCounted) {
-      statsCounted = true;
-      ++played;
-      if (game.matchWinner() == seat) ++won;
-      saveStats();
+    if (phase == seasalt::Phase::GameOver) {
+      countMatchEnd();
     }
     view = View::RoundOver;
   } else {

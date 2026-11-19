@@ -54,6 +54,8 @@ struct SettingsModel {
   bool showHints = true;
   // 0 easy, 1 normal, 2 hard.
   uint8_t level = 1;
+  // The level's name with won-lost-drawn against it.
+  char levelText[28] = "";
   bool canTakeBack = false;
   // A setting that cannot apply mid-game was changed while the menu was open,
   // so leaving will start a new one and the close button has to say so.

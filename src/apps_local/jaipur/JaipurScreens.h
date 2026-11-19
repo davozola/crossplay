@@ -36,7 +36,7 @@ struct StartModel {
   int played = 0;
   int won = 0;
   int selected = 0;
-  const char* levelName = "";  // how hard the built-in opponent plays
+  char levelName[24] = "";  // how hard the built-in opponent plays, and the record against it
 };
 
 int startRows(const StartModel& model);

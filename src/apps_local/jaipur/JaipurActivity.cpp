@@ -205,6 +205,7 @@ void JaipurActivity::onEnter() {
 
   loadStats();
   loadSkill();
+  sologame::loadStats("JAIPUR", "/.crosspoint/jaipur-levels.cfg", levelStats);
   hasSavedGame = loadGame();
   goToMenu();
 }
@@ -1130,7 +1131,9 @@ jaipurui::StartModel JaipurActivity::startModel() const {
   model.hasSavedGame = hasSavedGame;
   model.continueDetail = continueDetail;
   model.selected = menuSelected;
-  model.levelName = skill == jaipur::Skill::Maharaja ? "HARD" : "EASY";
+  const int at = skill == jaipur::Skill::Maharaja ? 1 : 0;
+  std::snprintf(model.levelName, sizeof(model.levelName), "%s  %d-%d", at == 1 ? "HARD" : "EASY",
+                levelStats.won[at] % 10000, levelStats.lost[at] % 10000);
   model.played = played;
   model.won = won;
   return model;
@@ -1143,6 +1146,10 @@ void JaipurActivity::recordResult() {
   // matchWinner() is -1 until a seat holds two seals, and exactly one does at
   // GameOver, so this is "did the human win the match".
   if (game.matchWinner() == seat) ++won;
+  if (!inMatch()) {
+    levelStats.count(skill == jaipur::Skill::Maharaja ? 1 : 0, game.matchWinner() == seat ? 0 : 1);
+    sologame::saveStats("JAIPUR", "/.crosspoint/jaipur-levels.cfg", levelStats);
+  }
   // Straight to the card, at the finish: a wake is a chip reset, so anything
   // not written before the player looks away can be lost.
   saveStats();
