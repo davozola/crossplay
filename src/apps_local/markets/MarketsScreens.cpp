@@ -458,6 +458,7 @@ struct Worth {
   bool held = false;    // there is a portfolio
   bool priced = false;  // and at least one holding has a quote
   char value[32] = "";
+  bool euros = false;  // `value` is in euros
   double percent = 0;
   int count = 0;
 };
@@ -469,7 +470,8 @@ Worth worthOf(const DashboardModel& model) {
   w.count = model.portfolio->count;
   const mk::Totals t = mk::totalsOf(*model.portfolio, model.priced);
   w.priced = t.priced > 0;
-  mk::formatPriceShort(t.value, w.value, sizeof(w.value));
+  w.euros = model.inEuro && model.euro > 0;
+  mk::formatPriceShort(w.euros ? t.value / model.euro : t.value, w.value, sizeof(w.value));
   w.percent = mk::percentOf(t.value, t.previous);
   return w;
 }
@@ -548,7 +550,7 @@ void quarter(toybox::Screen& screen, const DashboardModel& model, const int i, c
     changePill(screen, 0, y - 2, 32, w.percent, x + innerW);
     y += toybox::kUiCut.inkHeight + 20;
     const int inkH = priceText(screen, model.faces, face, x, y, innerW, w.value);
-    std::snprintf(text, sizeof(text), "USD, %s", overText(model.period));
+    std::snprintf(text, sizeof(text), "%s, %s", w.euros ? "EUR" : "USD", overText(model.period));
     caption(screen, x, y + inkH - toybox::kTileCut.inkHeight, innerW, text, fui::TextAlign::Right,
             fui::Color::DarkGray);
     y += inkH + 16;
@@ -570,7 +572,7 @@ void quarter(toybox::Screen& screen, const DashboardModel& model, const int i, c
       if (best < 0) break;
       used[best] = true;
       caption(screen, x, y, innerW / 2, mk::instrumentAt(pf.positions[best].instrument).name);
-      mk::formatPriceShort(bestValue, text, sizeof(text));
+      mk::formatPriceShort(w.euros ? bestValue / model.euro : bestValue, text, sizeof(text));
       caption(screen, x + innerW / 3, y, innerW / 3, text, fui::TextAlign::Right, fui::Color::DarkGray);
       mk::formatPercent(mk::percentOf(model.priced[best].price, model.priced[best].previous), text, sizeof(text));
       caption(screen, x + innerW - innerW / 3, y, innerW / 3, text, fui::TextAlign::Right);
@@ -966,27 +968,43 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
                          s);
   } else {
     const mk::Totals t = mk::totalsOf(pf, model.priced);
-    caption(screen, x, y, headW, "TOTAL VALUE, USD");
-    if (t.priced < pf.count) {
-      std::snprintf(a, sizeof(a), "%d OF %d PRICED", t.priced % 100, pf.count % 100);
-      caption(screen, x, y, headW, a, fui::TextAlign::Right);
+    // Everything is priced in dollars; in euros it is the same at the rate
+    // fetched with the quotes, which has to be known to count in them.
+    const bool euros = model.inEuro && model.euro > 0;
+    const double per = euros ? 1.0 / model.euro : 1.0;
+    const char* const unit = euros ? "EUR" : "USD";
+    const int switchW = 132;
+    const int switchH = 30;
+    caption(screen, x, y + (switchH - toybox::kTileCut.inkHeight) / 2, headW - switchW - 8, "TOTAL VALUE");
+    for (int c = 0; c < 2; ++c) {
+      fui::ButtonProps money;
+      money.label = c == 0 ? "USD" : "EUR";
+      money.action = ActionCurrency;
+      money.value = static_cast<int16_t>(c);
+      money.styles = toybox::rowStyles();
+      money.text = toybox::buttonText(screen.theme());
+      money.radius = kRadius;
+      money.minTouchSize = 0;
+      money.enabled = c == 0 || model.euro > 0;
+      money.state = (c == 1) == euros ? fui::StateSelected : fui::StateNormal;
+      screen.button(money, rect(x + headW - switchW + c * (switchW / 2), y, switchW / 2 - 2, switchH));
     }
-    y += toybox::kTileCut.inkHeight + (side ? 12 : 16);
-    mk::formatPriceShort(t.value, a, sizeof(a));
+    y += switchH + (side ? 10 : 14);
+    mk::formatPriceShort(t.value * per, a, sizeof(a));
     y += priceText(screen, model.faces, side ? Face::Large : Face::Huge, x, y, headW, a) + (side ? 12 : 18);
     if (t.priced > 0) {
       const int pillH = side ? 36 : 40;
       const int pillW = changePill(screen, x, y, pillH, mk::percentOf(t.value, t.previous));
-      mk::formatChange(t.value - t.previous, a, sizeof(a));
+      mk::formatChange((t.value - t.previous) * per, a, sizeof(a));
       static const char* const kOver[mk::kPeriods] = {"TODAY", "IN A WEEK", "IN A MONTH", "THIS YEAR", "IN A YEAR"};
       if (side) {
         // The column is too narrow for the sentence: the amount beside the pill, the stretch under it.
-        std::snprintf(b, sizeof(b), "%s USD", a);
+        std::snprintf(b, sizeof(b), "%s %s", a, unit);
         caption(screen, x + pillW + 10, y + 3, headW - pillW - 10, b);
         caption(screen, x + pillW + 10, y + 5 + toybox::kTileCut.inkHeight, headW - pillW - 10,
                 kOver[static_cast<int>(model.period) % mk::kPeriods], fui::TextAlign::Left, fui::Color::DarkGray);
       } else {
-        std::snprintf(b, sizeof(b), "%s USD %s", a, kOver[static_cast<int>(model.period) % mk::kPeriods]);
+        std::snprintf(b, sizeof(b), "%s %s %s", a, unit, kOver[static_cast<int>(model.period) % mk::kPeriods]);
         caption(screen, x + pillW + 14, y + (40 - toybox::kTileCut.inkHeight) / 2, inner - pillW - 14, b);
       }
     }
@@ -1011,13 +1029,17 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
     }
     y += 36 + 12;
     if (t.priced > 0 && model.euro > 0) {
-      // The same total in euros, at the rate fetched with the quotes.
-      mk::formatPriceShort(t.value / model.euro, a, sizeof(a));
-      std::snprintf(b, sizeof(b), "%s EUR", a);
+      // The same total in the other of the two, at the rate fetched with the quotes.
+      mk::formatPriceShort(euros ? t.value : t.value / model.euro, a, sizeof(a));
+      std::snprintf(b, sizeof(b), "%s %s", a, euros ? "USD" : "EUR");
       label(screen, rect(x, y, side ? headW : inner / 2, toybox::kUiCut.inkHeight), b, toybox::kUiFont, toybox::kUiCut,
             fui::TextAlign::Left);
       char rate[24];
-      std::snprintf(rate, sizeof(rate), "1 EUR = %.4f USD", model.euro);
+      if (t.priced < pf.count) {
+        std::snprintf(rate, sizeof(rate), "%d OF %d PRICED", t.priced % 100, pf.count % 100);
+      } else {
+        std::snprintf(rate, sizeof(rate), "1 EUR = %.4f USD", model.euro);
+      }
       if (side) {
         caption(screen, x, y + toybox::kUiCut.inkHeight + 8, headW, rate, fui::TextAlign::Left, fui::Color::DarkGray);
       } else {
@@ -1069,10 +1091,10 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
       const mk::Priced& pr = model.priced[i];
       if (pr.valid) {
         char price[24];
-        mk::formatPrice(pr.price, price, sizeof(price));
+        mk::formatPrice(pr.price * per, price, sizeof(price));
         std::snprintf(b, sizeof(b), "%s AT %s", a, price);
         caption(screen, listX, cy, listW * 2 / 3, b, fui::TextAlign::Left, fui::Color::DarkGray);
-        mk::formatPriceShort(pf.positions[i].amount * pr.price, a, sizeof(a));
+        mk::formatPriceShort(pf.positions[i].amount * pr.price * per, a, sizeof(a));
         label(screen, rect(listX + listW / 2, ty, listW / 2, toybox::kUiCut.inkHeight), a, toybox::kUiFont,
               toybox::kUiCut, fui::TextAlign::Right);
         mk::formatPercent(mk::percentOf(pr.price, pr.previous), a, sizeof(a));

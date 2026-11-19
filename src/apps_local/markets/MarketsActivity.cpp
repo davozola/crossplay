@@ -84,10 +84,11 @@ void MarketsActivity::loadState() {
   if (!Storage.exists(kSavePath)) return;
   HalFile file;
   if (!Storage.openFileForRead("MKTS", kSavePath, file)) return;
-  uint8_t data[5] = {};
-  // The period and the turn came later: a shorter file is an older one, and still good.
+  uint8_t data[6] = {};
+  // The period, the turn and the currency came later: a shorter file is an older one, and still good.
   if (file.read(data, sizeof(data)) < 3 || data[0] != kSaveVersion) return;
   wide_ = data[4] == 1;
+  inEuro_ = data[5] == 1;
   if (data[3] < mk::kPeriods) period_ = static_cast<mk::Period>(data[3]);
   for (const int choice : marketsui::kAutoChoices) {
     if (choice == data[1]) autoMinutes_ = choice;
@@ -98,8 +99,12 @@ void MarketsActivity::loadState() {
 void MarketsActivity::saveState() {
   HalFile file;
   if (!Storage.openFileForWrite("MKTS", kSavePath, file)) return;
-  const uint8_t data[5] = {kSaveVersion, static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(span_),
-                           static_cast<uint8_t>(period_), static_cast<uint8_t>(wide_ ? 1 : 0)};
+  const uint8_t data[6] = {kSaveVersion,
+                           static_cast<uint8_t>(autoMinutes_),
+                           static_cast<uint8_t>(span_),
+                           static_cast<uint8_t>(period_),
+                           static_cast<uint8_t>(wide_ ? 1 : 0),
+                           static_cast<uint8_t>(inEuro_ ? 1 : 0)};
   file.write(data, sizeof(data));
   file.flush();
 }
@@ -421,6 +426,10 @@ void MarketsActivity::route(const fui::ActionEvent& event) {
     case ui::ActionPortfolioPage:
       ++portfolioPage_;
       break;
+    case ui::ActionCurrency:
+      inEuro_ = event.value == 1;
+      saveState();
+      break;
     case ui::ActionAddPosition:
       if (portfolio_.count >= mk::kMaxPositions) return;
       view_ = View::HoldingPicker;
@@ -509,6 +518,8 @@ void MarketsActivity::render(RenderLock&&) {
       m.portfolio = &portfolio_;
       m.priced = priced_;
       m.period = period_;
+      m.euro = euro_;
+      m.inEuro = inEuro_;
       m.faces = faces;
       marketsui::buildDashboard(surface, m);
       break;
@@ -530,6 +541,7 @@ void MarketsActivity::render(RenderLock&&) {
       m.portfolio = &portfolio_;
       m.priced = priced_;
       m.euro = euro_;
+      m.inEuro = inEuro_;
       m.period = period_;
       m.faces = faces;
       m.page = portfolioPage_;
