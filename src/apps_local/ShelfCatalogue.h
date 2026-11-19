@@ -24,8 +24,10 @@ enum : fui::ActionId {
 };
 
 constexpr int kRowsPerPage = 8;
-// Tabs a folder's own kinds are flanked by: what you use, first, and everything, last.
-constexpr const char* kHomeTab = "INICIO";
+// Tabs a folder's own kinds are flanked by: what you starred, first, and everything, last.
+// Short on purpose: GAMES puts five tabs in a row, 84px each, and the whole
+// word is 85px in the tile cut.
+constexpr const char* kHomeTab = "FAVS";
 constexpr const char* kAllTab = "TODO";
 
 struct Row {
