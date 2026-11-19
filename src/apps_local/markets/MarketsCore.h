@@ -113,12 +113,16 @@ struct Quote {
   int64_t historyAt = 0;
 };
 
-// How long a fetched history stands in for a new one.
-constexpr int64_t kHistoryFreshSeconds = 12 * 3600;
+// How long a fetched history stands in for a new one. What trades in sessions
+// is kept a week, grown by each round's quote, and then asked for whole again:
+// a split or a dividend rewrites old closes. What never closes has no such
+// quote, so its candles are kept half a day and never past midnight UTC, when
+// they turn over.
+constexpr int64_t kHistoryFreshSeconds = 7 * 86400;
+constexpr int64_t kCandlesFreshSeconds = 12 * 3600;
 // True when `q`'s closes are recent enough to keep and only its price need be
-// asked for. `roundTheClock` is what never closes: its candles turn over at
-// midnight UTC, so a history from before that is not kept. Never true with the
-// clock unset (`now` before 2023).
+// asked for. `roundTheClock` is what never closes. Never true with the clock
+// unset (`now` before 2023).
 bool historyFresh(const Quote& q, int64_t now, bool roundTheClock);
 
 // Coinbase's candles for a product: an array of [time, low, high, open, close,
@@ -143,7 +147,16 @@ void cnbcBarsUrlSpan(const char* symbol, int32_t today, int daysBack, char* out,
 constexpr int kYearOfDays = 380;
 // One quote answer for several symbols at once.
 void cnbcQuoteUrlFor(const char* const* symbols, int count, char* out, size_t cap);
-bool applyCnbcQuoteFor(const char* json, size_t len, const char* symbol, Quote& q);
+// With `gap`, `q` is a history kept from an earlier round rather than bars
+// just read: a quote from the session after the newest close held adds that
+// session and sets the close before it from the quote's change, so the
+// history grows a day at a time with no bars asked for. When sessions are
+// missing in between, or the quote does not say enough, `*gap` comes back
+// true, `q` is left as it was, and the bars are what to ask for.
+bool applyCnbcQuoteFor(const char* json, size_t len, const char* symbol, Quote& q, bool* gap = nullptr);
+// Weekdays strictly between two days counted since 1970: the sessions a
+// history that jumps from one to the other would be missing.
+int weekdaysBetween(int32_t from, int32_t to);
 // Bars for the four months up to `today`, a day count since 1970.
 void cnbcBarsUrl(Asset asset, int32_t today, char* out, size_t cap);
 void cnbcQuoteUrl(char* out, size_t cap);

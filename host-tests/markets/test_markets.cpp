@@ -434,7 +434,7 @@ int main() {
     check(parseLookup(answer, std::strlen(answer), found, 1) == 1, "no more than asked for");
   }
 
-  // A history is kept for half a day, and what never closes only within its UTC day.
+  // A history is kept a week, and what never closes half a day within its UTC day.
   {
     using namespace markets;
     const int64_t noon = 1795000000 - (1795000000 % 86400) + 12 * 3600;
@@ -446,16 +446,57 @@ int main() {
     check(!historyFresh(q, noon, false), "never asked: not fresh");
     q.historyAt = noon;
     check(historyFresh(q, noon + 60, false) && historyFresh(q, noon + 60, true), "a minute later: kept");
-    check(historyFresh(q, noon + kHistoryFreshSeconds - 1, false), "kept to the end of the half day");
+    check(historyFresh(q, noon + kHistoryFreshSeconds - 1, false), "bars kept to the end of the week");
     check(!historyFresh(q, noon + kHistoryFreshSeconds, false), "and not past it");
+    check(historyFresh(q, noon + kCandlesFreshSeconds - 1, true), "candles kept to the end of the half day");
     q.historyAt = noon + 6 * 3600;
-    check(historyFresh(q, noon + 13 * 3600, false), "bars from the evening hold through the night");
     check(!historyFresh(q, noon + 13 * 3600, true), "past midnight UTC the candles have turned");
     q.historyAt = noon;
     check(!historyFresh(q, noon - 60, false), "a clock gone backwards keeps nothing");
     check(!historyFresh(q, 1000, false), "nor does one that was never set");
     q.valid = false;
     check(!historyFresh(q, noon + 60, false), "nothing held, nothing kept");
+  }
+
+  // A kept history grows by the quote's session, and refuses one that leaves a hole.
+  {
+    using namespace markets;
+    const std::string quote = slurp("cnbc_quote.json");  // .SPX at 7,561.67 on Friday 2026-11-13, change -30.73
+    const int32_t friday = daysFromCivil(2026, 11, 13);
+    check(weekdaysBetween(friday - 1, friday) == 0 && weekdaysBetween(friday, friday + 3) == 0,
+          "nothing between Thursday and Friday, nor over a weekend");
+    check(weekdaysBetween(friday - 2, friday) == 1 && weekdaysBetween(friday, friday + 4) == 1,
+          "one session between Wednesday and Friday, and between Friday and Tuesday");
+    Quote q;
+    q.valid = true;
+    q.count = 2;
+    q.days[0] = friday - 2;
+    q.closes[0] = 7600;
+    q.days[1] = friday - 1;
+    q.closes[1] = 7000;  // Thursday as it stood when last asked, mid-session
+    q.price = 7000;
+    bool gap = true;
+    check(applyCnbcQuoteFor(quote.data(), quote.size(), ".SPX", q, &gap) && !gap, "the next session is taken");
+    check(q.count == 3 && q.days[2] == friday && near(q.closes[2], 7561.67) && near(q.price, 7561.67),
+          "Friday is the newest close");
+    check(near(q.closes[1], 7592.40), "and Thursday ends where the quote's change says it did");
+    check(near(previousClose(q), 7592.40), "which is what the day is measured from");
+    // The same quote again changes nothing more.
+    check(applyCnbcQuoteFor(quote.data(), quote.size(), ".SPX", q, &gap) && !gap && q.count == 3 &&
+              near(q.closes[1], 7592.40),
+          "asked twice, held once");
+    Quote hole;
+    hole.valid = true;
+    hole.count = 2;
+    hole.days[0] = friday - 3;
+    hole.closes[0] = 7600;
+    hole.days[1] = friday - 2;
+    hole.closes[1] = 7000;
+    hole.price = 7000;
+    check(!applyCnbcQuoteFor(quote.data(), quote.size(), ".SPX", hole, &gap) && gap, "a session missing is a gap");
+    check(hole.count == 2 && near(hole.closes[1], 7000) && near(hole.price, 7000), "and the history is left alone");
+    check(applyCnbcQuoteFor(quote.data(), quote.size(), ".SPX", hole) && hole.count == 3,
+          "bars just read take it as before");
   }
 
   return failures == 0 ? 0 : 1;
