@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../../activities/Activity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxHowToState.h"
 #include "../ui/ToyboxScreen.h"
 #include "MancalaCore.h"
@@ -32,6 +33,9 @@ class MancalaActivity final : public Activity {
   void buildMenu(toybox::Screen& screen);
   void buildBoard(toybox::Screen& screen);
   bool machineToMove() const;
+  void takeBack();
+  void showHint();
+  void recordIfOver();
 
   View view_ = View::Menu;
   mancala::Config config_;
@@ -45,6 +49,13 @@ class MancalaActivity final : public Activity {
   uint32_t machineAtMs_ = 0;  // when the machine moves; 0 while it is not waiting to
   uint8_t fastPaints_ = 0;
   bool cleanNext_ = true;
+
+  // The positions it was the player's turn in, for taking a move back (this
+  // visit only); the pit a hint points at; and the record against each level.
+  sologame::History<mancala::Board, 32> history_;
+  int8_t hint_ = -1;
+  bool recorded_ = false;
+  sologame::LevelStats stats_;
 
   toyboxhowto::State howTo_;
   toybox::Interactions interactions_;

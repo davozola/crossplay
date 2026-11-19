@@ -32,9 +32,12 @@ enum : fui::ActionId {
   ActionPit,  // value: the slot
   ActionAgain,
   ActionMenu,
+  ActionUndo,
+  ActionHint,
 };
 
 constexpr char kSavePath[] = "/.crosspoint/mancala.sav";
+constexpr char kStatsPath[] = "/.crosspoint/mancala-levels.cfg";
 constexpr uint32_t kMachineThinksMs = 900;  // long enough to see what you did first
 constexpr uint8_t kCleanAfterPaints = 10;
 constexpr int kBottomReserve = 40;
@@ -112,6 +115,7 @@ void MancalaActivity::onEnter() {
   toybox::ensureFonts(renderer);
   rng_ = static_cast<uint32_t>(millis()) * 2654435761u + 1u;
   load();
+  sologame::loadStats("MANC", kStatsPath, stats_);
   view_ = View::Menu;
   cleanNext_ = true;
   requestUpdate();
@@ -150,11 +154,51 @@ void MancalaActivity::newGame() {
   captured_ = 0;
   movedAgain_ = false;
   machineAtMs_ = 0;
+  history_.clear();
+  hint_ = -1;
+  recorded_ = false;
   save();
+}
+
+// Back to before the player's last move, the machine's answer undone with it.
+void MancalaActivity::takeBack() {
+  if (config_.friendly || machineToMove() || !history_.pop(board_)) return;
+  played_ = -1;
+  last_ = -1;
+  captured_ = 0;
+  movedAgain_ = false;
+  hint_ = -1;
+  inProgress_ = true;
+  recorded_ = false;
+  cleanNext_ = true;
+  save();
+}
+
+// The pit the hard level would play for the side to move.
+void MancalaActivity::showHint() {
+  if (machineToMove() || mc::over(board_)) return;
+  mc::Config hard = config_;
+  hard.level = mc::kLevels - 1;
+  hint_ = static_cast<int8_t>(mc::bestMove(board_, mc::depthOf(hard), rng_));
+}
+
+// A finished game against the machine is counted against its level, once.
+void MancalaActivity::recordIfOver() {
+  if (recorded_ || !mc::over(board_)) return;
+  recorded_ = true;
+  history_.clear();
+  if (config_.friendly) return;
+  const int me = board_.slot[mc::kSouthStore];
+  const int them = board_.slot[mc::kNorthStore];
+  stats_.count(config_.level, me > them ? 0 : (me < them ? 1 : 2));
+  sologame::saveStats("MANC", kStatsPath, stats_);
 }
 
 void MancalaActivity::move(const int slot) {
   if (!mc::legal(board_, slot)) return;
+  // The player's own moves are what can be taken back.
+  if (!config_.friendly && board_.turn == mc::South) history_.push(board_);
+  hint_ = -1;
   const mc::Outcome out = mc::play(board_, slot);
   played_ = static_cast<int8_t>(slot);
   last_ = out.last;
@@ -163,6 +207,7 @@ void MancalaActivity::move(const int slot) {
   inProgress_ = !out.ended;
   if (out.ended) cleanNext_ = true;
   save();
+  recordIfOver();
 }
 
 void MancalaActivity::loop() {
@@ -247,6 +292,14 @@ void MancalaActivity::route(const fui::ActionEvent& event) {
       view_ = View::Menu;
       cleanNext_ = true;
       break;
+    case ActionUndo:
+      if (view_ != View::Play) return;
+      takeBack();
+      break;
+    case ActionHint:
+      if (view_ != View::Play) return;
+      showHint();
+      break;
     case ActionPit:
       if (view_ != View::Play || machineToMove() || !mc::legal(board_, event.value)) return;
       haptic_feedback::touchAction(true);
@@ -290,6 +343,16 @@ void MancalaActivity::buildMenu(toybox::Screen& screen) {
   choice(screen, lab::rect(x, y, inner, rowH), "FIRST",
          config_.first ? (config_.friendly ? "TOP" : "MACHINE") : (config_.friendly ? "BOTTOM" : "YOU"), ActionFirst);
   y += rowH + gap + 6;
+  // How it stands against the machine at that level.
+  if (!config_.friendly) {
+    char record[64];
+    std::snprintf(record, sizeof(record), "AGAINST %s: %d WON, %d LOST, %d DRAWN", mc::levelName(config_),
+                  stats_.won[config_.level % sologame::kStatLevels] % 10000,
+                  stats_.lost[config_.level % sologame::kStatLevels] % 10000,
+                  stats_.drawn[config_.level % sologame::kStatLevels] % 10000);
+    lab::caption(screen, x + 4, y, inner - 8, record);
+    y += toybox::kTileCut.inkHeight + 10;
+  }
 
   // New game, large; continue beside it when there is one to continue.
   const int howH = 48;
@@ -347,7 +410,26 @@ void MancalaActivity::buildBoard(toybox::Screen& screen) {
   const int x = toybox::kMargin;
   const int inner = width - x * 2;
   const int top = toybox::kChromeHeight + 8;
-  const int bottom = screen.device().height - kBottomReserve - 4;
+  // Against the machine a row under the board takes a move back or asks for one.
+  const bool helpRow = !config_.friendly && !finished;
+  const int helpH = 46;
+  const int pageBottom = screen.device().height - kBottomReserve - 4;
+  const int bottom = pageBottom - (helpRow ? helpH + 8 : 0);
+  if (helpRow) {
+    const int half = (screen.device().width - toybox::kMargin * 2 - 8) / 2;
+    fui::ButtonProps side;
+    side.styles = toybox::rowStyles();
+    side.text = toybox::buttonText(screen.theme());
+    side.radius = kRadius;
+    side.label = "UNDO";
+    side.action = ActionUndo;
+    side.enabled = history_.count > 0 && !machineToMove();
+    screen.button(side, lab::rect(toybox::kMargin, pageBottom - helpH, half, helpH));
+    side.label = "HINT";
+    side.action = ActionHint;
+    side.enabled = !machineToMove();
+    screen.button(side, lab::rect(toybox::kMargin + half + 8, pageBottom - helpH, half, helpH));
+  }
   const int storeH = 80;
   const int gap = 8;
   const int pitsTop = top + storeH + gap;
@@ -398,6 +480,11 @@ void MancalaActivity::buildBoard(toybox::Screen& screen) {
       if (slot == last_) {
         screen.target().stroke(lab::rect(r.x + 8, r.y + 8, r.width - 16, r.height - 16), kInk, 2,
                                static_cast<uint8_t>(radius - 8));
+      }
+      // The hinted pit: a second, heavy frame inside its own.
+      if (slot == hint_) {
+        screen.target().stroke(lab::rect(r.x + 10, r.y + 10, r.width - 20, r.height - 20), kInk, 5,
+                               static_cast<uint8_t>(radius > 10 ? radius - 10 : 0));
       }
       // The count on the outer end, the seeds toward the middle of the board.
       std::snprintf(number, sizeof(number), "%d", board_.slot[slot]);
