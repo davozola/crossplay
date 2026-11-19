@@ -7,12 +7,15 @@
 // behind it: by itself when the app opens and the last fetch is two hours old
 // or more, and whenever the reader asks. The radio joins the saved network
 // with no screen of its own, and the only sign is a word at the foot of the
-// page. A fetch runs a step at a time between passes of the loop, so the page
-// in front keeps answering, and it replaces the edition only if it arrived.
+// page. The transfer itself runs on a task of its own, so the page in front
+// keeps answering and Back stops it; what arrived is put on the card back on
+// the loop, section by section, and a section that did not arrive keeps what
+// it had.
 //
 // The stories are Kagi's (news.kagi.com, CC BY-NC 4.0): syntheses of what many
 // outlets reported, each ending with its sources and that attribution.
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -47,6 +50,7 @@ class NewsActivity final : public Activity {
   // A fetch of the edition. Quiet: behind the page, with no notice at the end.
   void startEdition(bool quiet);
   void stepEdition();
+  void commitEdition();
   void endEdition(const char* headline, const std::string& message, bool kept);
   bool autoFetchDue() const;
   bool fetchCategories(news::CategoriesReader& into, size_t& bytes, uint32_t& lowestHeap);
@@ -102,16 +106,22 @@ class NewsActivity final : public Activity {
   int restoreAt_ = -1;
   char pageLabel_[24] = "";
 
-  // The edition being fetched, between steps.
+  // The edition being fetched. Once the worker is running it alone touches
+  // this, except for the three atomics, until it says `done`.
   struct EditionJob {
-    enum class Stage : uint8_t { Paint, Join, Categories, Sections, Commit };
+    enum class Stage : uint8_t { Paint, Join, Working, Commit };
+    enum class Outcome : uint8_t { Fetched, NoKagi, Latest, Stopped };
     bool quiet = false;
     Stage stage = Stage::Paint;
-    size_t section = 0;
+    Outcome outcome = Outcome::Fetched;
+    std::atomic<bool> cancel{false};
+    std::atomic<bool> done{false};
+    std::atomic<int> at{-1};               // the section in hand, for the busy page
     std::vector<news::Category> sections;  // the choice when the fetch began
     news::CategoriesReader categories;
     news::Deduper once;
     std::vector<std::vector<news::Item>> fresh;
+    std::vector<uint8_t> arrived;  // one a section: something could be read
     std::vector<std::string> files;
     std::string failed;  // in the batch, but nothing could be read
     std::string absent;  // not in today's batch at all
@@ -119,8 +129,18 @@ class NewsActivity final : public Activity {
     uint32_t lowestHeap = 0xFFFFFFFFu;
     uint32_t started = 0;
     uint32_t created = 0;
+    uint32_t haveEdition = 0;  // the edition on the card when this began
+    bool haveWhole = false;    // and it has every chosen section
     int total = 0;
+    void* task = nullptr;
+    bool stackExternal = false;
   };
+  static void work(EditionJob& job);
+  static void workTrampoline(void* job);
+  // Waits for the worker to park and takes it down. The job is the worker's
+  // until this returns.
+  void reapWorker();
+  int shownSection_ = -2;
   std::unique_ptr<EditionJob> job_;
   std::optional<autorefresh::Radio> radio_;
 

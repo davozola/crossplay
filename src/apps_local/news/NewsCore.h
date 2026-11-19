@@ -28,7 +28,7 @@ constexpr int kMaxSections = 8;
 constexpr int kStoriesPerSection = 8;
 // Asked of the API per category; more than is kept, so that a story dropped as
 // another section's duplicate has a replacement.
-constexpr int kStoriesAsked = 12;
+constexpr int kStoriesAsked = 10;
 constexpr int kSourcesShown = 6;
 
 struct Category {

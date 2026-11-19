@@ -8,6 +8,13 @@
 #include <cstdio>
 #include <ctime>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/idf_additions.h>
+#include <freertos/task.h>
+#endif
+
 #include "../../SilentRestart.h"
 #include "../../activities/network/WifiSelectionActivity.h"
 #include "../../components/UITheme.h"
@@ -61,6 +68,21 @@ std::string slugsOf(const std::vector<news::Category>& sections) {
   std::string out;
   for (const news::Category& c : sections) out += c.slug + "\n";
   return out;
+}
+
+// While an edition transfers, anything this big or bigger is asked of the
+// PSRAM first: the stories' text is tens of kilobytes at a time and the
+// internal heap is what TLS has to live in. The device's own figure after.
+constexpr size_t kExternalFromBytes = 64;
+constexpr size_t kExternalFromDefault = 4096;  // CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL
+constexpr uint32_t kWorkerStack = 16384;
+
+void preferExternal(const bool on) {
+#if defined(ARDUINO_ARCH_ESP32)
+  heap_caps_malloc_extmem_enable(on ? kExternalFromBytes : kExternalFromDefault);
+#else
+  (void)on;
+#endif
 }
 
 void sampleHeap(uint32_t& lowest) {
@@ -132,6 +154,11 @@ void NewsActivity::onEnter() {
 
 void NewsActivity::onExit() {
   Activity::onExit();
+  if (job_) {
+    job_->cancel = true;
+    reapWorker();
+    preferExternal(false);
+  }
   job_.reset();
   radio_.reset();
   if (WiFi.getMode() != WIFI_MODE_NULL && !devmode::holdsRadio()) {
@@ -299,7 +326,16 @@ bool NewsActivity::autoFetchDue() const {
 }
 
 void NewsActivity::startEdition(const bool quiet) {
-  if (job_) return;
+  if (job_) {
+    // Asked for while one is already running behind the page: that one comes
+    // to the front.
+    if (!quiet && job_->quiet) {
+      job_->quiet = false;
+      phase_ = Phase::Busy;
+      requestUpdate();
+    }
+    return;
+  }
   auto job = makeUniqueNoThrow<EditionJob>();
   if (!job) {
     LOG_ERR("NEWS", "OOM: edition job");
@@ -307,6 +343,12 @@ void NewsActivity::startEdition(const bool quiet) {
   }
   job->quiet = quiet;
   job->sections = chosen_;
+  {
+    std::string fetchedFor;
+    readFile(kEditionSectionsPath, fetchedFor);
+    job->haveEdition = edition_;
+    job->haveWhole = edition_ != 0 && fetchedFor == slugsOf(chosen_);
+  }
   job->started = millis();
   RenderLock lock(*this);
   job_ = std::move(job);
@@ -316,7 +358,14 @@ void NewsActivity::startEdition(const bool quiet) {
 
 void NewsActivity::endEdition(const char* headline, const std::string& message, const bool kept) {
   const bool quiet = job_ && job_->quiet;
-  job_.reset();
+  if (job_) reapWorker();
+  preferExternal(false);
+  {
+    // The page being drawn may be reading the job.
+    RenderLock lock(*this);
+    job_.reset();
+  }
+  shownSection_ = -2;
   // The radio goes down with the job, on every way out.
   radio_.reset();
   const time_t now = time(nullptr);
@@ -328,8 +377,9 @@ void NewsActivity::endEdition(const char* headline, const std::string& message, 
     RenderLock lock(*this);
     loadSection(showingFavourites() ? -1 : view_);
   }
-  if (quiet) {
-    LOG_INF("NEWS", "quiet fetch: %s. %s", headline, message.c_str());
+  if (quiet || message.empty()) {
+    LOG_INF("NEWS", "fetch ended with no notice: %s. %s", headline, message.c_str());
+    if (phase_ == Phase::Busy) phase_ = Phase::Front;
     requestUpdate();
     return;
   }
@@ -337,13 +387,110 @@ void NewsActivity::endEdition(const char* headline, const std::string& message, 
   requestUpdate();
 }
 
-void NewsActivity::stepEdition() {
-  EditionJob& job = *job_;
-  using Stage = EditionJob::Stage;
+// The transfer, on its own task: the list of sections, then each chosen one.
+// It touches the job, the card and the network, and nothing of the activity.
+void NewsActivity::work(EditionJob& job) {
   const auto meter = [&job](const size_t len) {
     job.bytes += len;
     sampleHeap(job.lowestHeap);
   };
+  {
+    news::JsonStream stream(job.categories);
+    HttpDownloader::fetchUrl(news::kApiCategories, [&stream, &meter, &job](const uint8_t* data, const size_t len) {
+      meter(len);
+      return !job.cancel && stream.feed(reinterpret_cast<const char*>(data), len);
+    });
+  }
+  job.created = news::parseDate(job.categories.createdAt);
+  if (job.cancel) {
+    job.outcome = EditionJob::Outcome::Stopped;
+    return;
+  }
+  if (job.categories.categories.empty() || job.created == 0) {
+    job.outcome = EditionJob::Outcome::NoKagi;
+    return;
+  }
+  if (job.haveWhole && job.created <= job.haveEdition) {
+    job.outcome = EditionJob::Outcome::Latest;
+    return;
+  }
+  Storage.ensureDirectoryExists(kDir);
+  Storage.ensureDirectoryExists(kStoryDir);
+  job.fresh.resize(job.sections.size());
+  job.arrived.assign(job.sections.size(), 0);
+  job.files.reserve(job.sections.size() * static_cast<size_t>(news::kStoriesPerSection));
+  for (size_t s = 0; s < job.sections.size() && !job.cancel; ++s) {
+    job.at = static_cast<int>(s);
+    std::string uuid;
+    for (const news::Category& c : job.categories.categories) {
+      if (c.slug == job.sections[s].slug) uuid = c.uuid;
+    }
+    if (uuid.empty()) {
+      job.absent += (job.absent.empty() ? "" : ", ") + job.sections[s].name;
+      continue;
+    }
+    job.fresh[s].reserve(static_cast<size_t>(news::kStoriesPerSection));
+    int seen = 0;
+    // Twice at most: a section that drops once usually comes the second time.
+    for (int attempt = 0; attempt < 2 && seen == 0 && !job.cancel; ++attempt) {
+      if (attempt > 0) delay(1500);
+      Taker taker(job.once, job.fresh[s], job.files);
+      news::StoriesReader reader(taker);
+      news::JsonStream stream(reader);
+      HttpDownloader::fetchUrl(news::storiesUrl(uuid), [&stream, &meter, &job](const uint8_t* data, const size_t len) {
+        meter(len);
+        return !job.cancel && stream.feed(reinterpret_cast<const char*>(data), len);
+      });
+      seen = reader.seen();
+      LOG_INF("NEWS", "%s: %d kept of %d read, try %d, heap %lu", job.sections[s].slug.c_str(),
+              static_cast<int>(job.fresh[s].size()), seen, attempt + 1, static_cast<unsigned long>(ESP.getFreeHeap()));
+    }
+    if (job.cancel) break;
+    if (seen == 0) {
+      job.failed += (job.failed.empty() ? "" : ", ") + job.sections[s].name;
+    } else {
+      job.arrived[s] = 1;
+    }
+    job.total += static_cast<int>(job.fresh[s].size());
+  }
+  job.outcome = job.cancel ? EditionJob::Outcome::Stopped : EditionJob::Outcome::Fetched;
+}
+
+void NewsActivity::workTrampoline(void* job) {
+  EditionJob& mine = *static_cast<EditionJob*>(job);
+  work(mine);
+  mine.done = true;
+#if defined(ARDUINO_ARCH_ESP32)
+  // Parked, to be deleted from the loop: a task whose stack came from
+  // heap_caps must not delete itself.
+  vTaskSuspend(nullptr);
+#endif
+}
+
+void NewsActivity::reapWorker() {
+#if defined(ARDUINO_ARCH_ESP32)
+  if (!job_ || job_->task == nullptr) return;
+  const TaskHandle_t task = static_cast<TaskHandle_t>(job_->task);
+  // A transfer stops at its next piece of data; one still connecting stops
+  // when the connection gives up.
+  while (!job_->done) vTaskDelay(pdMS_TO_TICKS(20));
+  for (int i = 0; i < 200 && eTaskGetState(task) != eSuspended; ++i) vTaskDelay(1);
+  if (eTaskGetState(task) == eSuspended) {
+    if (job_->stackExternal) {
+      vTaskDeleteWithCaps(task);
+    } else {
+      vTaskDelete(task);
+    }
+  } else {
+    LOG_ERR("NEWS", "the fetch task did not park; leaking it rather than deleting it mid-run");
+  }
+  job_->task = nullptr;
+#endif
+}
+
+void NewsActivity::stepEdition() {
+  EditionJob& job = *job_;
+  using Stage = EditionJob::Stage;
   switch (job.stage) {
     case Stage::Paint:
       // What the reader sees while this runs -- the card's edition with a word
@@ -353,7 +500,7 @@ void NewsActivity::stepEdition() {
       requestUpdateAndWait();
       return;
 
-    case Stage::Join:
+    case Stage::Join: {
       if (WiFi.status() != WL_CONNECTED) {
         radio_.emplace();
         if (!radio_->online()) {
@@ -361,114 +508,167 @@ void NewsActivity::stepEdition() {
           return;
         }
       }
-      job.stage = Stage::Categories;
-      return;
-
-    case Stage::Categories: {
-      if (!fetchCategories(job.categories, job.bytes, job.lowestHeap)) {
-        endEdition("Could not reach Kagi News",
-                   "The list of today's sections did not arrive. The edition on the card is untouched.", false);
-        return;
+      preferExternal(true);
+      job.stage = Stage::Working;
+#if defined(ARDUINO_ARCH_ESP32)
+      TaskHandle_t handle = nullptr;
+      if (xTaskCreatePinnedToCore(&NewsActivity::workTrampoline, "news_fetch", kWorkerStack, &job, 1, &handle, 1) ==
+          pdPASS) {
+        job.task = handle;
+      } else if (xTaskCreatePinnedToCoreWithCaps(&NewsActivity::workTrampoline, "news_fetch", kWorkerStack, &job, 1,
+                                                 &handle, 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS) {
+        job.task = handle;
+        job.stackExternal = true;
+        LOG_INF("NEWS", "fetch task stack in PSRAM");
+      } else {
+        // No task to be had: the transfer runs here, and the page waits for it.
+        LOG_ERR("NEWS", "no fetch task; fetching on the loop");
+        work(job);
+        job.done = true;
       }
-      job.created = news::parseDate(job.categories.createdAt);
-      std::string fetchedFor;
-      readFile(kEditionSectionsPath, fetchedFor);
-      if (edition_ != 0 && job.created <= edition_ && fetchedFor == slugsOf(job.sections)) {
-        endEdition("Already the latest",
-                   std::string("Kagi has published nothing newer than the edition of ") + editionText_ +
-                       " that is on the card. It makes one a day, around midday UTC.",
-                   false);
-        return;
-      }
-      Storage.ensureDirectoryExists(kDir);
-      Storage.ensureDirectoryExists(kStoryDir);
-      job.fresh.resize(job.sections.size());
-      job.files.reserve(job.sections.size() * static_cast<size_t>(news::kStoriesPerSection));
-      job.section = 0;
-      job.stage = Stage::Sections;
+#else
+      work(job);
+      job.done = true;
+#endif
       return;
     }
 
-    case Stage::Sections: {
-      // One section to a step: each is told once across the whole edition.
-      const size_t s = job.section++;
-      if (job.section >= job.sections.size()) job.stage = Stage::Commit;
-      if (s >= job.sections.size()) return;
-      std::string uuid;
-      for (const news::Category& c : job.categories.categories) {
-        if (c.slug == job.sections[s].slug) uuid = c.uuid;
-      }
-      if (uuid.empty()) {
-        job.absent += (job.absent.empty() ? "" : ", ") + job.sections[s].name;
-        return;
-      }
-      job.fresh[s].reserve(static_cast<size_t>(news::kStoriesPerSection));
-      Taker taker(job.once, job.fresh[s], job.files);
-      news::StoriesReader reader(taker);
-      news::JsonStream stream(reader);
-      HttpDownloader::fetchUrl(news::storiesUrl(uuid), [&stream, &meter](const uint8_t* data, const size_t len) {
-        meter(len);
-        return stream.feed(reinterpret_cast<const char*>(data), len);
-      });
-      LOG_INF("NEWS", "%s: %d kept of %d read, heap %lu", job.sections[s].slug.c_str(),
-              static_cast<int>(job.fresh[s].size()), reader.seen(), static_cast<unsigned long>(ESP.getFreeHeap()));
-      if (reader.seen() == 0) job.failed += (job.failed.empty() ? "" : ", ") + job.sections[s].name;
-      job.total += static_cast<int>(job.fresh[s].size());
-      return;
-    }
-
-    case Stage::Commit: {
-      const uint32_t seconds = (millis() - job.started) / 1000;
-      char numbers[160];
-      std::snprintf(numbers, sizeof(numbers), "%d stories. %lu KB in %lu s. Lowest free memory %lu KB.", job.total,
-                    static_cast<unsigned long>(job.bytes / 1024), static_cast<unsigned long>(seconds),
-                    static_cast<unsigned long>(job.lowestHeap == 0xFFFFFFFFu ? 0 : job.lowestHeap / 1024));
-      writeFile(kReportPath, std::string(job.categories.createdAt) + "\n" + numbers + "\nfailed: " + job.failed +
-                                 "\nnot in the batch: " + job.absent + "\n");
-      LOG_INF("NEWS", "%s", numbers);
-
-      // Kept only whole: a section that did not transfer leaves the old edition be.
-      if (!job.failed.empty() || job.total == 0) {
-        for (const std::string& file : job.files) Storage.remove((std::string(kStoryDir) + "/" + file).c_str());
-        endEdition("Edition not kept",
-                   std::string("Not all of it arrived, so the one on the card stays. Nothing came for: ") +
-                       (job.failed.empty() ? "any section" : job.failed) + ". " + numbers,
-                   false);
-        return;
-      }
-
-      // The previous edition's stories go, except the ones this edition also has.
-      std::string previous;
-      if (readFile(kManifestPath, previous)) {
-        size_t at = 0;
-        while (at < previous.size()) {
-          size_t end = previous.find('\n', at);
-          if (end == std::string::npos) end = previous.size();
-          const std::string name = previous.substr(at, end - at);
-          at = end + 1;
-          bool still = name.empty();
-          for (const std::string& file : job.files) still = still || file == name;
-          if (!still) Storage.remove((std::string(kStoryDir) + "/" + name).c_str());
+    case Stage::Working:
+      if (!job.done) {
+        // The busy page says which section is in hand.
+        const int at = job.at;
+        if (at != shownSection_) {
+          shownSection_ = at;
+          if (phase_ == Phase::Busy) requestUpdate();
         }
+        return;
       }
-      std::string manifest;
-      for (const std::string& file : job.files) manifest += file + "\n";
-      writeFile(kManifestPath, manifest);
-      for (size_t s = 0; s < job.sections.size(); ++s) {
-        writeFile(sectionPath(job.sections[s].slug), news::packSection(job.fresh[s], job.created));
-      }
-      writeFile(kEditionSectionsPath, slugsOf(job.sections));
-      if (slugsOf(job.sections) == slugsOf(chosen_)) chosenChanged_ = false;
-      edition_ = job.created;
-      char label[16];
-      news::editionLabel(job.created, label, sizeof(label));
-      const std::string absent = job.absent;
-      endEdition("Today's edition is on the card",
-                 std::string("Kagi News, ") + label + ". " + numbers +
-                     (absent.empty() ? "" : " Not in today's batch: " + absent + "."),
-                 true);
+      reapWorker();
+      job.stage = Stage::Commit;
       return;
+
+    case Stage::Commit:
+      commitEdition();
+      return;
+  }
+}
+
+// What the worker brought, put on the card. Runs on the loop.
+void NewsActivity::commitEdition() {
+  EditionJob& job = *job_;
+  // The stories this fetch wrote that the edition on the card does not also use.
+  std::string previous;
+  readFile(kManifestPath, previous);
+  const auto inPrevious = [&previous](const std::string& name) {
+    size_t at = 0;
+    while (at < previous.size()) {
+      size_t end = previous.find('\n', at);
+      if (end == std::string::npos) end = previous.size();
+      if (previous.compare(at, end - at, name) == 0) return true;
+      at = end + 1;
     }
+    return false;
+  };
+  const auto dropNew = [&job, &inPrevious] {
+    for (const std::string& file : job.files) {
+      if (!inPrevious(file)) Storage.remove((std::string(kStoryDir) + "/" + file).c_str());
+    }
+  };
+
+  if (job.outcome == EditionJob::Outcome::Stopped) {
+    dropNew();
+    endEdition("Stopped", "", false);
+    return;
+  }
+  if (job.outcome == EditionJob::Outcome::NoKagi) {
+    endEdition("Could not reach Kagi News",
+               "The list of today's sections did not arrive. The edition on the card is untouched.", false);
+    return;
+  }
+  // What Kagi offers changes; the chooser always shows the latest list seen.
+  writeFile(kCategoriesPath, news::packCategories(job.categories.categories));
+  {
+    RenderLock lock(*this);
+    categories_ = job.categories.categories;
+  }
+  if (job.outcome == EditionJob::Outcome::Latest) {
+    endEdition("Already the latest",
+               std::string("Kagi has published nothing newer than the edition of ") + editionText_ +
+                   " that is on the card. It makes one a day, around midday UTC.",
+               false);
+    return;
+  }
+
+  const uint32_t seconds = (millis() - job.started) / 1000;
+  char numbers[160];
+  std::snprintf(numbers, sizeof(numbers), "%d stories. %lu KB in %lu s. Lowest free memory %lu KB.", job.total,
+                static_cast<unsigned long>(job.bytes / 1024), static_cast<unsigned long>(seconds),
+                static_cast<unsigned long>(job.lowestHeap == 0xFFFFFFFFu ? 0 : job.lowestHeap / 1024));
+  writeFile(kReportPath, std::string(job.categories.createdAt) + "\n" + numbers + "\nfailed: " + job.failed +
+                             "\nnot in the batch: " + job.absent + "\n");
+  LOG_INF("NEWS", "%s", numbers);
+
+  if (job.total == 0) {
+    dropNew();
+    endEdition("Nothing arrived",
+               std::string("No section could be read, so the edition on the card stays as it was. ") + numbers, false);
+    return;
+  }
+
+  std::string fetchedFor;
+  readFile(kEditionSectionsPath, fetchedFor);
+  const bool whole = job.failed.empty();
+  const bool sameDay = edition_ != 0 && job.created == edition_ && fetchedFor == slugsOf(job.sections);
+  std::string manifest;
+  if (whole && !sameDay) {
+    // A whole new edition: the previous one's stories go, except the ones this also has.
+    size_t at = 0;
+    while (at < previous.size()) {
+      size_t end = previous.find('\n', at);
+      if (end == std::string::npos) end = previous.size();
+      const std::string name = previous.substr(at, end - at);
+      at = end + 1;
+      bool still = name.empty();
+      for (const std::string& file : job.files) still = still || file == name;
+      if (!still) Storage.remove((std::string(kStoryDir) + "/" + name).c_str());
+    }
+  } else {
+    // Some sections keep what they had, so their stories stay on the card too.
+    manifest = previous;
+    if (!manifest.empty() && manifest.back() != '\n') manifest += '\n';
+  }
+  for (const std::string& file : job.files) {
+    if (whole && !sameDay) {
+      manifest += file + "\n";
+    } else if (!inPrevious(file)) {
+      manifest += file + "\n";
+    }
+  }
+  writeFile(kManifestPath, manifest);
+  for (size_t s = 0; s < job.sections.size(); ++s) {
+    // A section that did not arrive keeps the file it had.
+    if (s < job.arrived.size() && job.arrived[s]) {
+      writeFile(sectionPath(job.sections[s].slug), news::packSection(job.fresh[s], job.created));
+    }
+  }
+  // Marked when a section is owed, so the next fetch asks again rather than
+  // calling this the latest.
+  writeFile(kEditionSectionsPath, slugsOf(job.sections) + (whole ? "" : "\n!owed"));
+  if (slugsOf(job.sections) == slugsOf(chosen_)) chosenChanged_ = false;
+  edition_ = job.created;
+  char label[16];
+  news::editionLabel(job.created, label, sizeof(label));
+  const std::string absent = job.absent;
+  if (whole) {
+    endEdition("Today's edition is on the card",
+               std::string("Kagi News, ") + label + ". " + numbers +
+                   (absent.empty() ? "" : " Not in today's batch: " + absent + "."),
+               true);
+  } else {
+    endEdition("Most of it is on the card",
+               std::string("Kagi News, ") + label + ". These did not arrive and keep what they had: " + job.failed +
+                   ". Fetch again to ask for them. " + numbers,
+               true);
   }
 }
 
@@ -506,7 +706,13 @@ void NewsActivity::openChooser() {
     if (readFile(kCategoriesPath, text)) news::unpackCategories(text, categories_);
   }
   if (categories_.empty()) {
-    // Never fetched: the list of what Kagi offers has to come from Kagi.
+    // Never fetched: the list of what Kagi offers has to come from Kagi. One
+    // request at a time, though: a fetch in hand is bringing that list too.
+    if (job_) {
+      showNotice("In a moment", "The list of sections arrives with the edition being fetched. Try again when it has.");
+      requestUpdate();
+      return;
+    }
     ensureConnected(Pending::Categories);
     return;
   }
@@ -580,16 +786,30 @@ void NewsActivity::loop() {
   namespace fui = freeink::ui;
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen_ = true;
 
-  // A fetch in hand runs one step a pass. A quiet one waits while a story or
-  // the chooser is open, so a page being read is never the one that stalls;
-  // it gives up rather than hold the radio for long.
+  // A fetch in hand: its transfer is on a task of its own, so everything
+  // below still runs while it does.
   if (job_) {
-    const bool waits = job_->quiet && (phase_ == Phase::Reading || phase_ == Phase::Chooser);
-    if (!waits) {
+    using Stage = EditionJob::Stage;
+    if (job_->stage != Stage::Working) {
+      // Painting, joining and putting it on the card are short and block; a
+      // quiet one waits for a story or the chooser to be left before the last.
+      const bool waits =
+          job_->quiet && job_->stage == Stage::Commit && (phase_ == Phase::Reading || phase_ == Phase::Chooser);
+      if (!waits) {
+        stepEdition();
+        return;
+      }
+    } else {
       stepEdition();
+      if (!job_) return;
+    }
+    // Back on the busy page stops it; the page says so until the worker has.
+    if (phase_ == Phase::Busy && backPressSeen_ && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      backPressSeen_ = false;
+      job_->cancel = true;
+      requestUpdate();
       return;
     }
-    if (millis() - job_->started > 180000u) endEdition("Put off", "The page in front was being read.", false);
   }
 
   if (pending_ != Pending::None) {
@@ -751,6 +971,12 @@ void NewsActivity::loop() {
       toggleFavourite();
       break;
     case newsui::ActionBack:
+      // On the busy page it stops the fetch; the page stays until the worker has.
+      if (phase_ == Phase::Busy && job_) {
+        job_->cancel = true;
+        requestUpdate();
+        break;
+      }
       if (phase_ == Phase::Reading && showingFavourites()) loadSection(-1);
       phase_ = Phase::Front;
       requestUpdate();
@@ -788,7 +1014,17 @@ void NewsActivity::render(RenderLock&&) {
     case Phase::Busy: {
       newsui::NoticeModel model;
       model.headline = "Fetching from Kagi News";
-      model.message = "An edition takes a minute or two. The one on the card stays until the new one has arrived.";
+      std::string busy = "An edition takes a minute or two. The one on the card stays until the new one has arrived.";
+      if (job_ && job_->cancel) {
+        model.headline = "Stopping";
+        busy = "Leaving the edition on the card as it was.";
+      } else if (job_ && shownSection_ >= 0 && shownSection_ < static_cast<int>(job_->sections.size())) {
+        busy = job_->sections[static_cast<size_t>(shownSection_)].name + ", section " +
+               std::to_string(shownSection_ + 1) + " of " + std::to_string(job_->sections.size()) +
+               ". The edition on the card stays until this one has arrived. Back stops it.";
+      }
+      model.message = busy.c_str();
+      model.backButton = true;
       newsui::buildNotice(screen, ink, model);
       what = "News busy";
       break;
