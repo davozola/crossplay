@@ -27,7 +27,14 @@ class TodayActivity final : public Activity {
   // Joined Wi-Fi -> Ready -> the status frame is painted -> Running.
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
 
-  void startRefresh();
+  // `asked` is a refresh somebody tapped for, which says so when it fails; one
+  // the page starts by itself keeps quiet and leaves what it shows.
+  void startRefresh(bool asked = true);
+  // A fetch behind the page: what the card holds stays up, with a small tag in
+  // the corner, and is replaced when the new round arrives.
+  bool behindDue_ = false;
+  bool behindPainted_ = false;
+  bool behindAsked_ = false;
   // The radio is up only for a fetch: joined, used and put down again, so the
   // page can nap between minutes instead of idling at ~80mA with Wi-Fi held.
   int fetchRound(char* report, size_t size);

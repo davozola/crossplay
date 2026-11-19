@@ -197,7 +197,7 @@ void NavalActivity::onEnter() {
   quiet_.touched();
   requestUpdate();
   // Left on auto, it comes back on auto, with a fetch straight away.
-  if (autoMinutes_ > 0 && placeCount_ > 0) startFetch();
+  if (autoMinutes_ > 0 && placeCount_ > 0) startFetch(false);
 }
 
 void NavalActivity::onExit() {
@@ -283,7 +283,16 @@ void NavalActivity::showStatus(const char* headline, const char* detail, const b
   view_ = View::Status;
 }
 
-void NavalActivity::startFetch() {
+void NavalActivity::startFetch(const bool asked) {
+  // With a forecast showing and a network to join alone, the page stays: the
+  // join and the fetch happen behind it.
+  if (haveSea_ && (view_ == View::Now || view_ == View::Day) && step_ == Step::Idle &&
+      (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone())) {
+    behindDue_ = true;
+    behindPainted_ = false;
+    behindAsked_ = asked;
+    return;
+  }
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false);
   wifiActivated_ = true;
@@ -550,6 +559,33 @@ void NavalActivity::loop() {
   }
   if (step_ == Step::Running) {
     runFetch();
+    return;
+  }
+
+  if (behindDue_ && step_ == Step::Idle) {
+    if (!behindPainted_) {
+      // The tag has to be on the panel before the radio blocks.
+      behindPainted_ = true;
+      requestUpdateAndWait();
+      return;
+    }
+    wifiActivated_ = true;
+    behindDue_ = false;
+    behindPainted_ = false;
+    if (behindAsked_) {
+      // Says what went wrong, and otherwise leaves the page where it was.
+      const View was = view_;
+      runFetch();
+      if (view_ == View::Now) view_ = was;
+    } else {
+      {
+        autorefresh::Radio radio;
+        if (radio.online()) fetchSea(false);
+      }
+      lastFetchMs_ = static_cast<uint32_t>(millis());
+      quiet_.touched();
+      requestUpdate();
+    }
     return;
   }
 
@@ -1596,6 +1632,7 @@ void NavalActivity::render(RenderLock&&) {
     const auto labels = mappedInput.mapLabels("Back", "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
+  if (behindDue_) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer();
   quiet_.paintPending = false;
 }

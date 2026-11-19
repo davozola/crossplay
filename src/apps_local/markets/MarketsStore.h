@@ -5,6 +5,7 @@
 // the three cards are set to, and the portfolio.
 
 #include <cstddef>
+#include <cstdint>
 
 #include "MarketsCore.h"
 
@@ -17,6 +18,10 @@ bool loadCached(markets::Asset asset, markets::Quote& out);
 // of the three arrived; `report` says how many of everything did, and which
 // did not.
 int fetchAll(markets::Quote quotes[markets::kAssets], char* report, size_t reportCap);
+
+// When the last round that brought something ended, Unix seconds by this
+// reader's clock, kept on the card; 0 when never, or the clock was not set.
+int64_t fetchedAt();
 
 // What the cards show. loadPicks() reads the card's choice into MarketsCore
 // and is safe to call again; every other function here calls it first.

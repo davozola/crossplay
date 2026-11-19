@@ -49,7 +49,10 @@ class MarketsActivity final : public Activity {
   void saveState();
   bool loadCached(markets::Asset asset);
   int fetchAll();
-  void startRefresh();
+  // `asked` is a refresh somebody tapped for, which says so when it fails; one
+  // the page starts by itself keeps quiet and leaves what it shows.
+  void startRefresh(bool asked = true);
+  void reportRound(int ok);
   void showStatus(const char* headline, const char* detail, bool dismissable);
   void route(const freeink::ui::ActionEvent& event);
   void reprice();
@@ -72,10 +75,17 @@ class MarketsActivity final : public Activity {
   // Turned on its side by a swipe up or down, and kept with the rest.
   void applyOrientation();
   bool wide_ = false;
-  int fetchedHour_ = -1;
-  int fetchedMinute_ = 0;
+  // When the quotes on the page were fetched, and that said for the page.
+  int64_t fetchedAt_ = 0;
+  char updated_[24] = "";
+  void sayUpdated();
   uint32_t lastFetchMs_ = 0;
   autorefresh::Quiet quiet_;
+  // A fetch behind the page: the quotes on the card stay up, with a small tag
+  // in the corner, and are replaced when the new ones arrive.
+  bool behindDue_ = false;
+  bool behindPainted_ = false;
+  bool behindAsked_ = false;
 
   const char* statusHeadline_ = "";
   const char* statusDetail_ = "";
