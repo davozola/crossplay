@@ -1,3 +1,4 @@
+#include <memory>
 // The Checkers rulebook, checked without a panel.
 //
 // The rule under most scrutiny is the mandatory capture, because it is BUILT IN
@@ -649,7 +650,52 @@ void testTheDrawRuleUsesFortyMovesEach() {
 
 }  // namespace
 
+// The levels against each other, both colours: the one that searches has to
+// beat the two-ply reader, and the stronger budget must not lose to the weaker.
+static int playOut(const checkers::Level light, const checkers::Level dark, checkers::Scratch& scratch) {
+  using namespace checkers;
+  Game game;
+  start(game);
+  for (int ply = 0; ply < 400 && !over(game); ++ply) {
+    Move move{};
+    if (!chooseMoveAt(game, game.turn == kLight ? light : dark, scratch, move)) break;
+    if (!play(game, move)) break;
+  }
+  const Outcome result = outcome(game);
+  return result == Outcome::LightWins ? 1 : (result == Outcome::DarkWins ? -1 : 0);
+}
+
+static void levelsAreInOrder() {
+  using namespace checkers;
+  auto scratch = std::make_unique<Scratch>();
+  const int a = playOut(Level::Medium, Level::Easy, *scratch);
+  const int b = playOut(Level::Easy, Level::Medium, *scratch);
+  std::printf("medium v easy: as light %d, as dark %d\n", a, -b);
+  CHECK(a == 1);
+  CHECK(b == -1);
+  const int c = playOut(Level::Strong, Level::Easy, *scratch);
+  const int d = playOut(Level::Easy, Level::Strong, *scratch);
+  std::printf("strong v easy: as light %d, as dark %d\n", c, -d);
+  CHECK(c == 1);
+  CHECK(d == -1);
+  const int e = playOut(Level::Strong, Level::Medium, *scratch);
+  const int f = playOut(Level::Medium, Level::Strong, *scratch);
+  std::printf("strong v medium: as light %d, as dark %d\n", e, -f);
+  CHECK(e + (-f) >= 0);
+  // The same position, the same move, every time.
+  Game game;
+  start(game);
+  Move one{};
+  Move two{};
+  long looked = 0;
+  CHECK(chooseMoveAt(game, Level::Strong, *scratch, one, &looked));
+  CHECK(chooseMoveAt(game, Level::Strong, *scratch, two));
+  CHECK(one.from == two.from && one.to == two.to);
+  CHECK(looked > 1000 && looked <= budgetOf(Level::Strong) + 1);
+}
+
 int main() {
+  levelsAreInOrder();
   testTheOpeningPositionIsTheStandardOne();
   testACaptureIsMandatoryAndNothingElseIsOffered();
   testAMultiJumpIsOneMoveEndingOnTheFinalSquare();

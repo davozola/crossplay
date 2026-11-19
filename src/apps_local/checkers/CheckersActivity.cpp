@@ -25,6 +25,10 @@ void CheckersActivity::onEnter() {
   screen = ck::Screen::Menu;
   menuSelected = -1;
   loadHistory();
+  loadLevel();
+  // Without it the opponent still plays, as the easy one.
+  scratch = makeUniqueNoThrow<ck::Scratch>();
+  if (!scratch) LOG_ERR("CHKR", "OOM: %u bytes for the search", static_cast<unsigned>(sizeof(ck::Scratch)));
   requestUpdate();
 }
 
@@ -32,12 +36,30 @@ void CheckersActivity::onEnter() {
 // fork-local file, the pattern knucklebones.sav set.
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
 constexpr char kHistoryPath[] = "/.crosspoint/checkers.sav";
+constexpr char kLevelPath[] = "/.crosspoint/checkers-level.cfg";
 #endif
 
 // wins losses draws outcome yourPieces theirPieces, then the 64 cells of the
 // final position, always from the light perspective so the ornament draws your
 // men nearest you whatever seat the game was played from.
 constexpr int kHistoryValues = 6 + ck::kCells;
+
+void CheckersActivity::loadLevel() {
+  level = ck::Level::Medium;
+  if (!Storage.exists(kLevelPath)) return;
+  HalFile file;
+  uint8_t saved = 1;
+  if (!Storage.openFileForRead("CHKR", kLevelPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved < ck::kLevels) level = static_cast<ck::Level>(saved);
+}
+
+void CheckersActivity::saveLevel() {
+  HalFile file;
+  if (!Storage.openFileForWrite("CHKR", kLevelPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(level);
+  file.write(&saved, 1);
+  file.flush();
+}
 
 void CheckersActivity::loadHistory() {
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
@@ -135,7 +157,8 @@ void CheckersActivity::takeOpponentTurn() {
   // look like a freeze followed by a skip.
   if (ck::over(game) || game.turn == seat) return;
   ck::Move move{};
-  if (!ck::chooseMove(game, move)) return;
+  const bool chose = scratch ? ck::chooseMoveAt(game, level, *scratch, move) : ck::chooseMove(game, move);
+  if (!chose) return;
   ck::play(game, move);
   requestUpdate();
 }
@@ -327,6 +350,13 @@ void CheckersActivity::gameLoop() {
         case checkui::MenuRow::Play:
           beginSoloGame();
           return;
+        case checkui::MenuRow::Level:
+          // A tap is the next one round: easy, medium, strong.
+          level = static_cast<ck::Level>((static_cast<int>(level) + 1) % ck::kLevels);
+          saveLevel();
+          menuSelected = static_cast<int>(checkui::MenuRow::Level);
+          requestUpdate();
+          return;
         case checkui::MenuRow::PlayNearby:
           enterLink(linkplay::GameId::Checkers);
           return;
@@ -390,6 +420,7 @@ void CheckersActivity::gameRender() {
       model.selected = menuSelected;
       model.hasHistory = hasHistory;
       model.wins = wins;
+      model.levelName = ck::levelName(level);
       model.losses = losses;
       model.draws = draws;
       model.lastOutcome = lastOutcome;

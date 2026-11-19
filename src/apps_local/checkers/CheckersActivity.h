@@ -9,6 +9,7 @@
 
 #include "../link/LinkActivity.h"
 #include "../ui/ToyboxScreen.h"
+#include "CheckersBrain.h"
 #include "CheckersCore.h"
 #include "CheckersFlow.h"
 
@@ -49,6 +50,8 @@ class CheckersActivity final : public linkplay::LinkActivity {
   // Written when a game ends, read once on entry -- knucklebones' pattern.
   void recordResult();
   void loadHistory();
+  void loadLevel();
+  void saveLevel();
 
   // What a tap on the play surface means. See Activity::surfaceMeaning().
   uint32_t surfaceMeaning() const override;
@@ -73,6 +76,11 @@ class CheckersActivity final : public linkplay::LinkActivity {
   // Which seat this device plays. Light in a solo game; the coin toss decides
   // it in a match, and nothing else in the app has to learn seats exist.
   uint8_t seat = checkers::kLight;
+
+  // How hard the built-in opponent plays, and the move lists its search needs:
+  // ~30 KB, on the heap, for as long as the app is open.
+  checkers::Level level = checkers::Level::Medium;
+  std::unique_ptr<checkers::Scratch> scratch;
 
   // The square in hand and where it may land. Owned here because it is the one
   // piece of state between two taps, but computed by the flow from the rules'
