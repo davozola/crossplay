@@ -137,16 +137,6 @@ void DiscoverActivity::onEnter() {
   view_ = View::List;
   page_ = 0;
   cleanNext_ = true;
-  // A list from another day is asked for again behind the page.
-  quietStage_ = 0;
-  const int32_t day = today();
-  if (day != 0 && autorefresh::canJoinAlone()) {
-    int y = 0, m = 0, d = 0;
-    dc::civilOfDay(day, y, m, d);
-    char now[12];
-    std::snprintf(now, sizeof(now), "%04d-%02d-%02d", y % 10000, m % 100, d % 100);
-    if (std::strcmp(now, foundOn_) != 0) quietStage_ = 1;
-  }
   requestUpdate();
 }
 
@@ -273,19 +263,6 @@ void DiscoverActivity::start(const Job job) {
   }
 }
 
-void DiscoverActivity::quietFetch() {
-  const View before = view_;
-  const bool kept = showingKept_;
-  statusBack_ = view_;
-  runSearch();
-  // Whatever went wrong, the list that was there stays and nothing is said.
-  if (view_ == View::Status) {
-    view_ = before;
-    showingKept_ = kept;
-  }
-  cleanNext_ = true;
-}
-
 void DiscoverActivity::runSearch() {
   view_ = statusBack_;
   const int32_t day = today();
@@ -361,21 +338,6 @@ void DiscoverActivity::runReadme() {
 }
 
 void DiscoverActivity::loop() {
-  if (quietStage_ == 1 && step_ == Step::Idle) {
-    quietStage_ = 2;
-    // The page with its mark has to be on the panel before the fetch blocks.
-    requestUpdateAndWait();
-    return;
-  }
-  if (quietStage_ == 2) {
-    quietStage_ = 0;
-    {
-      autorefresh::Radio radio;
-      if (radio.online()) quietFetch();
-    }
-    requestUpdate();
-    return;
-  }
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = job_ == Job::Search ? "ASKING GITHUB" : "FETCHING THE README";
@@ -792,7 +754,6 @@ void DiscoverActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (!cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) cleanNext_ = true;
   if (cleanNext_) fastPaints_ = 0;
-  if (quietStage_ != 0) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
 }

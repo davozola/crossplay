@@ -45,6 +45,8 @@ struct ForecastModel {
   const weather::Forecast* forecast = nullptr;  // null: nothing fetched yet
   bool fahrenheit = false;
   int autoMinutes = 0;
+  // On its side: 0 the day as a curve, 1 the week as bars, 2 now as instruments.
+  int wideLayout = 0;
   FaceSwap faces;
 };
 
@@ -119,10 +121,8 @@ struct BoardModel {
 };
 void buildBoard(toybox::Screen& screen, const BoardModel& model);
 
-// The same pages with the panel on its side: one city across the whole width,
-// and the board as columns.
+// One city with the panel on its side, in the arrangement the model names.
 void buildWideForecast(toybox::Screen& screen, const ForecastModel& model);
-void buildWideBoard(toybox::Screen& screen, const BoardModel& model);
 
 // The sky glyph in a `size` square centred on (cx, cy).
 void skyIcon(toybox::Screen& screen, weather::Sky sky, bool day, int cx, int cy, int size);

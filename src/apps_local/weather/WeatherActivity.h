@@ -70,6 +70,7 @@ class WeatherActivity final : public Activity {
   int layout_ = 0;
   // On its side: a swipe up or down turns the forecast and the board over.
   bool wide_ = false;
+  int wideLayout_ = 0;  // which of the three pages on its side
   bool onItsSide() const;
   int pressX_ = -1;
   weatherui::BoardCard cards_[weather::kMaxPlaces];
