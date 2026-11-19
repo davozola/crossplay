@@ -26,18 +26,17 @@ constexpr const char* kStoryDir = "/.crosspoint/news/a";
 constexpr const char* kFavouriteDir = "/.crosspoint/news/f";
 constexpr const char* kFavouriteIndex = "/.crosspoint/news/favourites.tsv";
 constexpr const char* kTextSizePath = "/.crosspoint/news/textsize.cfg";
+constexpr const char* kChosenPath = "/.crosspoint/news/sections.cfg";
+constexpr const char* kCategoriesPath = "/.crosspoint/news/categories.tsv";
 // The story files the current edition owns, so the next one can clear them.
 constexpr const char* kManifestPath = "/.crosspoint/news/edition-files.txt";
-// What the last refresh cost: read it off the card to check a device.
+// Which sections the edition on the card was fetched for, one slug to a line.
+constexpr const char* kEditionSectionsPath = "/.crosspoint/news/edition-sections.txt";
+// What the last fetch cost: read it off the card to check a device.
 constexpr const char* kReportPath = "/.crosspoint/news/last-refresh.txt";
 constexpr size_t kFileCap = 64u * 1024u;
-// Fewer stories than this in any section and the edition is not kept.
-constexpr int kMinStories = 3;
 
-void sectionPath(const int section, char* out, const size_t cap) {
-  std::snprintf(out, cap, "%s/edition-%d.tsv", kDir, section);
-}
-
+std::string sectionPath(const std::string& slug) { return std::string(kDir) + "/sec-" + news::articleFile(slug); }
 std::string storyPath(const std::string& id) { return std::string(kStoryDir) + "/" + news::articleFile(id); }
 std::string favouritePath(const std::string& id) { return std::string(kFavouriteDir) + "/" + news::articleFile(id); }
 
@@ -51,58 +50,53 @@ bool readFile(const std::string& path, std::string& text) {
   return Storage.exists(path.c_str()) && Storage.readFileToString("NEWS", path, kFileCap, text) && !text.empty();
 }
 
-// What a refresh measures, for the report and the notice that follows it.
-struct Meter {
-  size_t bytes = 0;
-  uint32_t lowestHeap = 0xFFFFFFFFu;
-  void sample(const size_t len) {
-    bytes += len;
-    const uint32_t free = ESP.getFreeHeap();
-    if (free < lowestHeap) lowestHeap = free;
-  }
-};
+std::string slugsOf(const std::vector<news::Category>& sections) {
+  std::string out;
+  for (const news::Category& c : sections) out += c.slug + "\n";
+  return out;
+}
+
+void sampleHeap(uint32_t& lowest) {
+  const uint32_t free = ESP.getFreeHeap();
+  if (free < lowest) lowest = free;
+}
 
 // Takes one category's stories as they are read: keeps the ones the edition
-// has not told yet, up to the category's share, and writes each to the card.
+// has not told yet, up to a section's worth, and writes each to the card.
 class Taker final : public news::StoriesReader::Sink {
  public:
-  Taker(news::Deduper& once, std::vector<news::Item>& items, std::vector<std::string>& files, const int take)
-      : once_(once), items_(items), files_(files), take_(take) {}
+  Taker(news::Deduper& once, std::vector<news::Item>& items, std::vector<std::string>& files)
+      : once_(once), items_(items), files_(files) {}
 
   bool story(news::Story& story) override {
-    if (static_cast<int>(items_.size()) >= news::kStoriesPerSection || taken_ >= take_) return false;
+    if (static_cast<int>(items_.size()) >= news::kStoriesPerSection) return false;
     if (!once_.accept(story)) return true;
     const std::string file = news::articleFile(story.id);
     if (!writeFile(std::string(kStoryDir) + "/" + file, news::buildDocument(story))) {
       LOG_ERR("NEWS", "could not keep a story on the card");
-      failed = true;
       return false;
     }
     news::Item item;
     item.id = story.id;
     item.title = story.title;
-    item.kicker = news::kickerOf(story);
     item.summary = story.summary.substr(0, story.summary.find('\n'));
     if (item.summary.size() > news::kLeadCap) {
       size_t cut = news::kLeadCap;
       while (cut > 0 && (static_cast<uint8_t>(item.summary[cut]) & 0xC0) == 0x80) --cut;
+      const size_t word = item.summary.rfind(' ', cut);
+      if (word != std::string::npos && word > cut / 2) cut = word;
       item.summary.resize(cut);
       item.summary += "...";
     }
     items_.push_back(std::move(item));
     files_.push_back(file);
-    ++taken_;
-    return taken_ < take_ && static_cast<int>(items_.size()) < news::kStoriesPerSection;
+    return static_cast<int>(items_.size()) < news::kStoriesPerSection;
   }
-
-  bool failed = false;
 
  private:
   news::Deduper& once_;
   std::vector<news::Item>& items_;
   std::vector<std::string>& files_;
-  int take_;
-  int taken_ = 0;
 };
 
 }  // namespace
@@ -114,15 +108,16 @@ std::unique_ptr<Activity> NewsActivity::create(GfxRenderer& renderer, MappedInpu
 void NewsActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
-  // No radio here: the edition opens from the card, and REFRESH is the one
-  // thing that asks for the network.
+  // No radio here: the edition opens from the card, and fetching one is the
+  // only thing that asks for the network.
+  loadChosen();
   loadFavourites();
   std::string size;
   if (readFile(kTextSizePath, size) && size[0] >= '0' && size[0] <= '2') {
     textSize_ = static_cast<uint8_t>(size[0] - '0');
   }
   loadSection(0);
-  phase_ = Phase::List;
+  phase_ = Phase::Front;
   requestUpdate();
 }
 
@@ -135,22 +130,45 @@ void NewsActivity::onExit() {
   }
 }
 
-void NewsActivity::loadSection(const int section) {
-  section_ = section;
+void NewsActivity::loadChosen() {
+  chosen_.clear();
+  std::string text;
+  if (readFile(kChosenPath, text)) news::unpackCategories(text, chosen_);
+  if (chosen_.size() > static_cast<size_t>(news::kMaxSections)) chosen_.resize(static_cast<size_t>(news::kMaxSections));
+  if (chosen_.empty()) {
+    for (int i = 0; i < news::kDefaultSectionCount; ++i) chosen_.push_back(news::kDefaultSections[i]);
+  }
+}
+
+void NewsActivity::saveChosen() {
+  Storage.ensureDirectoryExists(kDir);
+  if (!writeFile(kChosenPath, news::packCategories(chosen_))) LOG_ERR("NEWS", "could not keep the sections");
+}
+
+bool NewsActivity::isChosen(const std::string& slug) const {
+  for (const news::Category& c : chosen_) {
+    if (c.slug == slug) return true;
+  }
+  return false;
+}
+
+void NewsActivity::loadSection(const int view) {
+  view_ = view >= static_cast<int>(chosen_.size()) ? 0 : view;
   items_.clear();
   if (showingFavourites()) {
     items_ = favourites_;
-  } else {
-    char path[64];
-    sectionPath(section, path, sizeof(path));
+  } else if (!chosen_.empty()) {
     std::string text;
-    if (readFile(path, text)) news::unpackSection(text, items_, edition_);
+    uint32_t edition = 0;
+    if (readFile(sectionPath(chosen_[static_cast<size_t>(view_)].slug), text)) {
+      news::unpackSection(text, items_, edition);
+      if (edition != 0) edition_ = edition;
+    }
   }
-  topIndex_ = 0;
-  rowsBuilt_ = false;
+  news::editionLabel(edition_, editionText_, sizeof(editionText_));
+  pageStarts_.clear();
+  frontPage_ = 0;
 }
-
-bool NewsActivity::hasLead() const { return !items_.empty() && topIndex_ == 0; }
 
 void NewsActivity::loadFavourites() {
   favourites_.clear();
@@ -174,7 +192,7 @@ bool NewsActivity::isFavourite(const std::string& id) const {
 }
 
 void NewsActivity::toggleFavourite() {
-  if (reading_.id.empty() || document_.empty()) return;
+  if (reading_.id.empty() || title_.empty()) return;
   const std::string path = favouritePath(reading_.id);
   if (isFavourite(reading_.id)) {
     for (size_t i = 0; i < favourites_.size(); ++i) {
@@ -191,32 +209,33 @@ void NewsActivity::toggleFavourite() {
     }
     Storage.ensureDirectoryExists(kDir);
     Storage.ensureDirectoryExists(kFavouriteDir);
-    if (!writeFile(path, document_)) {
+    if (!writeFile(path, title_ + "\n\n" + body_)) {
       LOG_ERR("NEWS", "could not keep the favourite on the card");
       return;
     }
     favourites_.insert(favourites_.begin(), reading_);
   }
   saveFavourites();
-  if (showingFavourites()) items_ = favourites_;
-  rowsBuilt_ = false;
   requestUpdate();
 }
 
-void NewsActivity::ensureConnected() {
+void NewsActivity::ensureConnected(const Pending what) {
   if (WiFi.status() == WL_CONNECTED) {
     RenderLock lock(*this);
     phase_ = Phase::Busy;
-    fetchPending_ = true;
+    pending_ = what;
     requestUpdate();
     return;
   }
+  afterConnect_ = what;
   // The Back press that may be on record belongs to the screen about to stop
   // being on top; carried across the picker it would close the app on return.
   backPressSeen_ = false;
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
+                           const Pending wanted = afterConnect_;
+                           afterConnect_ = Pending::None;
                            if (result.isCancelled) {
                              requestUpdate();
                              return;
@@ -224,44 +243,45 @@ void NewsActivity::ensureConnected() {
                            {
                              RenderLock lock(*this);
                              phase_ = Phase::Busy;
-                             fetchPending_ = true;
+                             pending_ = wanted;
                            }
                            requestUpdate();
                          });
 }
 
+bool NewsActivity::fetchCategories(news::CategoriesReader& into, size_t& bytes, uint32_t& lowestHeap) {
+  news::JsonStream stream(into);
+  HttpDownloader::fetchUrl(news::kApiCategories, [&stream, &bytes, &lowestHeap](const uint8_t* data, const size_t len) {
+    bytes += len;
+    sampleHeap(lowestHeap);
+    return stream.feed(reinterpret_cast<const char*>(data), len);
+  });
+  if (into.categories.empty() || news::parseDate(into.createdAt) == 0) return false;
+  // What Kagi offers changes; the chooser always shows the latest list seen.
+  Storage.ensureDirectoryExists(kDir);
+  writeFile(kCategoriesPath, news::packCategories(into.categories));
+  categories_ = into.categories;
+  return true;
+}
+
 void NewsActivity::fetchEdition() {
   const uint32_t started = millis();
-  Meter meter;
+  size_t bytes = 0;
+  uint32_t lowestHeap = 0xFFFFFFFFu;
 
   // 1. What today's batch calls each category.
   news::CategoriesReader categories;
-  {
-    news::JsonStream stream(categories);
-    HttpDownloader::fetchUrl(news::kApiCategories, [&stream, &meter](const uint8_t* data, const size_t len) {
-      meter.sample(len);
-      return stream.feed(reinterpret_cast<const char*>(data), len);
-    });
-  }
-  const uint32_t created = news::parseDate(categories.createdAt);
-  if (categories.categories.empty() || created == 0) {
-    showNotice("COULD NOT REACH KAGI NEWS",
-               "The list of today's categories did not arrive. The edition on the card is untouched.");
+  if (!fetchCategories(categories, bytes, lowestHeap)) {
+    showNotice("Could not reach Kagi News",
+               "The list of today's sections did not arrive. The edition on the card is untouched.");
     return;
   }
-  uint32_t onCard = 0;
-  {
-    char path[64];
-    sectionPath(0, path, sizeof(path));
-    std::string text;
-    std::vector<news::Item> unused;
-    if (readFile(path, text)) news::unpackSection(text, unused, onCard);
-  }
-  if (onCard != 0 && created <= onCard) {
-    char label[16];
-    news::editionLabel(onCard, label, sizeof(label));
-    showNotice("ALREADY THE LATEST", std::string("Kagi has published nothing newer than the edition of ") + label +
-                                         " that is on the card. It makes one a day, around midday UTC.");
+  const uint32_t created = news::parseDate(categories.createdAt);
+  std::string fetchedFor;
+  readFile(kEditionSectionsPath, fetchedFor);
+  if (edition_ != 0 && created <= edition_ && fetchedFor == slugsOf(chosen_)) {
+    showNotice("Already the latest", std::string("Kagi has published nothing newer than the edition of ") +
+                                         editionText_ + " that is on the card. It makes one a day, around midday UTC.");
     return;
   }
 
@@ -269,59 +289,52 @@ void NewsActivity::fetchEdition() {
   Storage.ensureDirectoryExists(kDir);
   Storage.ensureDirectoryExists(kStoryDir);
   news::Deduper once;
-  std::vector<news::Item> fresh[news::kSectionCount];
+  std::vector<std::vector<news::Item>> fresh(chosen_.size());
   std::vector<std::string> files;
-  files.reserve(static_cast<size_t>(news::kSectionCount * news::kStoriesPerSection));
-  std::string trouble;
-  for (int s = 0; s < news::kSectionCount; ++s) {
-    const news::Section& section = news::kSections[s];
-    fresh[s].reserve(static_cast<size_t>(news::kStoriesPerSection));
-    for (int c = 0; c < news::kMaxCategoriesPerSection && section.categories[c] != nullptr; ++c) {
-      const char* slug = section.categories[c];
-      std::string uuid;
-      for (const news::CategoryRef& ref : categories.categories) {
-        if (ref.slug == slug) uuid = ref.uuid;
-      }
-      const size_t before = fresh[s].size();
-      if (!uuid.empty()) {
-        Taker taker(once, fresh[s], files, section.take[c]);
-        news::StoriesReader reader(taker);
-        news::JsonStream stream(reader);
-        HttpDownloader::fetchUrl(news::storiesUrl(uuid), [&stream, &meter](const uint8_t* data, const size_t len) {
-          meter.sample(len);
-          return stream.feed(reinterpret_cast<const char*>(data), len);
-        });
-      }
-      LOG_INF("NEWS", "%s: %d stories, heap %lu", slug, static_cast<int>(fresh[s].size() - before),
-              static_cast<unsigned long>(ESP.getFreeHeap()));
-      if (fresh[s].size() == before) {
-        if (!trouble.empty()) trouble += ", ";
-        trouble += slug;
-      }
+  files.reserve(chosen_.size() * static_cast<size_t>(news::kStoriesPerSection));
+  std::string failed;  // in the batch, but nothing could be read
+  std::string absent;  // not in today's batch at all
+  int total = 0;
+  for (size_t s = 0; s < chosen_.size(); ++s) {
+    std::string uuid;
+    for (const news::Category& c : categories.categories) {
+      if (c.slug == chosen_[s].slug) uuid = c.uuid;
     }
+    if (uuid.empty()) {
+      absent += (absent.empty() ? "" : ", ") + chosen_[s].name;
+      continue;
+    }
+    fresh[s].reserve(static_cast<size_t>(news::kStoriesPerSection));
+    Taker taker(once, fresh[s], files);
+    news::StoriesReader reader(taker);
+    news::JsonStream stream(reader);
+    HttpDownloader::fetchUrl(news::storiesUrl(uuid),
+                             [&stream, &bytes, &lowestHeap](const uint8_t* data, const size_t len) {
+                               bytes += len;
+                               sampleHeap(lowestHeap);
+                               return stream.feed(reinterpret_cast<const char*>(data), len);
+                             });
+    LOG_INF("NEWS", "%s: %d kept of %d read, heap %lu", chosen_[s].slug.c_str(), static_cast<int>(fresh[s].size()),
+            reader.seen(), static_cast<unsigned long>(ESP.getFreeHeap()));
+    if (reader.seen() == 0) failed += (failed.empty() ? "" : ", ") + chosen_[s].name;
+    total += static_cast<int>(fresh[s].size());
   }
 
-  // 3. Kept only whole: a section that came up short leaves the old edition be.
-  int total = 0;
-  bool whole = true;
-  for (int s = 0; s < news::kSectionCount; ++s) {
-    total += static_cast<int>(fresh[s].size());
-    whole = whole && static_cast<int>(fresh[s].size()) >= kMinStories;
-  }
   const uint32_t seconds = (millis() - started) / 1000;
   char numbers[160];
   std::snprintf(numbers, sizeof(numbers), "%d stories. %lu KB in %lu s. Lowest free memory %lu KB.", total,
-                static_cast<unsigned long>(meter.bytes / 1024), static_cast<unsigned long>(seconds),
-                static_cast<unsigned long>(meter.lowestHeap == 0xFFFFFFFFu ? 0 : meter.lowestHeap / 1024));
-  writeFile(kReportPath, std::string(categories.createdAt) + "\n" + numbers + "\nnothing from: " + trouble + "\n");
+                static_cast<unsigned long>(bytes / 1024), static_cast<unsigned long>(seconds),
+                static_cast<unsigned long>(lowestHeap == 0xFFFFFFFFu ? 0 : lowestHeap / 1024));
+  writeFile(kReportPath, std::string(categories.createdAt) + "\n" + numbers + "\nfailed: " + failed +
+                             "\nnot in the batch: " + absent + "\n");
   LOG_INF("NEWS", "%s", numbers);
 
-  if (!whole) {
+  // 3. Kept only whole: a section that did not transfer leaves the old edition be.
+  if (!failed.empty() || total == 0) {
     for (const std::string& file : files) Storage.remove((std::string(kStoryDir) + "/" + file).c_str());
-    showNotice("EDITION NOT KEPT",
-               std::string("Too little of it arrived, so the one on the card stays. Nothing came from: ") +
-                   (trouble.empty() ? "(every category answered, but with too few stories)" : trouble) + ". " +
-                   numbers);
+    showNotice("Edition not kept",
+               std::string("Not all of it arrived, so the one on the card stays. Nothing came for: ") +
+                   (failed.empty() ? "any section" : failed) + ". " + numbers);
     return;
   }
 
@@ -342,20 +355,19 @@ void NewsActivity::fetchEdition() {
   std::string manifest;
   for (const std::string& file : files) manifest += file + "\n";
   writeFile(kManifestPath, manifest);
-  for (int s = 0; s < news::kSectionCount; ++s) {
-    char path[64];
-    sectionPath(s, path, sizeof(path));
-    writeFile(path, news::packSection(fresh[s], created));
+  for (size_t s = 0; s < chosen_.size(); ++s) {
+    writeFile(sectionPath(chosen_[s].slug), news::packSection(fresh[s], created));
   }
+  writeFile(kEditionSectionsPath, slugsOf(chosen_));
+  chosenChanged_ = false;
 
-  char label[16];
-  news::editionLabel(created, label, sizeof(label));
   {
     RenderLock lock(*this);
-    loadSection(showingFavourites() ? 0 : section_);
+    edition_ = created;
+    loadSection(showingFavourites() ? 0 : view_);
   }
-  showNotice("TODAY'S EDITION IS ON THE CARD", std::string("Kagi News, ") + label + ". " + numbers +
-                                                   (trouble.empty() ? "" : " Nothing came from: " + trouble + "."));
+  showNotice("Today's edition is on the card", std::string("Kagi News, ") + editionText_ + ". " + numbers +
+                                                   (absent.empty() ? "" : " Not in today's batch: " + absent + "."));
 }
 
 void NewsActivity::openItem(const int index) {
@@ -364,20 +376,63 @@ void NewsActivity::openItem(const int index) {
   // A favourite's own copy first: it outlives the edition it came from.
   std::string text;
   if (!readFile(favouritePath(item.id), text) && !readFile(storyPath(item.id), text)) {
-    showNotice("NOT ON THE CARD", "This story's text is missing. REFRESH fetches the edition again.");
+    showNotice("Not on the card", "This story's text is missing. Fetching the edition again brings it back.");
     requestUpdate();
     return;
   }
   {
     RenderLock lock(*this);
-    document_ = std::move(text);
+    // The headline is the first paragraph; the reader sets it apart.
+    const size_t gap = text.find("\n\n");
+    title_ = gap == std::string::npos ? item.title : text.substr(0, gap);
+    body_ = gap == std::string::npos ? text : text.substr(gap + 2);
     reading_ = item;
-    readerTitle_ = showingFavourites() ? "FAVOURITES" : news::kSections[section_].title;
-    topLine_ = 0;
-    lineCount_ = 0;
-    visibleLines_ = 0;
+    readerSection_ = showingFavourites() ? "FAVOURITES" : chosen_[static_cast<size_t>(view_)].name;
+    for (char& c : readerSection_) {
+      if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 32);
+    }
+    page_ = 0;
+    restoreAt_ = -1;
     phase_ = Phase::Reading;
   }
+  requestUpdate();
+}
+
+void NewsActivity::openChooser() {
+  if (categories_.empty()) {
+    std::string text;
+    if (readFile(kCategoriesPath, text)) news::unpackCategories(text, categories_);
+  }
+  if (categories_.empty()) {
+    // Never fetched: the list of what Kagi offers has to come from Kagi.
+    ensureConnected(Pending::Categories);
+    return;
+  }
+  chooserPage_ = 0;
+  phase_ = Phase::Chooser;
+  requestUpdate();
+}
+
+void NewsActivity::toggleCategory(const int row) {
+  const size_t at = static_cast<size_t>(chooserPage_ * newsui::kChooserRows + row);
+  if (at >= categories_.size()) return;
+  const news::Category& category = categories_[at];
+  bool removed = false;
+  for (size_t i = 0; i < chosen_.size(); ++i) {
+    if (chosen_[i].slug != category.slug) continue;
+    // The last section cannot go: an edition of nothing is not one.
+    if (chosen_.size() > 1) chosen_.erase(chosen_.begin() + static_cast<long>(i));
+    removed = true;
+    break;
+  }
+  if (!removed) {
+    if (chosen_.size() >= static_cast<size_t>(news::kMaxSections)) return;
+    news::Category added = category;
+    added.uuid.clear();
+    chosen_.push_back(std::move(added));
+  }
+  chosenChanged_ = true;
+  saveChosen();
   requestUpdate();
 }
 
@@ -385,30 +440,36 @@ void NewsActivity::showNotice(const char* headline, const std::string& message) 
   RenderLock lock(*this);
   noticeHeadline_ = headline;
   noticeMessage_ = message;
+  noticeReturn_ = Phase::Front;
   phase_ = Phase::Notice;
 }
 
-void NewsActivity::pageList(const int delta) {
-  const int count = static_cast<int>(rows_.size());
-  if (count <= 0 || visibleRows_ <= 0) return;
-  // The first page holds the lead and so fewer rows than the rest; pages are
-  // walked rather than computed.
-  if (delta > 0) {
-    topIndex_ = topIndex_ + visibleRows_ < count ? topIndex_ + visibleRows_ : 0;
-  } else {
-    topIndex_ = topIndex_ > visibleRows_ ? topIndex_ - visibleRows_ : 0;
-  }
+void NewsActivity::pageFront(const int delta) {
+  const int pages = static_cast<int>(pageStarts_.size());
+  if (pages <= 1) return;
+  frontPage_ = (frontPage_ + delta + pages) % pages;
+  requestUpdate();
+}
+
+void NewsActivity::stepSection(const int delta) {
+  const int count = static_cast<int>(chosen_.size());
+  if (count == 0) return;
+  // Sideways through the sections, the favourites after the last of them.
+  const int at = showingFavourites() ? count : view_;
+  const int next = (at + delta + count + 1) % (count + 1);
+  loadSection(next == count ? -1 : next);
   requestUpdate();
 }
 
 void NewsActivity::turnPage(const int delta) {
-  if (phase_ != Phase::Reading || visibleLines_ == 0) return;
-  const uint32_t span = visibleLines_;
-  const uint32_t maxTop = lineCount_ > span ? lineCount_ - span : 0;
-  if (delta > 0) {
-    topLine_ = topLine_ + span > maxTop ? maxTop : topLine_ + span;
+  if (phase_ != Phase::Reading) return;
+  const uint32_t pages = paging_.pages();
+  if (delta > 0 && page_ + 1 < pages) {
+    ++page_;
+  } else if (delta < 0 && page_ > 0) {
+    --page_;
   } else {
-    topLine_ = topLine_ > span ? topLine_ - span : 0;
+    return;
   }
   requestUpdate();
 }
@@ -417,17 +478,33 @@ void NewsActivity::loop() {
   namespace fui = freeink::ui;
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen_ = true;
 
-  if (fetchPending_) {
-    fetchPending_ = false;
-    fetchEdition();
+  if (pending_ != Pending::None) {
+    const Pending what = pending_;
+    pending_ = Pending::None;
+    if (what == Pending::Edition) {
+      fetchEdition();
+    } else {
+      news::CategoriesReader categories;
+      size_t bytes = 0;
+      uint32_t lowest = 0xFFFFFFFFu;
+      if (fetchCategories(categories, bytes, lowest)) {
+        chooserPage_ = 0;
+        phase_ = Phase::Chooser;
+      } else {
+        showNotice("Could not reach Kagi News", "The list of sections to choose from did not arrive.");
+      }
+    }
     requestUpdate();
     return;
   }
 
   if (backPressSeen_ && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     backPressSeen_ = false;
-    if (phase_ == Phase::Reading || phase_ == Phase::Notice) {
-      phase_ = Phase::List;
+    if (phase_ == Phase::Chooser) {
+      phase_ = Phase::Menu;
+      requestUpdate();
+    } else if (phase_ != Phase::Front) {
+      phase_ = Phase::Front;
       requestUpdate();
     } else {
       shelf::leave(renderer, mappedInput);
@@ -436,26 +513,41 @@ void NewsActivity::loop() {
   }
 
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
-  const bool swipeNext = swipe == MappedInputManager::SwipeDir::Up;
-  const bool swipePrev = swipe == MappedInputManager::SwipeDir::Down;
+  const bool up = swipe == MappedInputManager::SwipeDir::Up;
+  const bool down = swipe == MappedInputManager::SwipeDir::Down;
+  // A swipe from the left edge is Back and never reaches here.
+  const bool left = swipe == MappedInputManager::SwipeDir::Left;
+  const bool right = swipe == MappedInputManager::SwipeDir::Right;
+  const bool forward = mappedInput.wasReleased(MappedInputManager::Button::PageForward) ||
+                       mappedInput.wasReleased(MappedInputManager::Button::Down);
+  const bool backward = mappedInput.wasReleased(MappedInputManager::Button::PageBack) ||
+                        mappedInput.wasReleased(MappedInputManager::Button::Up);
   if (phase_ == Phase::Reading) {
-    // Sideways too, the way a page is turned. A swipe from the left edge is
-    // Back and never reaches here.
-    const bool sideNext = swipe == MappedInputManager::SwipeDir::Left;
-    const bool sidePrev = swipe == MappedInputManager::SwipeDir::Right;
-    if (mappedInput.wasReleased(MappedInputManager::Button::PageForward) || swipeNext || sideNext) {
+    if (forward || up || left) {
       turnPage(1);
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::PageBack) || swipePrev || sidePrev) {
+    if (backward || down || right) {
       turnPage(-1);
       return;
     }
-  }
-  const bool next = mappedInput.wasReleased(MappedInputManager::Button::Down) || swipeNext;
-  const bool prev = mappedInput.wasReleased(MappedInputManager::Button::Up) || swipePrev;
-  if (phase_ == Phase::List && (next || prev)) {
-    pageList(next ? 1 : -1);
+  } else if (phase_ == Phase::Front) {
+    if (forward || up) {
+      pageFront(1);
+      return;
+    }
+    if (backward || down) {
+      pageFront(-1);
+      return;
+    }
+    if (left || right) {
+      stepSection(left ? 1 : -1);
+      return;
+    }
+  } else if (phase_ == Phase::Chooser && (forward || up || backward || down)) {
+    const int pages = (static_cast<int>(categories_.size()) + newsui::kChooserRows - 1) / newsui::kChooserRows;
+    if (pages > 0) chooserPage_ = (chooserPage_ + ((forward || up) ? 1 : -1) + pages) % pages;
+    requestUpdate();
     return;
   }
 
@@ -467,30 +559,75 @@ void NewsActivity::loop() {
   input.touchX = static_cast<int16_t>(tapX);
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
+  const int action = event.action;
 
   // A tap on the story itself turns the page: the right half forward, the left
   // half back.
-  if (phase_ == Phase::Reading && event.action == fui::NO_ACTION) {
+  if (phase_ == Phase::Reading && action == fui::NO_ACTION) {
     turnPage(tapX >= renderer.getScreenWidth() / 2 ? 1 : -1);
     return;
   }
 
-  if (event.action >= newsui::ActionTab0 && event.action <= newsui::ActionTab0 + news::kSectionCount) {
-    loadSection(event.action - newsui::ActionTab0);
-    phase_ = Phase::List;
+  if (action >= newsui::ActionOpen0 && action < newsui::ActionOpen0 + newsui::kMaxRows) {
+    openItem(action - newsui::ActionOpen0);
+    return;
+  }
+  if (action >= newsui::ActionSection0 && action < newsui::ActionSection0 + news::kMaxSections) {
+    loadSection(action - newsui::ActionSection0);
+    phase_ = Phase::Front;
     requestUpdate();
     return;
   }
-  switch (event.action) {
-    case newsui::ActionOpenLead:
-      openItem(0);
+  if (action >= newsui::ActionToggle0 && action < newsui::ActionToggle0 + newsui::kChooserRows) {
+    toggleCategory(action - newsui::ActionToggle0);
+    return;
+  }
+  const int chooserPages = (static_cast<int>(categories_.size()) + newsui::kChooserRows - 1) / newsui::kChooserRows;
+  switch (action) {
+    case newsui::ActionMenu:
+      phase_ = Phase::Menu;
+      requestUpdate();
       break;
-    case newsui::ActionOpen:
-      openItem(event.value);
+    case newsui::ActionFavourites:
+      loadSection(-1);
+      phase_ = Phase::Front;
+      requestUpdate();
+      break;
+    case newsui::ActionChoose:
+      openChooser();
+      break;
+    case newsui::ActionRefresh:
+      ensureConnected(Pending::Edition);
+      break;
+    case newsui::ActionDone:
+      loadSection(0);
+      if (chosenChanged_) {
+        showNotice("Sections changed",
+                   "The edition on the card was fetched for the sections you had before. Fetch "
+                   "today's edition from the menu to fill the new ones.");
+      } else {
+        phase_ = Phase::Front;
+      }
+      requestUpdate();
+      break;
+    case newsui::ActionNext:
+      if (phase_ == Phase::Chooser && chooserPages > 0) {
+        chooserPage_ = (chooserPage_ + 1) % chooserPages;
+        requestUpdate();
+      } else if (phase_ == Phase::Front) {
+        pageFront(1);
+      }
+      break;
+    case newsui::ActionPrev:
+      if (phase_ == Phase::Chooser && chooserPages > 0) {
+        chooserPage_ = (chooserPage_ + chooserPages - 1) % chooserPages;
+        requestUpdate();
+      }
       break;
     case newsui::ActionTextSize: {
       textSize_ = static_cast<uint8_t>((textSize_ + 1) % 3);
-      restoreAt_ = lineCount_ > 0 ? static_cast<int>(static_cast<uint64_t>(topLine_) * 1000 / lineCount_) : 0;
+      restoreAt_ =
+          paging_.lines > 0 ? static_cast<int>(static_cast<uint64_t>(paging_.topOf(page_)) * 1000 / paging_.lines) : 0;
       Storage.ensureDirectoryExists(kDir);
       writeFile(kTextSizePath, std::string(1, static_cast<char>('0' + textSize_)));
       requestUpdate();
@@ -499,18 +636,9 @@ void NewsActivity::loop() {
     case newsui::ActionFavourite:
       toggleFavourite();
       break;
-    case newsui::ActionRefresh:
-      if (!showingFavourites()) ensureConnected();
-      break;
-    case newsui::ActionPagePrev:
-      turnPage(-1);
-      break;
-    case newsui::ActionPageNext:
-      turnPage(1);
-      break;
     case newsui::ActionBack:
-      if (showingFavourites()) items_ = favourites_;
-      phase_ = Phase::List;
+      if (phase_ == Phase::Reading && showingFavourites()) loadSection(-1);
+      phase_ = Phase::Front;
       requestUpdate();
       break;
     default:
@@ -518,139 +646,148 @@ void NewsActivity::loop() {
   }
 }
 
-void NewsActivity::buildRows() {
-  labels_.clear();
-  values_.clear();
-  rows_.clear();
-  labels_.reserve(items_.size());
-  values_.reserve(items_.size());
-  rows_.reserve(items_.size());
-  leadKicker_.clear();
-  leadTitle_.clear();
-  leadSummary_.clear();
-  for (size_t i = 0; i < items_.size(); ++i) {
-    const news::Item& item = items_[i];
-    std::string kicker = item.kicker;
-    if (!showingFavourites() && isFavourite(item.id)) kicker += "  FAV";
-    if (i == 0) {
-      leadKicker_ = kicker;
-      leadTitle_ = item.title;
-      leadSummary_ = item.summary;
-      continue;
-    }
-    labels_.push_back(item.title);
-    values_.push_back(kicker);
-  }
-  for (size_t i = 0; i < labels_.size(); ++i) {
-    freeink::ui::ListItem row;
-    row.label = labels_[i].c_str();
-    row.subtitle = values_[i].c_str();
-    row.actionValue = static_cast<int16_t>(i + 1);
-    rows_.push_back(row);
-  }
-  rowsBuilt_ = true;
-}
-
 void NewsActivity::render(RenderLock&&) {
   namespace fui = freeink::ui;
   renderer.clearScreen();
-  // The reading cut one step down, or the size the reader chose.
-  const toybox::Faces faces =
-      phase_ == Phase::Reading ? toybox::Faces{toybox::kReadingSmallFontId,
-                                               textSize_ == 0   ? toybox::kReadingSmallFontId
-                                               : textSize_ == 2 ? toybox::kReadingFontId
-                                                                : toybox::kReadingMidFontId,
-                                               toybox::kReadingBoldFontId}
-                               : toybox::Faces{toybox::kTileFontId, toybox::kReadingMidFontId, toybox::kDisplayFontId};
-  fui::GfxRendererTarget target = toybox::makeTarget(renderer, faces);
-  const fui::DeviceContext device = target.deviceContext();
+  // Two sets of faces, because a target draws from three: the page (small
+  // serif, the reading serif at the reader's size, the display serif) and the
+  // heads (small reading serif, bold serif, large bold serif).
+  const int readingFace = phase_ != Phase::Reading ? toybox::kReadingMidFontId
+                          : textSize_ == 0         ? toybox::kReadingSmallFontId
+                          : textSize_ == 2         ? toybox::kReadingFontId
+                                                   : toybox::kReadingMidFontId;
+  fui::GfxRendererTarget page =
+      toybox::makeTarget(renderer, toybox::Faces{toybox::kSerifSmallFontId, readingFace, toybox::kSerifTitleFontId});
+  fui::GfxRendererTarget heads = toybox::makeTarget(
+      renderer,
+      toybox::Faces{toybox::kReadingSmallFontId, toybox::kReadingBoldSmallFontId, toybox::kReadingBoldFontId});
+  const fui::DeviceContext device = page.deviceContext();
   const fui::ThemeTokens& tokens = toybox::themeTokens();
+  const newsui::Ink ink{page, heads, tokens};
   const fui::InputSnapshot noInput{};
   interactionsReady_ = false;
-  toybox::Frame frame(target, device, noInput, interactions_);
+  toybox::Frame frame(page, device, noInput, interactions_);
   toybox::Screen screen(frame);
   const char* what = "News";
 
   switch (phase_) {
     case Phase::Busy: {
       newsui::NoticeModel model;
-      model.headline = "FETCHING TODAY'S EDITION";
-      model.message =
-          "Four sections from Kagi News. It takes a minute or two; the edition on the card stays until "
-          "the new one has arrived whole.";
-      newsui::buildNotice(screen, model);
+      model.headline = "Fetching from Kagi News";
+      model.message = "An edition takes a minute or two. The one on the card stays until the new one has arrived.";
+      newsui::buildNotice(screen, ink, model);
       what = "News busy";
       break;
     }
-    case Phase::List: {
-      if (!rowsBuilt_) {
-        buildRows();
-        const fui::TextStyle titleStyle = newsui::listTitleStyle(tokens);
-        const int16_t width = newsui::listTitleWidth(device, tokens);
-        for (std::string& label : labels_) label = toybox::fitLines(target, label.c_str(), width, 2, titleStyle);
-        for (size_t i = 0; i < rows_.size(); ++i) rows_[i].label = labels_[i].c_str();
+    case Phase::Front: {
+      std::vector<newsui::Headline> rows(items_.size());
+      for (size_t i = 0; i < items_.size(); ++i) {
+        rows[i].title = items_[i].title.c_str();
+        rows[i].summary =
+            i == 0 && !showingFavourites() && !items_[i].summary.empty() ? items_[i].summary.c_str() : nullptr;
       }
-      const bool lead = hasLead();
-      const int16_t rowHeight = newsui::listRowHeight(target, tokens);
-      visibleRows_ = fui::listVisibleRows(newsui::listBand(device, lead, target, tokens), rowHeight, tokens.listRowGap);
-      if (topIndex_ >= static_cast<int>(rows_.size())) topIndex_ = 0;
-
-      newsui::ListModel model;
+      const int count = static_cast<int>(rows.size());
+      if (pageStarts_.empty()) {
+        // Measured once per section: where each page of whole headlines starts.
+        int top = 0;
+        while (top < count && pageStarts_.size() < 16) {
+          pageStarts_.push_back(top);
+          const int fits = newsui::frontFit(ink, device, rows.data(), count, top);
+          top += fits > 0 ? fits : 1;
+        }
+        if (pageStarts_.empty()) pageStarts_.push_back(0);
+        if (frontPage_ >= static_cast<int>(pageStarts_.size())) frontPage_ = 0;
+      }
+      newsui::FrontModel model;
       const bool favourites = showingFavourites();
-      model.title = favourites ? "FAVOURITES" : news::kSections[section_].title;
-      model.canRefresh = !favourites;
-      const char* tabs[newsui::kMaxTabs] = {};
-      for (int s = 0; s < news::kSectionCount && s < newsui::kMaxTabs - 1; ++s) tabs[s] = news::kSections[s].tab;
-      tabs[news::kSectionCount] = "FAVS";
-      model.tabs = tabs;
-      model.tabCount = news::kSectionCount + 1;
-      model.tab = section_;
-      model.items = rows_.empty() ? nullptr : rows_.data();
-      model.count = static_cast<int>(rows_.size());
-      model.topIndex = topIndex_;
-      if (lead) {
-        model.leadKicker = leadKicker_.c_str();
-        model.leadTitle = leadTitle_.c_str();
-        model.leadSummary = leadSummary_.empty() ? nullptr : leadSummary_.c_str();
+      model.section = favourites ? "Favourites" : chosen_[static_cast<size_t>(view_)].name.c_str();
+      model.edition = favourites ? "" : editionText_;
+      model.items = rows.empty() ? nullptr : rows.data();
+      model.count = count;
+      model.top = pageStarts_[static_cast<size_t>(frontPage_)];
+      model.page = frontPage_ + 1;
+      model.pages = static_cast<int>(pageStarts_.size());
+      if (rows.empty() && favourites) {
+        model.emptyHeadline = "No favourites yet";
+        model.emptyMessage = "Open a story and tap Save. It stays here, and its text stays on the card.";
+      } else if (rows.empty()) {
+        model.emptyHeadline = edition_ == 0 ? "No edition on the card" : "Nothing in this section today";
+        model.emptyMessage = edition_ == 0
+                                 ? "One fetch over Wi-Fi brings the day's stories from Kagi News. After that they read "
+                                   "with no network."
+                                 : "Either Kagi had nothing for it, or the section was chosen after the edition was "
+                                   "fetched.";
+        model.emptyCanFetch = true;
       }
-      if (items_.empty() && favourites) {
-        model.emptyHeadline = "NO FAVOURITES YET";
-        model.emptyMessage = "Open a story and tap FAV. It stays here, and its text stays on the card.";
-      } else if (items_.empty()) {
-        model.emptyHeadline = "NO EDITION ON THE CARD";
-        model.emptyMessage =
-            "One fetch over Wi-Fi brings the day's stories from Kagi News; after that they read "
-            "with no network.";
+      newsui::buildFront(screen, ink, model);
+      what = "News front";
+      break;
+    }
+    case Phase::Menu: {
+      const char* names[news::kMaxSections] = {};
+      int n = 0;
+      for (const news::Category& c : chosen_) {
+        if (n < news::kMaxSections) names[n++] = c.name.c_str();
       }
-      newsui::buildList(screen, model);
-      what = "News list";
+      newsui::MenuModel model;
+      model.edition = editionText_;
+      model.sections = names;
+      model.sectionCount = n;
+      model.current = view_;
+      model.favourites = static_cast<int>(favourites_.size());
+      newsui::buildMenu(screen, ink, model);
+      what = "News menu";
+      break;
+    }
+    case Phase::Chooser: {
+      const int total = static_cast<int>(categories_.size());
+      const int pages = (total + newsui::kChooserRows - 1) / newsui::kChooserRows;
+      if (chooserPage_ >= pages) chooserPage_ = 0;
+      const char* names[newsui::kChooserRows] = {};
+      bool marks[newsui::kChooserRows] = {};
+      int n = 0;
+      for (int i = chooserPage_ * newsui::kChooserRows; i < total && n < newsui::kChooserRows; ++i, ++n) {
+        names[n] = categories_[static_cast<size_t>(i)].name.c_str();
+        marks[n] = isChosen(categories_[static_cast<size_t>(i)].slug);
+      }
+      newsui::ChooserModel model;
+      model.names = names;
+      model.chosen = marks;
+      model.count = n;
+      model.chosenTotal = static_cast<int>(chosen_.size());
+      model.maxChosen = news::kMaxSections;
+      model.page = chooserPage_ + 1;
+      model.pages = pages < 1 ? 1 : pages;
+      newsui::buildChooser(screen, ink, model);
+      what = "News chooser";
       break;
     }
     case Phase::Reading: {
-      const fui::Rect body = newsui::readerBody(device);
-      visibleLines_ = fui::textAreaVisibleLines(body, target.lineHeight(tokens.bodyText.font));
-      lineCount_ = wrap_.lineCount(target, body.width, document_.c_str(), tokens.bodyText);
-      if (restoreAt_ >= 0 && visibleLines_ > 0) {
-        // The same place in the text, snapped to the top of a page.
-        const uint32_t line = static_cast<uint32_t>(static_cast<uint64_t>(lineCount_) * restoreAt_ / 1000);
-        topLine_ = line / visibleLines_ * visibleLines_;
+      const newsui::StoryMetrics m = newsui::storyMetrics(ink, device, title_.c_str());
+      fui::TextStyle bodyStyle;
+      bodyStyle.font = fui::FONT_SLOT_BODY;
+      bodyStyle.maxLines = 255;
+      paging_.lines = wrap_.lineCount(page, m.body.width, body_.c_str(), bodyStyle);
+      paging_.first = m.firstLines;
+      paging_.rest = m.restLines;
+      if (restoreAt_ >= 0) {
+        page_ = paging_.pageOf(static_cast<uint32_t>(static_cast<uint64_t>(paging_.lines) * restoreAt_ / 1000));
         restoreAt_ = -1;
       }
-      const uint32_t pages = visibleLines_ > 0 ? (lineCount_ + visibleLines_ - 1) / visibleLines_ : 1;
-      const uint32_t page = visibleLines_ > 0 ? topLine_ / visibleLines_ + 1 : 1;
-      std::snprintf(pageLabel_, sizeof(pageLabel_), "%lu/%lu", static_cast<unsigned long>(page),
-                    static_cast<unsigned long>(pages < 1 ? 1 : pages));
-      newsui::ReaderModel model;
-      model.title = readerTitle_.c_str();
-      model.text = document_.c_str();
+      if (page_ >= paging_.pages()) page_ = paging_.pages() - 1;
+      std::snprintf(pageLabel_, sizeof(pageLabel_), "%lu / %lu", static_cast<unsigned long>(page_ + 1),
+                    static_cast<unsigned long>(paging_.pages()));
+      newsui::StoryModel model;
+      model.section = readerSection_.c_str();
+      model.title = title_.c_str();
+      model.body = body_.c_str();
       model.wrap = &wrap_;
-      model.topLine = topLine_;
+      model.topLine = paging_.topOf(page_);
+      model.firstPage = page_ == 0;
       model.pageLabel = pageLabel_;
-      model.canPagePrev = topLine_ > 0;
-      model.canPageNext = lineCount_ > topLine_ + visibleLines_;
       model.favourite = isFavourite(reading_.id);
-      newsui::buildReader(screen, model);
-      what = "News reader";
+      newsui::buildStory(screen, ink, model);
+      what = "News story";
       break;
     }
     case Phase::Notice: {
@@ -658,7 +795,7 @@ void NewsActivity::render(RenderLock&&) {
       model.headline = noticeHeadline_.c_str();
       model.message = noticeMessage_.c_str();
       model.backButton = true;
-      newsui::buildNotice(screen, model);
+      newsui::buildNotice(screen, ink, model);
       what = "News notice";
       break;
     }
@@ -666,7 +803,5 @@ void NewsActivity::render(RenderLock&&) {
 
   interactionsReady_ = true;
   toybox::reportOverflow(interactions_, what);
-  const auto labels = mappedInput.mapLabels("Back", "", "Up", "Down");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }

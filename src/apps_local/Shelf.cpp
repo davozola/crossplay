@@ -225,8 +225,8 @@ constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create, 1, true, "La portada de Hacker News",
      "La portada en una letra de lectura; los artículos que abres se guardan en la tarjeta para leerlos sin red."},
     {"NEWS", &icon_news_32, &NewsActivity::create, 1, true, "La edición del día de Kagi News",
-     "Cuatro secciones de hasta ocho noticias, cada una con resumen, claves, contexto y fuentes. La edición se "
-     "guarda en la tarjeta y se lee sin red. Datos de Kagi News, CC BY-NC 4.0."},
+     "Elige tus secciones entre las de Kagi; hasta ocho noticias en cada una, con resumen, claves, contexto y "
+     "fuentes. La edición se guarda en la tarjeta y se lee sin red. Datos de Kagi News, CC BY-NC 4.0."},
     {"THE BATCH", &icon_batch_32, &BatchActivity::create, 1, true, "El boletín semanal de IA",
      "El boletín de DeepLearning.AI noticia a noticia, con archivo desde el primer número, favoritos y lectura sin red "
      "de lo ya abierto."},

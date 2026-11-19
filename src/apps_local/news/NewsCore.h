@@ -22,24 +22,24 @@
 
 namespace news {
 
-constexpr int kMaxCategoriesPerSection = 3;
+// A section is one Kagi category the reader chose. Eight at most, of eight
+// stories each: an edition stays a thing that is read, not scrolled.
+constexpr int kMaxSections = 8;
 constexpr int kStoriesPerSection = 8;
 // Asked of the API per category; more than is kept, so that a story dropped as
 // another section's duplicate has a replacement.
-constexpr int kStoriesAsked = 10;
+constexpr int kStoriesAsked = 12;
 constexpr int kSourcesShown = 6;
 
-struct Section {
-  const char* tab;    // on the tab
-  const char* title;  // on the band
-  // Kagi category slugs in the order they are read, and how many stories each
-  // may contribute. A null slug ends the list.
-  const char* categories[kMaxCategoriesPerSection];
-  int take[kMaxCategoriesPerSection];
+struct Category {
+  std::string slug;  // Kagi's categoryId: "world"
+  std::string name;  // "World"
+  std::string uuid;  // this batch's id for it; empty when read off the card
 };
 
-extern const Section kSections[];
-extern const int kSectionCount;
+// What a card that has never chosen starts with.
+extern const Category kDefaultSections[];
+extern const int kDefaultSectionCount;
 
 constexpr const char* kApiCategories = "https://news.kagi.com/api/batches/latest/categories";
 // The stories of one category, by the per-batch UUID the list above gives it.
@@ -104,11 +104,8 @@ class JsonStream {
 
 // --- The category list --------------------------------------------------------
 
-struct CategoryRef {
-  std::string slug;  // "world"
-  std::string uuid;  // this batch's id for it
-};
-
+// Every English-language category in the batch. Kagi has a couple of hundred,
+// most of them in other languages or about one place.
 class CategoriesReader final : public JsonHandler {
  public:
   size_t wants(const JsonPath& path) override;
@@ -117,12 +114,16 @@ class CategoriesReader final : public JsonHandler {
 
   std::string batchId;
   std::string createdAt;
-  std::vector<CategoryRef> categories;  // only the ones a section names
+  std::vector<Category> categories;
 
  private:
-  std::string id_;
-  std::string slug_;
+  Category one_;
+  std::string language_;
 };
+
+// The category list, and the reader's choice from it, as kept on the card.
+std::string packCategories(const std::vector<Category>& categories);
+void unpackCategories(std::string_view text, std::vector<Category>& categories);
 
 // --- A story ------------------------------------------------------------------
 
@@ -135,9 +136,6 @@ struct Story {
   std::string id;
   std::string title;
   std::string summary;
-  std::string category;  // Kagi's own label: "Diplomacy"
-  std::string location;
-  std::string language;  // of the text: "en", "es"
   int outlets = 0;
   std::string quote;
   std::string quoteAuthor;
@@ -182,14 +180,21 @@ class StoriesReader final : public JsonHandler {
 // under the accent, anything else the reading face has no glyph for dropped.
 std::string cleanText(std::string_view text);
 
-// The whole story as the reader pages it: title, summary, key points,
-// perspectives, context, timeline, what is next, the original sources, and
-// the attribution the licence asks for. A part with nothing in it is left out,
-// heading and all.
+// The whole story as the reader pages it. The headline is the first paragraph;
+// then the summary, a quote, key points, perspectives, context, timeline, what
+// is next, the original sources, and the attribution the licence asks for. A
+// part with nothing in it is left out, heading and all.
 std::string buildDocument(const Story& story);
 
-// The line above a headline: "DIPLOMACY  63 OUTLETS".
-std::string kickerOf(const Story& story);
+// A story's pages when the first one gives some of its lines to the headline.
+struct Paging {
+  uint32_t lines = 0;  // of body text
+  uint32_t first = 1;  // lines the first page holds
+  uint32_t rest = 1;   // lines every later page holds
+  uint32_t pages() const;
+  uint32_t topOf(uint32_t page) const;
+  uint32_t pageOf(uint32_t line) const;
+};
 
 // Whether a story is told once across the whole edition.
 class Deduper {
@@ -209,7 +214,6 @@ struct Item {
   std::string title;
   std::string id;       // Kagi's cluster id; names the story's file
   std::string summary;  // the opening of the summary, for the lead
-  std::string kicker;
 };
 
 constexpr size_t kLeadCap = 320;
@@ -218,7 +222,7 @@ std::string packSection(const std::vector<Item>& items, uint32_t edition);
 bool unpackSection(std::string_view text, std::vector<Item>& items, uint32_t& edition);
 
 // The name a story is kept under on the card: eight hex digits of its id and
-// ".txt".
+// ".txt". A section's list is kept the same way, from its slug.
 std::string articleFile(std::string_view id);
 
 // "2026-11-18T12:00:13.366Z" and the like, as seconds since 1970; 0 otherwise.

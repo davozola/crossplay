@@ -1,10 +1,12 @@
 #pragma once
 
-// NEWS: the day's edition of Kagi News in four sections, read from the card.
+// NEWS: the day's edition of Kagi News, in the sections the reader chose, read
+// from the card.
 //
-// One thing touches the network: REFRESH, which fetches the whole edition and
-// replaces the one on the card only if all of it arrived. Everything else,
-// reading included, works with the radio off.
+// One thing touches the network: fetching the edition (and, the first time,
+// the list of sections to choose from). It replaces the edition on the card
+// only if it arrived. Everything else, reading included, works with the radio
+// off.
 //
 // The stories are Kagi's (news.kagi.com, CC BY-NC 4.0): syntheses of what many
 // outlets reported, each ending with its sources and that attribution.
@@ -34,65 +36,72 @@ class NewsActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class Phase : uint8_t { Busy, List, Reading, Notice };
+  enum class Phase : uint8_t { Busy, Front, Menu, Chooser, Reading, Notice };
+  enum class Pending : uint8_t { None, Edition, Categories };
 
-  void ensureConnected();
+  void ensureConnected(Pending what);
   void fetchEdition();
-  void loadSection(int section);
-  void buildRows();
-  void pageList(int delta);
+  bool fetchCategories(news::CategoriesReader& into, size_t& bytes, uint32_t& lowestHeap);
+  void loadChosen();
+  void saveChosen();
+  void loadSection(int view);
+  void pageFront(int delta);
   void turnPage(int delta);
+  void stepSection(int delta);
   void showNotice(const char* headline, const std::string& message);
-  bool hasLead() const;
   void openItem(int index);
+  void openChooser();
+  void toggleCategory(int row);
+  bool isChosen(const std::string& slug) const;
 
   // Favourites: a list of their own, with each story's text kept beside it on
   // the card for as long as it stays one.
-  bool showingFavourites() const { return section_ == news::kSectionCount; }
+  bool showingFavourites() const { return view_ < 0; }
   bool isFavourite(const std::string& id) const;
   void toggleFavourite();
   void loadFavourites();
   void saveFavourites();
 
-  int section_ = 0;
+  std::vector<news::Category> chosen_;      // the reader's sections, in order
+  std::vector<news::Category> categories_;  // everything Kagi offers, for the chooser
+  bool chosenChanged_ = false;
+  int chooserPage_ = 0;
+
+  int view_ = 0;  // index into chosen_, or -1 for the favourites
   std::vector<news::Item> items_;
   uint32_t edition_ = 0;  // when Kagi made it, seconds since 1970
+  char editionText_[16] = "";
 
-  // The strings the list draws, owned here because a ListItem holds pointers.
-  std::vector<std::string> labels_;
-  std::vector<std::string> values_;
-  std::vector<freeink::ui::ListItem> rows_;
-  bool rowsBuilt_ = false;
-  std::string leadKicker_;
-  std::string leadTitle_;
-  std::string leadSummary_;
-  int topIndex_ = 0;
-  int visibleRows_ = 0;
+  // Where each page of the front starts; headlines are set whole, so a page
+  // holds as many as fit and that is only known once they are measured.
+  std::vector<int> pageStarts_;
+  int frontPage_ = 0;
 
   std::vector<news::Item> favourites_;
   news::Item reading_;
 
-  std::string document_;
-  std::string readerTitle_;
+  std::string title_;
+  std::string body_;
+  std::string readerSection_;
   toybox::WrappedText wrap_;
-  uint32_t topLine_ = 0;
-  uint32_t lineCount_ = 0;
-  uint16_t visibleLines_ = 0;
+  news::Paging paging_;
+  uint32_t page_ = 0;
   // Which of the three reading cuts a story is set in: 0 small, 1 the step
   // under the reading cut, 2 the reading cut. Kept on the card.
   uint8_t textSize_ = 1;
-  // After the size changes, where in the story to land once it is re-wrapped,
-  // in thousandths; -1 when there is nothing to restore.
+  // After the size changes, the line to land on once the story is re-wrapped,
+  // in thousandths of the way through; -1 when there is nothing to restore.
   int restoreAt_ = -1;
-  static constexpr int kPageLabelCap = 2 * toybox::kULongChars + toybox::literalChars("/") + 1;
-  char pageLabel_[kPageLabelCap] = "";
+  char pageLabel_[24] = "";
 
   std::string noticeHeadline_;
   std::string noticeMessage_;
 
   bool backPressSeen_ = false;
-  Phase phase_ = Phase::List;
-  bool fetchPending_ = false;
+  Phase phase_ = Phase::Front;
+  Phase noticeReturn_ = Phase::Front;
+  Pending pending_ = Pending::None;
+  Pending afterConnect_ = Pending::None;
 
   toybox::Interactions interactions_;
   bool interactionsReady_ = false;

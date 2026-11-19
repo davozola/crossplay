@@ -22,8 +22,10 @@ static const char* kCategories =
     "{\"batchId\":\"b-1\",\"createdAt\":\"2026-11-18T12:00:13.366Z\",\"hasOnThisDay\":true,\"categories\":["
     "{\"id\":\"u-world\",\"categoryId\":\"world\",\"categoryName\":\"World\",\"sourceLanguage\":\"en\","
     "\"timestamp\":1794996338,\"readCount\":3,\"clusterCount\":12},"
-    "{\"id\":\"u-pizza\",\"categoryId\":\"pizza\",\"categoryName\":\"Pizza\",\"clusterCount\":2},"
-    "{\"id\":\"u-ai\",\"categoryId\":\"ai\",\"categoryName\":\"AI\",\"clusterCount\":12}]}";
+    "{\"id\":\"u-spain\",\"categoryId\":\"spain\",\"categoryName\":\"Spain\",\"sourceLanguage\":\"es\","
+    "\"clusterCount\":12},"
+    "{\"id\":\"u-ai\",\"categoryId\":\"ai\",\"categoryName\":\"AI\",\"sourceLanguage\":\"en\",\"clusterCount\":12},"
+    "{\"id\":\"u-oss\",\"categoryId\":\"linux_oss\",\"categoryName\":\"Linux & OSS\",\"clusterCount\":4}]}";
 
 static const char* kStories =
     "{\"batchId\":\"b-1\",\"categoryId\":\"u-world\",\"categoryName\":\"World\",\"stories\":[\n"
@@ -73,8 +75,8 @@ static void scan(const char* json, news::JsonHandler& handler, const size_t chun
 }
 
 int main() {
-  CHECK(news::kSectionCount == 4);
-  CHECK(news::storiesUrl("abc") == "https://news.kagi.com/api/batches/latest/categories/abc/stories?limit=10");
+  CHECK(news::kDefaultSectionCount >= 3 && news::kDefaultSectionCount <= news::kMaxSections);
+  CHECK(news::storiesUrl("abc") == "https://news.kagi.com/api/batches/latest/categories/abc/stories?limit=12");
 
   CHECK(news::cleanText("A fact [france24.com#1][bbc.co.uk#22]. Next [sic] one.") == "A fact. Next [sic] one.");
   CHECK(news::cleanText("  two   spaces\nand a line  ") == "two spaces\n\nand a line");
@@ -100,10 +102,16 @@ int main() {
     scan(kCategories, categories, chunk);
     CHECK(categories.batchId == "b-1");
     CHECK(news::parseDate(categories.createdAt) == 1795003213u);
-    CHECK(categories.categories.size() == 2);
-    if (categories.categories.size() == 2) {
+    // English only: the Spanish-language category is not offered.
+    CHECK(categories.categories.size() == 3);
+    if (categories.categories.size() == 3) {
       CHECK(categories.categories[0].slug == "world" && categories.categories[0].uuid == "u-world");
+      CHECK(categories.categories[0].name == "World");
       CHECK(categories.categories[1].slug == "ai" && categories.categories[1].uuid == "u-ai");
+      CHECK(categories.categories[2].slug == "linux_oss" && categories.categories[2].name == "Linux & OSS");
+      std::vector<news::Category> back;
+      news::unpackCategories(news::packCategories(categories.categories), back);
+      CHECK(back.size() == 3 && back[2].slug == "linux_oss" && back[2].name == "Linux & OSS" && back[2].uuid.empty());
     }
 
     Collect got;
@@ -116,8 +124,7 @@ int main() {
     CHECK(a.id == "s-1");
     CHECK(a.title == "Leaders meet -- a \"first\" summit");
     CHECK(a.summary == "First paragraph.\n\nSecond one, with Erdogan and a globe [not a cite].");
-    CHECK(a.category == "Diplomacy" && a.location == "Geneva, Switzerland");
-    CHECK(a.outlets == 63 && a.language == "en");
+    CHECK(a.outlets == 63);
     CHECK(a.points.size() == 2 && a.points[0] == "Point one.");
     CHECK(a.perspectives.size() == 2 && a.perspectives[1] == "The other says no.");
     CHECK(a.timeline.size() == 2 && a.timeline[0] == "2024: Talks opened." &&
@@ -128,8 +135,8 @@ int main() {
     CHECK(a.quote == "We will see" && a.quoteAuthor == "A minister");
 
     const std::string doc = news::buildDocument(a);
-    CHECK(doc.find("Leaders meet") == 0);
-    CHECK(doc.find("DIPLOMACY  63 OUTLETS  Geneva, Switzerland") != std::string::npos);
+    CHECK(doc.find("Leaders meet -- a \"first\" summit\n\nFirst paragraph.") == 0);
+    CHECK(doc.find("Diplomacy") == std::string::npos && doc.find("Geneva") == std::string::npos);
     CHECK(doc.find("KEY POINTS\n\n- Point one.\n\n- Point two.") != std::string::npos);
     CHECK(doc.find("PERSPECTIVES\n\n- One side says yes.") != std::string::npos);
     CHECK(doc.find("CONTEXT\n\nIt began in 2019.") != std::string::npos);
@@ -143,16 +150,11 @@ int main() {
     CHECK(doc.find("#") == std::string::npos);
 
     const news::Story& b = got.stories[1];
-    CHECK(b.language == "es");
-    CHECK(news::kickerOf(b) ==
-          "ECONOM\xC3\x8D"
-          "A  14 MEDIOS");
-    const std::string es = news::buildDocument(b);
-    CHECK(es.find("CONTEXTO\n\n- Sube el coste.") != std::string::npos);
-    CHECK(es.find("QU\xC3\x89 VIENE AHORA\n\nSe vota el lunes.") != std::string::npos);
-    CHECK(es.find("CLAVES") == std::string::npos && es.find("PERSPECTIVAS") == std::string::npos);
-    CHECK(es.find("FUENTES") == std::string::npos && es.find("CRONOLOG") == std::string::npos);
-    CHECK(es.find("Licencia CC BY-NC 4.0") != std::string::npos);
+    const std::string second = news::buildDocument(b);
+    CHECK(second.find("CONTEXT\n\n- Sube el coste.") != std::string::npos);
+    CHECK(second.find("WHAT COMES NEXT\n\nSe vota el lunes.") != std::string::npos);
+    CHECK(second.find("KEY POINTS") == std::string::npos && second.find("PERSPECTIVES") == std::string::npos);
+    CHECK(second.find("SOURCES") == std::string::npos && second.find("TIMELINE") == std::string::npos);
   }
 
   // The sink can stop the transfer after the story it wanted.
@@ -210,7 +212,6 @@ int main() {
     std::vector<news::Item> items(2);
     items[0].id = "s-1";
     items[0].title = "A title";
-    items[0].kicker = "DIPLOMACY  63 OUTLETS";
     items[0].summary = "Lead\ttext\nhere";
     items[1].id = "s-2";
     items[1].title = "Another";
@@ -220,12 +221,33 @@ int main() {
     CHECK(news::unpackSection(packed, back, edition));
     CHECK(edition == 1795003213u && back.size() == 2);
     if (back.size() == 2) {
-      CHECK(back[0].id == "s-1" && back[0].title == "A title" && back[0].kicker == "DIPLOMACY  63 OUTLETS");
+      CHECK(back[0].id == "s-1" && back[0].title == "A title");
       CHECK(back[0].summary == "Lead text here");
-      CHECK(back[1].id == "s-2" && back[1].kicker.empty() && back[1].summary.empty());
+      CHECK(back[1].id == "s-2" && back[1].summary.empty());
     }
+    // A favourite kept by the version that had a kicker column still reads.
+    CHECK(news::unpackSection("NEWS\t2\t0\ns-9\tOld one\tDIPLOMACY  63 OUTLETS\tIts lead\n", back, edition));
+    CHECK(back.size() == 1 && back[0].title == "Old one" && back[0].summary == "Its lead");
     CHECK(!news::unpackSection("garbage", back, edition));
     CHECK(!news::unpackSection("NEWS\t1\t5\nold format\n", back, edition));
+  }
+
+  // A story's pages when the headline takes lines from the first.
+  {
+    news::Paging p;
+    p.lines = 50;
+    p.first = 10;
+    p.rest = 20;
+    CHECK(p.pages() == 3);
+    CHECK(p.topOf(0) == 0 && p.topOf(1) == 10 && p.topOf(2) == 30);
+    CHECK(p.pageOf(0) == 0 && p.pageOf(9) == 0 && p.pageOf(10) == 1 && p.pageOf(29) == 1 && p.pageOf(49) == 2);
+    CHECK(p.pageOf(4000) == 2);
+    p.lines = 10;
+    CHECK(p.pages() == 1);
+    p.lines = 11;
+    CHECK(p.pages() == 2);
+    p.lines = 0;
+    CHECK(p.pages() == 1 && p.pageOf(0) == 0);
   }
 
   CHECK(news::articleFile("s-1") != news::articleFile("s-2"));

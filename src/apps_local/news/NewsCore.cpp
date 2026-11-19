@@ -8,13 +8,11 @@
 
 namespace news {
 
-const Section kSections[] = {
-    {"ACTUAL", "ACTUALIDAD", {"world", "europe", "spain"}, {4, 2, 2}},
-    {"ECON", "ECONOMIA", {"economy", "business", nullptr}, {4, 4, 0}},
-    {"TECH", "TECNOLOGIA E IA", {"tech", "ai", nullptr}, {4, 4, 0}},
-    {"CIENCIA", "CIENCIA Y ENERGIA", {"science", "energy", nullptr}, {5, 3, 0}},
+const Category kDefaultSections[] = {
+    {"world", "World", ""}, {"business", "Business", ""}, {"tech", "Technology", ""},
+    {"ai", "AI", ""},       {"science", "Science", ""},
 };
-const int kSectionCount = static_cast<int>(sizeof(kSections) / sizeof(kSections[0]));
+const int kDefaultSectionCount = static_cast<int>(sizeof(kDefaultSections) / sizeof(kDefaultSections[0]));
 
 std::string storiesUrl(const std::string_view categoryUuid) {
   std::string url = "https://news.kagi.com/api/batches/latest/categories/";
@@ -199,7 +197,10 @@ bool JsonStream::feed(const char* data, const size_t length) {
 
 size_t CategoriesReader::wants(const JsonPath& path) {
   if (path.is({"batchId"}) || path.is({"createdAt"})) return 64;
-  if (path.is({"categories", "id"}) || path.is({"categories", "categoryId"})) return 64;
+  if (path.depth == 3 && path.key[0] == "categories") {
+    const std::string& field = path.key[2];
+    if (field == "id" || field == "categoryId" || field == "categoryName" || field == "sourceLanguage") return 96;
+  }
   return 0;
 }
 
@@ -208,25 +209,62 @@ void CategoriesReader::value(const JsonPath& path, std::string& text) {
     batchId = text;
   } else if (path.is({"createdAt"})) {
     createdAt = text;
-  } else if (path.is({"categories", "id"})) {
-    id_ = text;
-  } else if (path.is({"categories", "categoryId"})) {
-    slug_ = text;
+  } else if (path.depth == 3) {
+    const std::string& field = path.key[2];
+    if (field == "id") {
+      one_.uuid = text;
+    } else if (field == "categoryId") {
+      one_.slug = text;
+    } else if (field == "categoryName") {
+      one_.name = cleanText(text);
+    } else if (field == "sourceLanguage") {
+      language_ = text;
+    }
   }
 }
 
 bool CategoriesReader::objectEnd(const JsonPath& path) {
   if (path.depth != 2 || !path.is({"categories"})) return true;
-  bool named = false;
-  for (int s = 0; s < kSectionCount && !named; ++s) {
-    for (const char* slug : kSections[s].categories) {
-      if (slug != nullptr && slug_ == slug) named = true;
-    }
+  // A category with no language given is one of Kagi's own, which are English.
+  const bool english = language_.empty() || language_ == "en";
+  if (english && !one_.slug.empty() && !one_.uuid.empty() && categories.size() < 400) {
+    if (one_.name.empty()) one_.name = one_.slug;
+    categories.push_back(one_);
   }
-  if (named && !id_.empty()) categories.push_back(CategoryRef{slug_, id_});
-  id_.clear();
-  slug_.clear();
+  one_ = Category{};
+  language_.clear();
   return true;
+}
+
+std::string packCategories(const std::vector<Category>& categories) {
+  std::string out;
+  for (const Category& c : categories) {
+    if (c.slug.empty() || c.slug.find_first_of("\t\n") != std::string::npos) continue;
+    std::string name = c.name;
+    for (char& ch : name) {
+      if (ch == '\t' || ch == '\n') ch = ' ';
+    }
+    out += c.slug + "\t" + name + "\n";
+  }
+  return out;
+}
+
+void unpackCategories(const std::string_view text, std::vector<Category>& categories) {
+  categories.clear();
+  size_t at = 0;
+  while (at < text.size() && categories.size() < 400) {
+    size_t end = text.find('\n', at);
+    if (end == std::string_view::npos) end = text.size();
+    const std::string_view row = text.substr(at, end - at);
+    at = end + 1;
+    const size_t tab = row.find('\t');
+    if (tab == std::string_view::npos || tab == 0) continue;
+    Category c;
+    c.slug = std::string(row.substr(0, tab));
+    c.name = std::string(row.substr(tab + 1));
+    if (c.name.empty()) c.name = c.slug;
+    categories.push_back(std::move(c));
+  }
 }
 
 // --- Text ---------------------------------------------------------------------
@@ -276,22 +314,6 @@ void appendList(std::string& out, const char* heading, const std::vector<std::st
     out += item;
     out += "\n\n";
   }
-}
-
-std::string upper(const std::string& in) {
-  std::string out = in;
-  for (size_t i = 0; i < out.size(); ++i) {
-    const uint8_t c = static_cast<uint8_t>(out[i]);
-    if (c >= 'a' && c <= 'z') {
-      out[i] = static_cast<char>(c - 32);
-    } else if (c == 0xC3 && i + 1 < out.size()) {
-      // Latin-1 lowercase a-grave..thorn sit 0x20 above their capitals.
-      const uint8_t next = static_cast<uint8_t>(out[i + 1]);
-      if (next >= 0xA0 && next <= 0xBE && next != 0xB7) out[i + 1] = static_cast<char>(next - 0x20);
-      ++i;
-    }
-  }
-  return out;
 }
 
 std::string normalised(const std::string& title) {
@@ -400,68 +422,57 @@ std::string cleanText(const std::string_view text) {
   return out;
 }
 
-std::string kickerOf(const Story& story) {
-  const bool spanish = story.language == "es";
-  std::string out = upper(story.category);
-  if (story.outlets > 0) {
-    if (!out.empty()) out += "  ";
-    out += std::to_string(story.outlets);
-    out += spanish ? " MEDIOS" : " OUTLETS";
-  }
-  return out;
-}
-
 std::string buildDocument(const Story& story) {
-  const bool spanish = story.language == "es";
   std::string out;
   out.reserve(6000);
   appendLine(out, story.title);
-  std::string where = kickerOf(story);
-  if (!story.location.empty()) {
-    if (!where.empty()) where += "  ";
-    where += story.location;
-  }
-  appendLine(out, where);
   appendLine(out, story.summary);
   if (!story.quote.empty()) {
     std::string quote = "\"" + story.quote + "\"";
     if (!story.quoteAuthor.empty()) quote += " -- " + story.quoteAuthor;
     appendLine(out, quote);
   }
-  appendList(out, spanish ? "CLAVES" : "KEY POINTS", story.points);
-  appendList(out, spanish ? "PERSPECTIVAS" : "PERSPECTIVES", story.perspectives);
+  appendList(out, "KEY POINTS", story.points);
+  appendList(out, "PERSPECTIVES", story.perspectives);
   bool anyContext = false;
   for (const std::string& part : story.context) anyContext = anyContext || !part.empty();
   if (anyContext) {
-    appendLine(out, spanish ? "CONTEXTO" : "CONTEXT");
+    appendLine(out, "CONTEXT");
     for (const std::string& part : story.context) appendLine(out, part);
   }
-  appendList(out,
-             spanish ? "CRONOLOG\xC3\x8D"
-                       "A"
-                     : "TIMELINE",
-             story.timeline);
+  appendList(out, "TIMELINE", story.timeline);
   if (!story.outlook.empty()) {
-    appendLine(out, spanish ? "QU\xC3\x89 VIENE AHORA" : "WHAT COMES NEXT");
+    appendLine(out, "WHAT COMES NEXT");
     appendLine(out, story.outlook);
   }
   if (!story.sources.empty()) {
-    appendLine(out, spanish ? "FUENTES ORIGINALES" : "ORIGINAL SOURCES");
+    appendLine(out, "ORIGINAL SOURCES");
     for (const Source& source : story.sources) {
       std::string line = "- " + source.domain;
       if (!source.title.empty()) line += ": " + source.title;
       appendLine(out, line);
     }
     if (story.outlets > static_cast<int>(story.sources.size())) {
-      appendLine(out, std::to_string(story.outlets) + (spanish ? " medios en total." : " outlets in all."));
+      appendLine(out, std::to_string(story.outlets) + " outlets in all.");
     }
   }
-  out += spanish ? "S\xC3\xADntesis de Kagi News a partir de los medios citados. Licencia CC BY-NC 4.0, uso no "
-                   "comercial. news.kagi.com"
-                 : "Synthesised by Kagi News from the outlets cited. Licensed CC BY-NC 4.0, non-commercial use. "
-                   "news.kagi.com";
+  out += "Synthesised by Kagi News from the outlets cited. Licensed CC BY-NC 4.0, non-commercial use. news.kagi.com";
   out += "\n";
   return out;
+}
+
+uint32_t Paging::pages() const {
+  if (lines <= first) return 1;
+  const uint32_t each = rest < 1 ? 1 : rest;
+  return 1 + (lines - first + each - 1) / each;
+}
+
+uint32_t Paging::topOf(const uint32_t page) const { return page == 0 ? 0 : first + (page - 1) * (rest < 1 ? 1 : rest); }
+
+uint32_t Paging::pageOf(const uint32_t line) const {
+  if (line < first) return 0;
+  const uint32_t page = 1 + (line - first) / (rest < 1 ? 1 : rest);
+  return page < pages() ? page : pages() - 1;
 }
 
 // --- StoriesReader ------------------------------------------------------------
@@ -484,10 +495,9 @@ size_t StoriesReader::wants(const JsonPath& path) {
   if (path.depth < 3 || path.key[0] != "stories") return 0;
   const std::string& field = path.key[2];
   if (path.depth == 3) {
-    if (field == "id" || field == "sourceLanguage" || field == "unique_domains") return 64;
+    if (field == "id" || field == "unique_domains") return 64;
     if (field == "title") return 300;
     if (field == "short_summary") return 6000;
-    if (field == "category" || field == "location") return 96;
     if (field == "quote") return 500;
     if (field == "quote_author") return 160;
     if (field == "future_outlook") return 2500;
@@ -524,18 +534,12 @@ void StoriesReader::value(const JsonPath& path, std::string& text) {
   if (path.depth == 3) {
     if (field == "id") {
       story_.id = text;
-    } else if (field == "sourceLanguage") {
-      story_.language = text;
     } else if (field == "unique_domains") {
       story_.outlets = std::atoi(text.c_str());
     } else if (field == "title") {
       story_.title = cleanText(text);
     } else if (field == "short_summary") {
       story_.summary = cleanText(text);
-    } else if (field == "category") {
-      story_.category = cleanText(text);
-    } else if (field == "location") {
-      story_.location = cleanText(text);
     } else if (field == "quote") {
       story_.quote = cleanText(text);
     } else if (field == "quote_author") {
@@ -605,7 +609,6 @@ bool StoriesReader::objectEnd(const JsonPath& path) {
   timelineDate_.clear();
   ++seen_;
   if (done.id.empty() || done.title.empty() || done.summary.empty()) return true;
-  if (done.language.empty()) done.language = "en";
   return sink_.story(done);
 }
 
@@ -641,12 +644,11 @@ std::string packSection(const std::vector<Item>& items, const uint32_t edition) 
   std::string out = "NEWS\t2\t" + std::to_string(edition) + "\n";
   for (const Item& item : items) {
     std::string title = item.title;
-    std::string kicker = item.kicker;
     std::string summary = item.summary;
     flat(title);
-    flat(kicker);
     flat(summary);
-    out += item.id + "\t" + title + "\t" + kicker + "\t" + summary + "\n";
+    // The empty column was a kicker; it stays so older favourites still read.
+    out += item.id + "\t" + title + "\t\t" + summary + "\n";
   }
   return out;
 }
@@ -676,7 +678,6 @@ bool unpackSection(const std::string_view text, std::vector<Item>& items, uint32
     Item item;
     item.id = std::string(part[0]);
     item.title = std::string(part[1]);
-    if (n > 2) item.kicker = std::string(part[2]);
     if (n > 3) item.summary = std::string(part[3]);
     items.push_back(std::move(item));
   }
