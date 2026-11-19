@@ -41,7 +41,7 @@ enum : fui::ActionId {
 };
 
 // The front door, Jaipur's shape.
-enum class StartRow : uint8_t { Continue, NewGame, PlayNearby, HowToPlay, Count };
+enum class StartRow : uint8_t { Continue, NewGame, Level, PlayNearby, HowToPlay, Count };
 
 struct StartModel {
   bool hasSavedGame = false;
@@ -49,6 +49,7 @@ struct StartModel {
   int played = 0;
   int won = 0;
   int selected = 0;
+  const char* levelName = "";  // how hard the built-in opponent plays
 };
 
 int startRows(const StartModel& model);

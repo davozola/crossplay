@@ -80,6 +80,10 @@ class SeaSaltActivity final : public linkplay::LinkActivity {
   void routeRoundOver();
   void routeTutorial();
   void activateStartRow(seasaltui::StartRow row);
+  void loadSkill();
+  void saveSkill();
+  // How hard the built-in opponent plays: the stronger of the two unless told.
+  seasalt::Skill skill = seasalt::Skill::Navigator;
   void handleCardTap(int tileIndex);
 
   // The hint line for the current selection, and the primary pill's label and

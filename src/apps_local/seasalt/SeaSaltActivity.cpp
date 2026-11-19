@@ -48,6 +48,7 @@ void SeaSaltActivity::onEnter() {
   // Mixed from the clock, so two games in a row are not the same game.
   seed = toybox::seed();
   loadStats();
+  loadSkill();
   hasSavedGame = loadGame();
   if (!hasSavedGame) {
     game.newGame(nextSeed(), 0);
@@ -145,6 +146,25 @@ void SeaSaltActivity::drawLinkArt(const Rect& slot) {
 
 // --- models ----------------------------------------------------------------
 
+void SeaSaltActivity::loadSkill() {
+  skill = seasalt::Skill::Navigator;
+  constexpr char kSkillPath[] = "/.crosspoint/seasalt-level.cfg";
+  if (!Storage.exists(kSkillPath)) return;
+  HalFile file;
+  uint8_t saved = 1;
+  if (!Storage.openFileForRead("SEAS", kSkillPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved == 0) skill = seasalt::Skill::Beachcomber;
+}
+
+void SeaSaltActivity::saveSkill() {
+  constexpr char kSkillPath[] = "/.crosspoint/seasalt-level.cfg";
+  HalFile file;
+  if (!Storage.openFileForWrite("SEAS", kSkillPath, file)) return;
+  const uint8_t saved = skill == seasalt::Skill::Navigator ? 1 : 0;
+  file.write(&saved, 1);
+  file.flush();
+}
+
 seasaltui::StartModel SeaSaltActivity::startModel() const {
   seasaltui::StartModel model;
   model.hasSavedGame = hasSavedGame;
@@ -152,6 +172,7 @@ seasaltui::StartModel SeaSaltActivity::startModel() const {
   model.played = played;
   model.won = won;
   model.selected = menuSelected;
+  model.levelName = skill == seasalt::Skill::Navigator ? "HARD" : "EASY";
   return model;
 }
 
@@ -621,7 +642,7 @@ void SeaSaltActivity::playOpponentTurn() {
   int guard = 0;
   while (game.currentPhase() != seasalt::Phase::RoundOver && game.currentPhase() != seasalt::Phase::GameOver &&
          game.turn == static_cast<uint8_t>(them) && ++guard < 200) {
-    const Decision d = seasalt::decide(observe(game, them), Skill::Navigator, rng);
+    const Decision d = seasalt::decide(observe(game, them), skill, rng);
     bool ok = false;
     switch (d.act) {
       case Decision::Act::TakeDeck:
@@ -752,6 +773,12 @@ void SeaSaltActivity::activateStartRow(const seasaltui::StartRow row) {
       break;
     case seasaltui::StartRow::NewGame:
       startNewGame();
+      break;
+    case seasaltui::StartRow::Level:
+      // A tap is the other one.
+      skill = skill == seasalt::Skill::Navigator ? seasalt::Skill::Beachcomber : seasalt::Skill::Navigator;
+      saveSkill();
+      requestUpdate();
       break;
     case seasaltui::StartRow::PlayNearby:
       enterLink(linkplay::GameId::SeaSalt);

@@ -136,6 +136,10 @@ class JaipurActivity final : public linkplay::LinkActivity {
   void routeRoundOver();
   void routeTutorial();
   void activateStartRow(jaipurui::StartRow row);
+  void loadSkill();
+  void saveSkill();
+  // How hard the built-in opponent plays: the stronger of the two unless told.
+  jaipur::Skill skill = jaipur::Skill::Maharaja;
 
   // Which seat this device plays. Always 0 in single player; in a match it is
   // whichever side the coin toss gave us.
