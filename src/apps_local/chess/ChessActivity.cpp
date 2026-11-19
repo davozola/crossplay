@@ -88,6 +88,8 @@ void drawPieceAt(const GfxRenderer& renderer, const uint8_t piece, const int siz
 }
 
 // Kings are never captured, so a strip only ever needs these five.
+constexpr char kViewPath[] = "/.crosspoint/chess-view.cfg";
+
 constexpr uint8_t kTrackedTypes[5] = {chess::Queen, chess::Rook, chess::Bishop, chess::Knight, chess::Pawn};
 constexpr int kStartingCount[7] = {0, 8, 2, 2, 2, 1, 1};
 // Optical gap between captured pieces, measured from ink to ink.
@@ -129,6 +131,7 @@ void ChessActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadSettings();
+  loadView();
   sologame::loadStats("CHESS", "/.crosspoint/chess-levels.cfg", levelStats);
   hasSavedGame = loadGame();
   if (!hasSavedGame) {
@@ -325,6 +328,7 @@ void ChessActivity::routeStartMenu() {
 }
 
 void ChessActivity::onExit() {
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   // Runs on sleep and on an app switch as well as on the way out, which is why
   // this was the door that mattered: you press nothing to sleep. It needs no
   // match check of its own -- saveGame() holds that invariant.
@@ -545,6 +549,16 @@ void ChessActivity::recordMove(const chess::Move& move) {
 ChessActivity::BoardGeometry ChessActivity::boardGeometry() const {
   const int screenWidth = renderer.getScreenWidth();
   const int screenHeight = renderer.getScreenHeight();
+  if (wideActive()) {
+    // The board takes the short edge whole, hard against the left.
+    const int outer = toybox::kBoardFrame + 8 + 3;
+    BoardGeometry wideGeometry{};
+    wideGeometry.squareSize = std::max(8, (screenHeight - 2 * outer - 8) / 8);
+    const int boardSize = wideGeometry.squareSize * 8;
+    wideGeometry.originY = (screenHeight - boardSize) / 2;
+    wideGeometry.originX = outer + 4;
+    return wideGeometry;
+  }
   // The first row below the CHROME, not below the black band: the captured
   // strip hangs off this, and measured from kHeaderHeight it sat five pixels
   // under the header rule.
@@ -852,6 +866,17 @@ void ChessActivity::gameLoop() {
     return;
   }
 
+  // A swipe up or down lays the board on its side, and stands it up again.
+  if (!linkPlaying()) {
+    const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
+    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+      wide = !wide;
+      saveView();
+      requestUpdate();
+      return;
+    }
+  }
+
   int touchX = 0;
   int touchY = 0;
   if (mappedInput.wasScreenTapped(touchX, touchY)) {
@@ -869,6 +894,10 @@ void ChessActivity::gameLoop() {
         settingsFrom = SettingsFrom::Board;
         menuIndex = 0;
         requestUpdate();
+        return;
+      }
+      if (event.action == chessui::ActionTakeBack) {
+        if (canTakeBack()) takeBack();
         return;
       }
       if (event.action == chessui::ActionPlayAgain) {
@@ -953,8 +982,8 @@ void ChessActivity::drawSquareContents(const BoardGeometry& geometry, const int 
   }
 }
 
-void ChessActivity::drawCapturedStrip(const int y, const bool capturedFromBlack) const {
-  int x = toybox::kMargin;
+void ChessActivity::drawCapturedStrip(const int y, const bool capturedFromBlack, const int startX) const {
+  int x = startX >= 0 ? startX : toybox::kMargin;
   for (const uint8_t type : kTrackedTypes) {
     int present = 0;
     for (int square = 0; square < 64; ++square) {
@@ -978,7 +1007,8 @@ void ChessActivity::drawCapturedStrip(const int y, const bool capturedFromBlack)
 
 int ChessActivity::statusPillY() const { return renderer.getScreenHeight() - toybox::kMargin - toybox::kPillHeight; }
 
-void ChessActivity::drawMoveList(const int top, const int height) const {
+void ChessActivity::drawMoveList(const int top, const int height, const int left, const int columnWidth) const {
+  const int span = columnWidth > 0 ? columnWidth : renderer.getScreenWidth();
   const toybox::FontMetrics metrics = toybox::metricsFor(toybox::kUiFontId);
   const int lineHeight = metrics.capHeight + 16;
   const int lines = height / lineHeight;
@@ -988,7 +1018,7 @@ void ChessActivity::drawMoveList(const int top, const int height) const {
     // At game over the one thing you need to know is how to start again, and
     // that matters more than reviewing the score sheet.
     toybox::drawCapsCentered(renderer, toybox::kUiFontId,
-                             (renderer.getScreenWidth() - renderer.getTextWidth(toybox::kUiFontId, resultText())) / 2,
+                             left + (span - renderer.getTextWidth(toybox::kUiFontId, resultText())) / 2,
                              top + height - lineHeight, lineHeight, resultText(), true);
     if (historyCount == 0) return;
   }
@@ -1014,8 +1044,8 @@ void ChessActivity::drawMoveList(const int top, const int height) const {
       snprintf(text, sizeof(text), "%d. %s", moveNumber, history[ply]);
     }
     const int width = renderer.getTextWidth(toybox::kUiFontId, text);
-    toybox::drawCapsCentered(renderer, toybox::kUiFontId, (renderer.getScreenWidth() - width) / 2,
-                             top + line * lineHeight, lineHeight, text, true);
+    toybox::drawCapsCentered(renderer, toybox::kUiFontId, left + (span - width) / 2, top + line * lineHeight,
+                             lineHeight, text, true);
   }
 }
 
@@ -1264,7 +1294,69 @@ void ChessActivity::recordRemoteMove(const char* san) {
   historyCount++;
 }
 
+void ChessActivity::loadView() {
+  wide = false;
+  uint8_t saved = 0;
+  HalFile file;
+  if (!Storage.exists(kViewPath) || !Storage.openFileForRead("CHESS", kViewPath, file)) return;
+  if (file.read(&saved, 1) == 1) wide = saved == 1;
+}
+
+void ChessActivity::saveView() const {
+  HalFile file;
+  if (!Storage.openFileForWrite("CHESS", kViewPath, file)) return;
+  const uint8_t saved = wide ? 1 : 0;
+  file.write(&saved, 1);
+  file.flush();
+}
+
+// Everything that is not the board, in the panel beside it.
+void ChessActivity::drawWidePanel(toybox::Screen& screen, const BoardGeometry& geometry) {
+  namespace fui = freeink::ui;
+  const int screenWidth = renderer.getScreenWidth();
+  const int screenHeight = renderer.getScreenHeight();
+  const int boardSize = geometry.squareSize * 8;
+  const int outer = toybox::kBoardFrame + 8 + 3;
+  const int top = toybox::kMargin;
+  const int bottom = screenHeight - toybox::kMargin;
+  const int small = chessart::kSmallPieceSize;
+
+  const auto pill = [&](const int x, const int y, const int w, const char* label, const fui::ActionId action,
+                        const bool solid) {
+    fui::ButtonProps b;
+    b.label = label;
+    b.action = action;
+    if (solid) {
+      b.borderEdges = fui::EdgesNone;
+    } else {
+      b.styles = toybox::rowStyles();
+    }
+    screen.button(b, fui::makeRect(static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w),
+                                   toybox::kPillHeight));
+  };
+  const fui::ActionId statusAction = gameOver ? static_cast<fui::ActionId>(chessui::ActionPlayAgain) : fui::NO_ACTION;
+
+  const int panelX = geometry.originX + boardSize + outer + toybox::kGutter;
+  const int panelW = screenWidth - toybox::kMargin - panelX;
+  const int half = (panelW - toybox::kGutter) / 2;
+  // The state of play on top, the score sheet under it, the controls at the foot.
+  pill(panelX, top, panelW, statusText(), statusAction, true);
+  int y = top + toybox::kPillHeight + toybox::kGutter;
+  drawCapturedStrip(y, whiteAtBottom(), panelX);
+  y += small + toybox::kGutter;
+  const int controlsY = bottom - toybox::kPillHeight;
+  const int stripY = controlsY - toybox::kGutter - small;
+  drawMoveList(y, stripY - y - toybox::kGutter, panelX, panelW);
+  drawCapturedStrip(stripY, !whiteAtBottom(), panelX);
+  if (canTakeBack()) pill(panelX, controlsY, half, "UNDO", chessui::ActionTakeBack, false);
+  pill(panelX + half + toybox::kGutter, controlsY, half, "MENU", chessui::ActionOpenSettings, false);
+}
+
 void ChessActivity::gameRender() {
+  const bool onSide = wideActive();
+  renderer.setOrientation(onSide ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                                 : GfxRenderer::Orientation::Portrait);
+  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   if (showingMenu) {
     drawStartMenu();
     renderer.displayBuffer();
@@ -1295,7 +1387,7 @@ void ChessActivity::gameRender() {
   // Everything the SDK can own: the header band, the status capsule, and the
   // rect left over. The board itself is drawn into that rect below, which is
   // the split FreeInkUI documents for app-specific surfaces.
-  chessui::buildBoardChrome(screen, chrome);
+  if (!onSide) chessui::buildBoardChrome(screen, chrome);
 
   // The move number used to live here, but it is already in the move list, and
   // a way into settings is worth more than repeating it. The gear stays
@@ -1303,11 +1395,13 @@ void ChessActivity::gameRender() {
   // itself and registers its own target from the same rect: a 40px gear is
   // smaller than a fingertip, so the target is that rect grown to the corner,
   // not the icon inflated.
-  const Rect gear = gearRect();
-  toybox::gear(renderer, gear, false);
-  const int gearHitX = gear.x - toybox::kGutter;
-  const Rect band = toybox::headerBandRect(renderer);
-  frame.hit(fui::makeRect(gearHitX, band.y, band.width - gearHitX, band.height), chessui::ActionOpenSettings);
+  if (!onSide) {
+    const Rect gear = gearRect();
+    toybox::gear(renderer, gear, false);
+    const int gearHitX = gear.x - toybox::kGutter;
+    const Rect band = toybox::headerBandRect(renderer);
+    frame.hit(fui::makeRect(gearHitX, band.y, band.width - gearHitX, band.height), chessui::ActionOpenSettings);
+  }
 
   const BoardGeometry geometry = boardGeometry();
   const int boardSize = geometry.squareSize * 8;
@@ -1345,22 +1439,28 @@ void ChessActivity::gameRender() {
                     boardSize + 2 * toybox::kBoardFrame, boardSize + 2 * toybox::kBoardFrame, toybox::kBoardFrame,
                     true);
 
-  // Black's losses sit above the board and White's below, so each side's spoils
-  // appear on the side that took them.
-  drawCapturedStrip(geometry.originY - toybox::kBoardFrame - toybox::kGutter - chessart::kSmallPieceSize, true);
-  drawCapturedStrip(geometry.originY + boardSize + toybox::kBoardFrame + toybox::kGutter, false);
+  if (onSide) {
+    drawWidePanel(screen, geometry);
+  } else {
+    // Black's losses sit above the board and White's below, so each side's spoils
+    // appear on the side that took them.
+    drawCapturedStrip(geometry.originY - toybox::kBoardFrame - toybox::kGutter - chessart::kSmallPieceSize, true);
+    drawCapturedStrip(geometry.originY + boardSize + toybox::kBoardFrame + toybox::kGutter, false);
 
-  // Solid only when the game is over: that transition warrants a full refresh
-  // anyway, so the ink is free and the contrast is the payoff.
-  const int statusY = statusPillY();
-  const int listTop =
-      geometry.originY + boardSize + toybox::kFrame + toybox::kGutter + chessart::kSmallPieceSize + toybox::kGutter;
-  drawMoveList(listTop, statusY - listTop - toybox::kGutter);
+    // Solid only when the game is over: that transition warrants a full refresh
+    // anyway, so the ink is free and the contrast is the payoff.
+    const int statusY = statusPillY();
+    const int listTop =
+        geometry.originY + boardSize + toybox::kFrame + toybox::kGutter + chessart::kSmallPieceSize + toybox::kGutter;
+    drawMoveList(listTop, statusY - listTop - toybox::kGutter);
+  }
   interactionsReady = true;
   toybox::reportOverflow(interactions, "Chess board");
 
-  const auto labels = mappedInput.mapLabels("Back", "Select", "Up", "Down");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (!onSide) {
+    const auto labels = mappedInput.mapLabels("Back", "Select", "Up", "Down");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  }
 
   renderer.displayBuffer();
 }
