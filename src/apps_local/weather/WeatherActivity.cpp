@@ -21,6 +21,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
 #include "WeatherSave.h"
+#include "WeatherWide.h"
 
 namespace wx = weather;
 namespace fui = freeink::ui;
@@ -116,7 +117,7 @@ void WeatherActivity::loadAuto() {
   }
   layout_ = saved[1] <= 2 ? saved[1] : 0;
   wide_ = saved[2] == 1;
-  wideLayout_ = saved[3] <= 2 ? saved[3] : 0;
+  wideLayout_ = saved[3] < weatherwide::kFaces ? saved[3] : 0;
 }
 
 void WeatherActivity::saveAuto() {
@@ -178,7 +179,9 @@ bool WeatherActivity::onItsSide() const {
 void WeatherActivity::setLayout(const int layout) {
   if (onItsSide()) {
     // On its side the same swipe goes round its own three pages.
-    wideLayout_ = (wideLayout_ + (layout - layout_) + 3) % 3;
+    // One on from the last of the upright three is one back.
+    const int by = (layout - layout_) == 1 ? 1 : weatherwide::kFaces - 1;
+    wideLayout_ = (wideLayout_ + by) % weatherwide::kFaces;
     saveAuto();
     requestUpdate();
     return;
@@ -709,10 +712,15 @@ void WeatherActivity::render(RenderLock&&) {
     m.forecast = &forecast_;
     m.fahrenheit = fahrenheit_;
     m.autoMinutes = autoMinutes_;
-    m.wideLayout = wideLayout_;
-    m.faces.ctx = &target;
-    m.faces.bindTitle = bindTitle;
-    weatherui::buildWideForecast(surface, m);
+    weatherwide::draw(renderer, m, wideLayout_);
+    // The foot of every face: cities, auto, refresh.
+    const int16_t top = static_cast<int16_t>(device.height - weatherwide::kFootHeight);
+    const int16_t sideW = weatherwide::kFootSide;
+    frame.hit(fui::makeRect(0, top, sideW, weatherwide::kFootHeight), weatherui::ActionCities);
+    frame.hit(fui::makeRect(sideW, top, static_cast<int16_t>(device.width - sideW * 2), weatherwide::kFootHeight),
+              weatherui::ActionAuto);
+    frame.hit(fui::makeRect(static_cast<int16_t>(device.width - sideW), top, sideW, weatherwide::kFootHeight),
+              weatherui::ActionRefresh);
   };
 
   switch (view_) {

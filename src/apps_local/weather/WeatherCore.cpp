@@ -196,6 +196,9 @@ bool parseForecast(const char* json, const size_t len, Forecast& out) {
   if (!number(member(cur, "apparent_temperature"), out.current.feels)) out.current.feels = out.current.temp;
   if (number(member(cur, "wind_speed_10m"), f)) out.current.wind = f;
   out.current.humidity = toInt(member(cur, "relative_humidity_2m"));
+  // Forecasts kept from before these were asked for simply lack them.
+  out.current.windDir = toInt(member(cur, "wind_direction_10m"), -1);
+  out.current.cloud = toInt(member(cur, "cloud_cover"), -1);
   out.current.code = toInt(member(cur, "weather_code"));
   out.current.isDay = toInt(member(cur, "is_day"), 1) != 0;
   string(member(cur, "time"), out.current.time, sizeof(out.current.time));
@@ -376,6 +379,7 @@ void forecastUrl(const Place& place, char* out, const size_t cap) {
   std::snprintf(out, cap,
                 "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
                 "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
+                ",wind_direction_10m,cloud_cover"
                 "&hourly=temperature_2m,weather_code,precipitation_probability"
                 "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset"
                 ",precipitation_sum,wind_speed_10m_max,uv_index_max,apparent_temperature_max,apparent_temperature_min"
