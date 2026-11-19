@@ -51,6 +51,9 @@ struct SearchModel {
   int resultCount = 0;
   bool noMatch = false;      // a non-empty query with nothing under it
   bool moreResults = false;  // more matches than the panel's worth: keep typing
+  // One line under the matches, in the app's voice: what pressing IR will do,
+  // or that there is no Wi-Fi and these are only the saved articles.
+  const char* hint = nullptr;
   const char* continueTitle = nullptr;
   int continuePage = 0;  // 1-based page CONTINUE lands on; 0 when unknown
   Row recent[kMaxRecent];

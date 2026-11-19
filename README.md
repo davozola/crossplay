@@ -194,7 +194,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Efemerides**  | On this day: science, history and culture, from Spanish Wikipedia.       |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
 | **Wallpapers**  | 66 public-domain prints made for the panel; keep one, or a new one each sleep or each hour. |
-| **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
+| **Wikipedia**   | Spanish Wikipedia over Wi-Fi, read like a book; what you open stays on the card. |
 | **Calculator**  | A calculator with keys the size of a thumb, and the sums you already did. |
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
 | **Hoy**         | The time, the weather, the markets and the sea on one page.              |
@@ -315,6 +315,12 @@ Most of the shelf never touches the network. Of the parts that do:
   public [on this day feed](https://www.mediawiki.org/wiki/Wikifeeds),
   with no account. Wikipedia sees which day was asked for and the device's
   address. The text is theirs, CC BY-SA.
+- **Wikipedia asks Wikipedia.** A search, a random article and each article's
+  text come from Spanish Wikipedia's public
+  [API](https://www.mediawiki.org/wiki/Extension:TextExtracts), with no
+  account. Wikipedia sees what was searched or opened and the device's address.
+  An article opened is kept on the card and read from there afterwards. The
+  text is theirs, CC BY-SA, and each article says so at its end.
 - **Discover asks GitHub directly.** Its search goes to the public
   [GitHub API](https://docs.github.com/rest/search) with no account, which allows
   ten searches a minute, and a README comes from raw.githubusercontent.com. GitHub
