@@ -610,8 +610,11 @@ void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
   rows[static_cast<int>(SettingsRow::Level)].label = "LEVEL";
   // Dimmed rather than gone when two people share the device: a control that
   // vanishes takes its space with it and the list jumps under the finger.
-  rows[static_cast<int>(SettingsRow::Level)].value =
-      model.opponent == hex::Opponent::Computer ? hex::levelName(model.level) : "--";
+  // The level, and how it stands against it.
+  char levelText[32];
+  std::snprintf(levelText, sizeof(levelText), "%s  %d-%d", hex::levelName(model.level), model.levelWon % 10000,
+                model.levelLost % 10000);
+  rows[static_cast<int>(SettingsRow::Level)].value = model.opponent == hex::Opponent::Computer ? levelText : "--";
   rows[static_cast<int>(SettingsRow::Level)].enabled = model.opponent == hex::Opponent::Computer;
   rows[static_cast<int>(SettingsRow::Level)].actionValue = static_cast<int16_t>(SettingsRow::Level);
 
@@ -661,6 +664,17 @@ void buildBoard(toybox::Screen& screen, const BoardModel& model) {
                                        : (model.opponentName != nullptr ? model.opponentName : "THEM");
   seatCard(screen, theirCardRect(layout), theirs, theirName, model.game.toMove == theirs && !hex::over(model.game));
   seatCard(screen, yourCardRect(layout), yours, yourName, model.game.toMove == yours && !hex::over(model.game));
+  if (model.canUndo) {
+    // In the corner the slanted board leaves empty, over your card.
+    const fui::Rect card = yourCardRect(layout);
+    fui::ButtonProps undo;
+    undo.label = "UNDO";
+    undo.action = ActionUndo;
+    undo.styles = toybox::rowStyles();
+    undo.text = toybox::buttonText(screen.theme());
+    undo.radius = toybox::kPillRadius / 2;
+    screen.button(undo, fui::makeRect(card.x, static_cast<int16_t>(card.y - 52), 132, 44));
+  }
 }
 
 void buildResult(toybox::Screen& screen, const ResultModel& model) {

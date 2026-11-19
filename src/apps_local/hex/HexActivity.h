@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "HexBrain.h"
 #include "HexCore.h"
@@ -70,6 +71,7 @@ class HexActivity final : public linkplay::LinkActivity {
   // whichever door it came through.
   void noteFinished();
   void recordResult();
+  void takeBack();
   void loadSave();
   void writeSave();
   // Whose move it is, asked of the link when there is one and of the rules when
@@ -102,6 +104,10 @@ class HexActivity final : public linkplay::LinkActivity {
   // notifies the render task, so deferring by "one pass" without a flag runs
   // the search while the repaint is still in flight.
   bool thinking = false;
+  // The positions before each stone this player put down, for taking one back
+  // (this visit only), and the record against each level.
+  sologame::History<hex::Game, 24> history;
+  sologame::LevelStats levelStats;
 
   // The winning connection, computed once when the game ends.
   uint8_t chain[hex::kMaskBytes] = {};

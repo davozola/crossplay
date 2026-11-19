@@ -81,6 +81,7 @@ void HexActivity::onEnter() {
   menuSelected = -1;
   hex::reset(game);
   loadSave();
+  sologame::loadStats("HEX", "/.crosspoint/hex-levels.cfg", levelStats);
 
   uint32_t capacity = 0;
   pool = allocatePool(capacity);
@@ -286,7 +287,20 @@ bool HexActivity::computerToMove() const {
   return !hex::over(game) && game.toMove != seat;
 }
 
+// Back to before this player's last stone, the computer's answer undone with it.
+void HexActivity::takeBack() {
+  if (inMatch() || thinking || computerToMove()) return;
+  if (!history.pop(game)) return;
+  search.reset();
+  for (int i = 0; i < hex::kMaskBytes; ++i) chain[i] = 0;
+  resultRecorded = false;
+  inProgress = true;
+  writeSave();
+  requestUpdate();
+}
+
 void HexActivity::beginSoloGame() {
+  history.clear();
   hex::reset(game);
   search.reset();
   for (int i = 0; i < hex::kMaskBytes; ++i) chain[i] = 0;
@@ -359,7 +373,9 @@ void HexActivity::handleCellActivated(const int cell) {
     // e-ink: the panel visibly blinks and says the same thing.
     return;
   }
+  const hex::Game before = game;
   if (!hex::play(game, cell)) return;
+  if (!inMatch()) history.push(before);
 
   if (inMatch()) {
     play.play(game);
@@ -404,6 +420,12 @@ void HexActivity::recordResult() {
     ++wins;
   } else {
     ++losses;
+  }
+  if (!inMatch() && opponent == hex::Opponent::Computer) {
+    // Against the computer: counted against the level it was played at.
+    levelStats.count(static_cast<int>(level), lastWon ? 0 : 1);
+    sologame::saveStats("HEX", "/.crosspoint/hex-levels.cfg", levelStats);
+    history.clear();
   }
   for (int i = 0; i < hex::kCellBytes; ++i) lastCells[i] = game.cell[i];
   hasHistory = true;
@@ -633,6 +655,10 @@ void HexActivity::gameLoop() {
       }
       return;
 
+    case hexui::ActionUndo:
+      takeBack();
+      return;
+
     case hexui::ActionAgain:
       if (inMatch()) {
         proposeRematch();
@@ -689,6 +715,8 @@ void HexActivity::gameRender() {
       model.opponent = opponent;
       model.level = level;
       model.playAs = playAs;
+      model.levelWon = levelStats.won[static_cast<int>(level) % sologame::kStatLevels];
+      model.levelLost = levelStats.lost[static_cast<int>(level) % sologame::kStatLevels];
       hexui::buildSettings(surface, model);
       break;
     }
@@ -700,6 +728,7 @@ void HexActivity::gameRender() {
       model.opponentName = inMatch() ? theirName : nullptr;
       model.sharedDevice = !inMatch() && opponent == hex::Opponent::Human;
       model.thinking = thinking;
+      model.canUndo = !inMatch() && !thinking && !computerToMove() && history.count > 0;
       hexui::buildBoard(surface, model);
       break;
     }
