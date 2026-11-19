@@ -18,6 +18,7 @@
 
 #include "../link/LinkActivity.h"
 #include "../ui/ToyboxScreen.h"
+#include "KnucklebonesBrain.h"
 #include "KnucklebonesCore.h"
 #include "KnucklebonesFlow.h"
 
@@ -58,6 +59,10 @@ class KnucklebonesActivity final : public linkplay::LinkActivity {
   // Written when a match ends, read once on entry.
   void recordResult();
   void loadHistory();
+  void loadLevel();
+  void saveLevel();
+  // How hard the built-in opponent plays.
+  knucklebones::Level level = knucklebones::Level::Normal;
 
   knucklebones::Screen screen = knucklebones::Screen::Menu;
   knucklebones::Game game{};

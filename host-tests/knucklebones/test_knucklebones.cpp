@@ -566,7 +566,30 @@ void testTheOpponentIsBetterThanChance() {
 
 }  // namespace
 
+// The hard level against the normal one, over many dealt games, both seats.
+static void hardBeatsNormal() {
+  using namespace knucklebones;
+  int hard = 0;
+  int normal = 0;
+  for (uint32_t seed = 1; seed <= 400; ++seed) {
+    Game game;
+    start(game, seed * 2654435761u);
+    const int hardSeat = static_cast<int>(seed % 2);
+    int guard = 0;
+    while (!over(game) && guard++ < 200) {
+      const int column = chooseColumnFor(game, game.turn == hardSeat ? Level::Hard : Level::Normal);
+      if (column < 0 || !place(game, column)) break;
+    }
+    const int won = winner(game);
+    if (won == hardSeat) ++hard;
+    if (won == 1 - hardSeat) ++normal;
+  }
+  std::printf("  hard v normal over 400 games: %d - %d\n", hard, normal);
+  CHECK(hard > normal + 40);
+}
+
 int main() {
+  hardBeatsNormal();
   testAColumnMultipliesItsMatches();
   testPlacingDestroysOnlyTheMatchingColumn();
   testDiceStackFromTheNearEnd();

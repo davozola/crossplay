@@ -238,6 +238,11 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   fui::ListItem rows[static_cast<int>(MenuRow::Count)] = {};
   rows[static_cast<int>(MenuRow::Play)].label = "PLAY";
   rows[static_cast<int>(MenuRow::Play)].actionValue = static_cast<int16_t>(MenuRow::Play);
+  // One line, so the row is the height of the others: "LEVEL  HARD".
+  char levelRow[32];
+  std::snprintf(levelRow, sizeof(levelRow), "LEVEL  %s", model.levelName);
+  rows[static_cast<int>(MenuRow::Level)].label = levelRow;
+  rows[static_cast<int>(MenuRow::Level)].actionValue = static_cast<int16_t>(MenuRow::Level);
   rows[static_cast<int>(MenuRow::PlayNearby)].label = "PLAY NEARBY";
   rows[static_cast<int>(MenuRow::PlayNearby)].subtitle = model.nearbyName;
   rows[static_cast<int>(MenuRow::PlayNearby)].actionValue = static_cast<int16_t>(MenuRow::PlayNearby);

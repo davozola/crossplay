@@ -27,6 +27,7 @@ void KnucklebonesActivity::onEnter() {
   screen = kb::Screen::Menu;
   menuSelected = -1;
   loadHistory();
+  loadLevel();
   requestUpdate();
 }
 
@@ -34,7 +35,25 @@ void KnucklebonesActivity::onEnter() {
 // fork-local file, the same pattern player.cfg set.
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
 constexpr char kHistoryPath[] = "/.crosspoint/knucklebones.sav";
+constexpr char kLevelPath[] = "/.crosspoint/knucklebones-level.cfg";
 #endif
+
+void KnucklebonesActivity::loadLevel() {
+  level = kb::Level::Normal;
+  if (!Storage.exists(kLevelPath)) return;
+  HalFile file;
+  uint8_t saved = 0;
+  if (!Storage.openFileForRead("KNUC", kLevelPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved < kb::kLevels) level = static_cast<kb::Level>(saved);
+}
+
+void KnucklebonesActivity::saveLevel() {
+  HalFile file;
+  if (!Storage.openFileForWrite("KNUC", kLevelPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(level);
+  file.write(&saved, 1);
+  file.flush();
+}
 
 void KnucklebonesActivity::loadHistory() {
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
@@ -130,7 +149,7 @@ void KnucklebonesActivity::takeOpponentTurn() {
   // half a second to repaint, so playing several of their moves before showing
   // anything would look like a freeze followed by a skip.
   if (kb::over(game) || game.turn == seat) return;
-  const int column = kb::chooseColumn(game);
+  const int column = kb::chooseColumnFor(game, level);
   if (column < 0) return;
   kb::place(game, column);
   requestUpdate();
@@ -236,6 +255,13 @@ void KnucklebonesActivity::gameLoop() {
         case knuckleui::MenuRow::Play:
           beginSoloMatch();
           return;
+        case knuckleui::MenuRow::Level:
+          // A tap is the other one.
+          level = static_cast<kb::Level>((static_cast<int>(level) + 1) % kb::kLevels);
+          saveLevel();
+          menuSelected = static_cast<int>(knuckleui::MenuRow::Level);
+          requestUpdate();
+          return;
         case knuckleui::MenuRow::PlayNearby:
           // No lobby, no host, no code. They tap this and the next thing they
           // see is a board.
@@ -310,6 +336,7 @@ void KnucklebonesActivity::gameRender() {
     case kb::Screen::Menu: {
       knuckleui::MenuModel model;
       model.selected = menuSelected;
+      model.levelName = kb::levelName(level);
       model.hasHistory = hasHistory;
       model.lastYours = lastYours;
       model.lastTheirs = lastTheirs;
