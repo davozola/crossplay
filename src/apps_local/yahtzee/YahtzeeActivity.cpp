@@ -20,12 +20,17 @@ std::unique_ptr<Activity> YahtzeeActivity::create(GfxRenderer& renderer, MappedI
   return makeUniqueNoThrow<YahtzeeActivity>(renderer, mappedInput);
 }
 
+namespace {
+constexpr char kGamePath[] = "/.crosspoint/yahtzee-game.sav";
+}  // namespace
+
 void YahtzeeActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   screen = yz::Screen::Menu;
   menuSelected = -1;
   loadHistory();
+  hasSavedGame = Storage.exists(kGamePath);
   requestUpdate();
 }
 
@@ -65,6 +70,11 @@ void YahtzeeActivity::loadHistory() {
 }
 
 void YahtzeeActivity::recordResult() {
+  if (!resultRecorded && !inMatch()) {
+    // A finished game is no longer one to continue.
+    sologame::drop(kGamePath);
+    hasSavedGame = false;
+  }
   if (resultRecorded) return;
   resultRecorded = true;
 
@@ -97,6 +107,27 @@ void YahtzeeActivity::goTo(const yz::Screen next) {
 void YahtzeeActivity::beginSoloGame() {
   yz::start(game, toybox::seed());
   seat = 0;
+  resultRecorded = false;
+  sologame::drop(kGamePath);
+  hasSavedGame = false;
+  goTo(yz::Screen::Card);
+}
+
+void YahtzeeActivity::saveSolo() {
+  if (inMatch() || yz::over(game)) return;
+  history.clear();
+  hasSavedGame = sologame::save("YAHT", kGamePath, game, history, 0, seat);
+}
+
+void YahtzeeActivity::continueSoloGame() {
+  uint8_t savedLevel = 0;
+  uint8_t savedSeat = 0;
+  if (!sologame::load("YAHT", kGamePath, game, history, savedLevel, savedSeat) || !yz::plausible(game) ||
+      yz::over(game)) {
+    beginSoloGame();
+    return;
+  }
+  seat = savedSeat == 1 ? 1 : 0;
   resultRecorded = false;
   goTo(yz::Screen::Card);
 }
@@ -175,6 +206,8 @@ void YahtzeeActivity::gameLoop() {
       shelf::leave(renderer, mappedInput);
       return;
     }
+    // Leaving the card with a game in hand keeps it.
+    if (screen == yz::Screen::Card) saveSolo();
     goTo(yz::back(screen));
     return;
   }
@@ -254,6 +287,9 @@ void YahtzeeActivity::gameLoop() {
   switch (event.action) {
     case yzui::ActionMenuRow:
       switch (static_cast<yzui::MenuRow>(event.value)) {
+        case yzui::MenuRow::Continue:
+          continueSoloGame();
+          return;
         case yzui::MenuRow::Play:
           beginSoloGame();
           return;
@@ -273,6 +309,9 @@ void YahtzeeActivity::gameLoop() {
       const bool mine = inMatch() ? linkYourTurn() : game.turn == seat;
       if (!mine) return;
       if (!yz::roll(game)) return;
+      // Kept at every roll too, so a device that is switched off mid-game
+      // loses a roll at most.
+      saveSolo();
       requestUpdate();
       return;
     }
@@ -326,6 +365,7 @@ void YahtzeeActivity::gameRender() {
     case yz::Screen::Menu: {
       yzui::MenuModel model;
       model.selected = menuSelected;
+      model.hasSavedGame = hasSavedGame;
       model.played = played;
       model.won = won;
       model.best = best;

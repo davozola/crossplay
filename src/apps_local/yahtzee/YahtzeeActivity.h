@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "YahtzeeCore.h"
 #include "YahtzeeFlow.h"
@@ -48,6 +49,11 @@ class YahtzeeActivity final : public linkplay::LinkActivity {
   // read once on entry -- knucklebones' pattern.
   void recordResult();
   void loadHistory();
+  // A game against the device, kept so it can be left and come back to.
+  void saveSolo();
+  void continueSoloGame();
+  sologame::History<yahtzee::Game, 1> history;
+  bool hasSavedGame = false;
 
   yahtzee::Screen screen = yahtzee::Screen::Menu;
   yahtzee::Game game{};

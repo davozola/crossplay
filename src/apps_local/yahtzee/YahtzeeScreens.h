@@ -18,10 +18,12 @@ enum : fui::ActionId {
   ActionRoll = 5,
 };
 
-enum class MenuRow : int { Play = 0, PlayNearby, HowTo, Count };
+// Continue is only on the menu while there is a game to go back to.
+enum class MenuRow : int { Continue = 0, Play, PlayNearby, HowTo, Count };
 
 struct MenuModel {
   const char* nearbyName = nullptr;
+  bool hasSavedGame = false;
   int selected = -1;
   // The record, for the front door's ornament. yahtzeeFace is the face of the
   // most recent five-of-a-kind scored on this device, 0 until the first.
