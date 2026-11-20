@@ -13931,7 +13931,7 @@ void testWikipediaSearchRowsCarryTheirIndex() {
     CHECK(out.target.drew("WIKIPEDIA"));
     CHECK(out.target.drew("new y"));
     CHECK(out.target.drew("New Yorker"));
-    CHECK(!out.target.drew("ARTICULO AL AZAR"));
+    CHECK(!out.target.drew("AL AZAR"));
     for (int i = 0; i < wikiui::kMaxResults; ++i) {
       const FakeTarget::TextRun* row = out.target.find(kTitles[i]);
       CHECK(row != nullptr);
@@ -13958,14 +13958,14 @@ void testWikipediaSearchRowsCarryTheirIndex() {
     Rendered out;
     buildWikiSearch(out, home);
     CHECK(out.target.drew("BUSCAR EN WIKIPEDIA"));
-    CHECK(out.target.drew("ARTICULO AL AZAR"));
+    CHECK(out.target.drew("AL AZAR"));
     CHECK(out.target.drew("CONTINUAR"));
     CHECK(out.target.drew("RECIENTES"));
     CHECK(out.target.drew("7,238,251 ARTICLES, MAY 2026"));
     const FakeTarget::TextRun* count = out.target.find("7,238,251 ARTICLES, MAY 2026");
     CHECK(count != nullptr);
     if (count != nullptr) CHECK(count->rect.bottom() <= 800 - 252);
-    const FakeTarget::TextRun* random = out.target.find("ARTICULO AL AZAR");
+    const FakeTarget::TextRun* random = out.target.find("AL AZAR");
     CHECK(random != nullptr && tapRun(out, random).action == wikiui::ActionRandom);
     const FakeTarget::TextRun* recent = out.target.find("Ray Charles");
     CHECK(recent != nullptr);
@@ -14028,8 +14028,23 @@ void testWikipediaSearchRowsCarryTheirIndex() {
         "culo y te esperar\xC3\xA1 aqu\xC3\xAD.");
     CHECK(waits != nullptr);
     if (waits != nullptr) CHECK(tapRun(out, waits).action != wikiui::ActionContinue);
-    CHECK(out.target.drew("ARTICULO AL AZAR"));
+    CHECK(out.target.drew("AL AZAR"));
     CHECK(!out.target.drew("X"));
+    // With articles on the card the count line opens their list, and says so.
+    wikiui::SearchModel kept = fresh;
+    kept.manage = true;
+    {
+      Rendered saved;
+      buildWikiSearch(saved, kept);
+      const FakeTarget::TextRun* line = saved.target.find(kept.footer);
+      CHECK(line != nullptr && tapRun(saved, line).action == wikiui::ActionSaved);
+      const FakeTarget::TextRun* how = saved.target.find("TOCA PARA VER O BORRAR");
+      CHECK(how != nullptr && tapRun(saved, how).action == wikiui::ActionSaved);
+      const FakeTarget::TextRun* lists = saved.target.find("DESCUBRIR");
+      CHECK(lists != nullptr && tapRun(saved, lists).action == wikiui::ActionDiscover);
+      const FakeTarget::TextRun* any = saved.target.find("AL AZAR");
+      CHECK(any != nullptr && tapRun(saved, any).action == wikiui::ActionRandom);
+    }
     // The count line is there and is no door to anything.
     const FakeTarget::TextRun* door = out.target.find(fresh.footer);
     CHECK(door != nullptr && tapRun(out, door).action != wikiui::ActionInstall);
@@ -14043,7 +14058,7 @@ void testWikipediaSearchRowsCarryTheirIndex() {
   {
     Rendered out;
     buildWikiSearch(out, raised);
-    CHECK(out.target.drew("ARTICULO AL AZAR"));
+    CHECK(out.target.drew("AL AZAR"));
     const FakeTarget::TextRun* x = out.target.find("X");
     CHECK(x != nullptr);
     if (x != nullptr) CHECK(tapRun(out, x).action == wikiui::ActionClear);

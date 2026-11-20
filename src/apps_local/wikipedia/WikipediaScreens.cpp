@@ -313,9 +313,9 @@ void drawCountLine(toybox::Screen& screen, const int16_t bottom, const char* tex
     drawLabel(screen,
               fui::Rect{static_cast<int16_t>(body.x + kMargin), static_cast<int16_t>(top + kCountLine - 4),
                         static_cast<int16_t>(body.width - kMargin * 2), static_cast<int16_t>(kDoorLine - 4)},
-              "TAP HERE FOR A NEWER PACK", toybox::kSmallFont, fui::TextAlign::Center, toybox::kButtonCut);
+              "TOCA PARA VER O BORRAR", toybox::kSmallFont, fui::TextAlign::Center, toybox::kButtonCut);
+    screen.frame().hit(row, ActionSaved);
   }
-  (void)row;
 }
 
 int16_t footerHeight(toybox::Screen& screen) {
@@ -342,7 +342,7 @@ void buildSearch(toybox::Screen& screen, const SearchModel& model) {
     return;
   }
   // The count line is reserved first; the trail gets what is left.
-  const bool door = false;
+  const bool door = model.manage && model.keyboardHeight == 0;
   const int16_t list = static_cast<int16_t>(bottom - kCountLine - (door ? kDoorLine : 0));
   y = drawPartsRow(screen, model, y);
   {
@@ -378,8 +378,15 @@ void buildSearch(toybox::Screen& screen, const SearchModel& model) {
     }
   }
   {
-    const fui::Rect box{static_cast<int16_t>(body.x + kMargin), y, inner, 52};
-    if (box.bottom() <= list) drawAction(screen, box, "ARTICULO AL AZAR", ActionRandom, false);
+    // Two doors side by side: one article at random, and the lists.
+    const int16_t half = static_cast<int16_t>((inner - toybox::kGutter) / 2);
+    const fui::Rect box{static_cast<int16_t>(body.x + kMargin), y, half, 52};
+    const fui::Rect second{static_cast<int16_t>(box.right() + toybox::kGutter), y,
+                           static_cast<int16_t>(inner - half - toybox::kGutter), 52};
+    if (box.bottom() <= list) {
+      drawAction(screen, box, "AL AZAR", ActionRandom, false);
+      drawAction(screen, second, "DESCUBRIR", ActionDiscover, false);
+    }
     y = static_cast<int16_t>(box.bottom() + 20);
   }
   // The count line before the recent trail: the frame holds 24 targets and

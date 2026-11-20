@@ -146,7 +146,8 @@ void testArticle() {
 }
 
 void testEdges() {
-  const Result missing = convert("{\"batchcomplete\":true,\"query\":{\"pages\":[{\"pageid\":99,\"missing\":true}]}}", 5);
+  const Result missing =
+      convert("{\"batchcomplete\":true,\"query\":{\"pages\":[{\"pageid\":99,\"missing\":true}]}}", 5);
   check(!missing.ok, "missing page writes nothing");
   check(missing.missing, "missing page is flagged");
   same(missing.xhtml, "", "missing page has no document");
@@ -216,6 +217,54 @@ void testHits() {
   check(wikies::parseHits("{\"error\":{\"code\":\"x\"}}", 22, 8, hits) == 0, "error answer: no hits");
 }
 
+void testLists() {
+  const std::string top =
+      "{\"items\":[{\"project\":\"es.wikipedia\",\"access\":\"all-access\",\"year\":\"2026\",\"month\":\"11\","
+      "\"day\":\"18\",\"articles\":[{\"article\":\"Wikipedia:Portada\",\"views\":900,\"rank\":1},"
+      "{\"article\":\"Especial:Buscar\",\"views\":800,\"rank\":2},"
+      "{\"article\":\"Copa_Mundial_de_F\\u00fatbol\",\"views\":700,\"rank\":3},"
+      "{\"article\":\"Archivo:Foto.jpg\",\"views\":650,\"rank\":4},"
+      "{\"article\":\"-\",\"views\":640,\"rank\":5},"
+      "{\"article\":\"Anexo:Pa\xC3\xADses\",\"views\":600,\"rank\":6},"
+      "{\"article\":\"AC/DC\",\"views\":500,\"rank\":7},"
+      "{\"article\":\"Cortado_a_med";
+  std::vector<wikies::Hit> hits;
+  check(wikies::parseTop(top.data(), top.size(), 24, hits) == 3,
+        "three articles, the rest are not, the torn one is dropped");
+  if (hits.size() == 3) {
+    same(hits[0].title, "Copa Mundial de F\xC3\xBAtbol", "underscores become spaces");
+    same(hits[1].title, "Anexo:Pa\xC3\xADses", "an annex is an article");
+    same(hits[2].title, "AC/DC", "slash kept");
+    check(hits[0].id == 0, "top hits carry no id");
+  }
+  hits.clear();
+  check(wikies::parseTop(top.data(), top.size(), 1, hits) == 1, "top max is kept");
+  hits.clear();
+  check(wikies::parseTop("{\"type\":\"not_found\"}", 20, 24, hits) == 0, "404 body: nothing");
+
+  const char* members =
+      "{\"batchcomplete\":true,\"continue\":{\"cmcontinue\":\"page|x|1\",\"continue\":\"-||\"},\"query\":{"
+      "\"categorymembers\":[{\"pageid\":11,\"ns\":0,\"title\":\"Marte (planeta)\"},{\"pageid\":12,\"ns\":0,"
+      "\"title\":\"Mar\\u00eda Zambrano\"}]}}";
+  hits.clear();
+  check(wikies::parseHits(members, std::strlen(members), 24, hits) == 2 && hits[1].id == 12, "category members");
+
+  same(wikies::topUrl(2026, 11, 8),
+       "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/es.wikipedia/all-access/2026/11/08", "day url");
+  same(wikies::topUrl(2026, 10, 0),
+       "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/es.wikipedia/all-access/2026/10/all-days", "month url");
+  const std::string cat = wikies::categoryUrl(
+      "Wikipedia:Art\xC3\xAD"
+      "culos destacados",
+      "MA");
+  check(cat.find("cmtitle=Categor%C3%ADa%3AWikipedia%3AArt%C3%ADculos%20destacados&cmstartsortkeyprefix=MA") !=
+            std::string::npos,
+        "category url");
+  check(wikies::categoryUrl("X", "").find("cmstartsortkeyprefix") == std::string::npos, "category url from the start");
+  check(wikies::articleUrlByTitle("AC/DC & m\xC3\xA1s").find("titles=AC%2FDC%20%26%20m%C3%A1s") != std::string::npos,
+        "article by title url");
+}
+
 void testText() {
   check(wikies::titleMatches("Pe\xC3\xB1\xC3\xADscola", "penis"), "accents fold");
   check(wikies::titleMatches("F\xC3\xBAtbol Club Barcelona", "barcelona FUTBOL"), "words in any order");
@@ -232,6 +281,7 @@ int main() {
   testArticle();
   testEdges();
   testHits();
+  testLists();
   testText();
   if (failures == 0) std::printf("wikionline: all passed\n");
   return failures == 0 ? 0 : 1;
