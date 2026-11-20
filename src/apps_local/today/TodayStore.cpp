@@ -11,7 +11,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../markets/MarketsStore.h"
 #include "../naval/NavalPaths.h"
-#include "../weather/WeatherSave.h"
+#include "../meteo/WeatherSave.h"
 
 namespace todaystore {
 
@@ -42,21 +42,21 @@ void writeFile(const char* path, const std::string& body) {
 
 void loadPlace(Snapshot& out) {
   out.hasPlace = false;
-  if (!Storage.exists(weather::kSavePath)) return;
+  if (!Storage.exists(meteo::kSavePath)) return;
   HalFile file;
-  if (!Storage.openFileForRead("HOY", weather::kSavePath, file)) return;
+  if (!Storage.openFileForRead("HOY", meteo::kSavePath, file)) return;
   uint8_t version = 0;
-  if (file.read(&version, 1) != 1 || version != weather::kSaveVersion) return;
-  auto s = makeUniqueNoThrow<weather::SaveState>();
+  if (file.read(&version, 1) != 1 || version != meteo::kSaveVersion) return;
+  auto s = makeUniqueNoThrow<meteo::SaveState>();
   if (!s) {
     LOG_ERR("HOY", "OOM: places");
     return;
   }
-  if (file.read(reinterpret_cast<uint8_t*>(s.get()), sizeof(weather::SaveState)) != sizeof(weather::SaveState)) return;
-  if (s->count == 0 || s->count > weather::kMaxPlaces) return;
+  if (file.read(reinterpret_cast<uint8_t*>(s.get()), sizeof(meteo::SaveState)) != sizeof(meteo::SaveState)) return;
+  if (s->count == 0 || s->count > meteo::kMaxPlaces) return;
   out.place = s->places[s->selected < s->count ? s->selected : 0];
-  out.place.name[weather::kNameChars - 1] = 0;
-  out.place.region[weather::kRegionChars - 1] = 0;
+  out.place.name[meteo::kNameChars - 1] = 0;
+  out.place.region[meteo::kRegionChars - 1] = 0;
   out.fahrenheit = s->fahrenheit == 1;
   out.hasPlace = true;
 }
@@ -71,8 +71,8 @@ void load(Snapshot& out) {
     char path[80];
     std::unique_ptr<char[]> body;
     size_t size = 0;
-    weather::cachePathOf(out.place, path, sizeof(path));
-    out.hasForecast = readFile(path, body, size) && weather::parseForecast(body.get(), size, out.forecast);
+    meteo::cachePathOf(out.place, path, sizeof(path));
+    out.hasForecast = readFile(path, body, size) && meteo::parseForecast(body.get(), size, out.forecast);
     body.reset();
     naval::cachePathOf(out.place.lat, out.place.lon, "sea", path, sizeof(path));
     out.hasSea = readFile(path, body, size) && naval::parseMarine(body.get(), size, out.sea);
@@ -98,15 +98,15 @@ int fetchAll(Snapshot& snapshot, char* report, const size_t reportCap) {
     body.reserve(16 * 1024);
 
     // The forecast.
-    Storage.ensureDirectoryExists(weather::kCacheDir);
-    weather::forecastUrl(snapshot.place, url, sizeof(url));
+    Storage.ensureDirectoryExists(meteo::kCacheDir);
+    meteo::forecastUrl(snapshot.place, url, sizeof(url));
     weatherWord = "NO ANSWER";
     if (HttpDownloader::fetchUrl(url, body) && body.size() <= kMaxBody) {
-      auto fresh = makeUniqueNoThrow<weather::Forecast>();
-      if (fresh && weather::parseForecast(body.data(), body.size(), *fresh)) {
+      auto fresh = makeUniqueNoThrow<meteo::Forecast>();
+      if (fresh && meteo::parseForecast(body.data(), body.size(), *fresh)) {
         snapshot.forecast = *fresh;
         snapshot.hasForecast = true;
-        weather::cachePathOf(snapshot.place, path, sizeof(path));
+        meteo::cachePathOf(snapshot.place, path, sizeof(path));
         writeFile(path, body);
         weatherWord = "OK";
         ++kinds;

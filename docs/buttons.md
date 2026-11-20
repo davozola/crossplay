@@ -47,6 +47,33 @@ An interaction that _requires_ the third key would be unreachable on the X4
 Pro, so the Sticky's Confirm is a convenience alias for a tap, never the only
 way to do something.
 
+### The BOOX Picco has the same two, a switch, and no Home key
+
+The Picco (experimental, and not on anyone's desk here; [picco.md](picco.md))
+wires the same pair to logical **Up** (GPIO21) and **Down** (GPIO9), both
+marked hardware-confirmed in the SDK profile, plus Power on GPIO2:
+
+```cpp
+// {back, confirm, left, right, up, down, power, powerActiveHigh, adcLadderPin, toggleSwitch}
+{PIN_UNASSIGNED, 5, PIN_UNASSIGNED, PIN_UNASSIGNED, 21, 9, 2, false, PIN_UNASSIGNED, 6},
+```
+
+`freeink-sdk/.../BoardConfig.h`, `PICCO`
+
+GPIO5 is carried as Confirm with its physical role marked unconfirmed in that
+profile; if it is a key, it is an alias like the Sticky's third one and nothing
+needs it. GPIO6 is a two-position **slide switch**, which is not a button: it
+is a level, and upstream binds it to the frontlight, night mode or the
+reader's touch controls (Settings > Controls > Slide Switch). No app reads it.
+
+Like the Sticky it has no capacitive Home key, so Home is the bottom-edge
+up-swipe there too (section 4). `host-tests/picco` holds the SDK profile to all
+of this against the Sticky's, so the rule below covers the Picco unchanged.
+
+Its keys are volume keys on the case edge rather than the X4 Pro's moulded
+page keys, so the landscape mapping in section 3 (Up is the BOTTOM key once
+the panel turns counter-clockwise) is unconfirmed there.
+
 ## 2. Back is a swipe, and it already works
 
 Worth stating plainly, because the pin map above looks alarming and it is not.
@@ -108,15 +135,18 @@ grep -rl "Button::Up\|Button::Down" src/apps_local/*/ | cut -d/ -f3 | sort -u
 | Left / Right | 5                 | **no**           |
 | Up / Down    | 25                | **yes**          |
 
-Eighteen of the thirty-six directories use Back and nothing else.
+Eighteen of the thirty-nine directories use Back and nothing else.
 
 > **The finding below was true when it was written, in August 2026, and it is
 > not true any more.** It said the two real keys were unused by every game we
 > had built, and that the only apps touching them were the reader-shaped ones.
-> Twelve apps read Up/Down today and eight of them are games: Checkers, Connect
-> Four, Forehead, Picross, Sea Salt, Toy Battle, Wavelength and Yahtzee,
-> alongside Hacker News, Instapaper, Wallpapers and xkcd. The rule in section 4
-> is what survived and is still the thing to apply; the census that motivated it
+> Seventeen apps read Up/Down today and eight of them are games: Checkers,
+> Connect Four, Forehead, Picross, Sea Salt, Toy Battle, Wavelength and Yahtzee,
+> alongside Hacker News, Instapaper, Notes, Reading Stats, RSS, Wallpapers,
+> Weather (its pages of places), Wikipedia and xkcd.
+> Study reads the reader's PageForward/PageBack instead, which honour the
+> side-button layout setting and are not counted here. The rule in section 4 is
+> what survived and is still the thing to apply; the census that motivated it
 > has been overtaken, which is the outcome it was arguing for.
 
 That was the whole finding. Not "we should use the buttons more" as a matter of
@@ -219,7 +249,7 @@ using them for anything: a down-swipe starting in the top 14% is the light-panel
 gesture, and an up-swipe starting in the bottom 14% is the Home gesture **on
 boards with no home key**. The X4 Pro has a capacitive home key
 (`BoardConfig` `hasHomeKey = true`), so its bottom edge is free and its Home
-gesture is the key; the Sticky has no key and does spend that band.
+gesture is the key; the Sticky and the Picco have no key and do spend that band.
 
 ---
 
@@ -251,8 +281,9 @@ job the case does not imply, that decision comes back.
 ## 6. What this changes
 
 1. **Up/Down page wherever there are pages**: the shelf folder, HOW TO PLAY in
-   every game, and Hacker News's story list and reader. Behaviour only; nothing
-   is drawn or removed. The shelf takes Left/Right too, which are
+   every game, Hacker News's story list and reader, and a Study card too long
+   for one screen. Behaviour only; nothing is drawn or removed. The shelf takes
+   Left/Right too, which are
    `PIN_UNASSIGNED` on both target boards and exist only in the simulator and
    the browser emulator -- where all six keys are wired to the arrow keys, and
    where every arrow moves a cursor on Home. Two of the four doing nothing one

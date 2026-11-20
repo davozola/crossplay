@@ -9,16 +9,16 @@
 
 #include "../markets/MarketsCore.h"
 #include "../naval/NavalCore.h"
-#include "../weather/WeatherCore.h"
+#include "../meteo/WeatherCore.h"
 
 namespace todaystore {
 
 struct Snapshot {
   bool hasPlace = false;
   bool fahrenheit = false;
-  weather::Place place;
+  meteo::Place place;
   bool hasForecast = false;
-  weather::Forecast forecast;
+  meteo::Forecast forecast;
   bool hasSea = false;
   naval::Sea sea;
   markets::Quote quotes[markets::kAssets];

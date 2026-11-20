@@ -5,6 +5,7 @@
 #include <Logging.h>
 
 #include "ToyboxTokens.h"
+#include "SerifFontIds.h"
 #include "fonts/instrument_10.h"
 #include "fonts/instrument_13.h"
 #include "fonts/instrument_24.h"
@@ -19,6 +20,22 @@
 #include "fonts/toybox_30.h"
 #include "fonts/toybox_44.h"
 #include "fonts/toybox_64.h"
+#include "fonts/notoserif_12_regular.h"
+#include "fonts/notoserif_12_bold.h"
+#include "fonts/notoserif_12_italic.h"
+#include "fonts/notoserif_12_bolditalic.h"
+#include "fonts/notoserif_14_regular.h"
+#include "fonts/notoserif_14_bold.h"
+#include "fonts/notoserif_14_italic.h"
+#include "fonts/notoserif_14_bolditalic.h"
+#include "fonts/notoserif_16_regular.h"
+#include "fonts/notoserif_16_bold.h"
+#include "fonts/notoserif_16_italic.h"
+#include "fonts/notoserif_16_bolditalic.h"
+#include "fonts/notoserif_18_regular.h"
+#include "fonts/notoserif_18_bold.h"
+#include "fonts/notoserif_18_italic.h"
+#include "fonts/notoserif_18_bolditalic.h"
 
 namespace toybox {
 namespace {
@@ -59,20 +76,44 @@ EpdFont readingBold16(&reading_serif_bold_16);
 EpdFont instrument10(&instrument_10);
 EpdFont instrument13(&instrument_13);
 EpdFont instrument24(&instrument_24);
-EpdFontFamily displayFamily(&display30);
-EpdFontFamily largeFamily(&large44);
-EpdFontFamily hugeFamily(&huge64);
-EpdFontFamily uiFamily(&ui20);
-EpdFontFamily tileFamily(&tile10);
-EpdFontFamily buttonFamily(&button14);
-EpdFontFamily readingSmallFamily(&reading11);
-EpdFontFamily readingMidFamily(&reading13);
-EpdFontFamily readingFamily(&reading14);
-EpdFontFamily readingBoldSmallFamily(&readingBold12);
-EpdFontFamily readingBoldFamily(&readingBold16);
-EpdFontFamily serifTileFamily(&instrument13);
-EpdFontFamily serifSmallFamily(&instrument10);
-EpdFontFamily serifTitleFamily(&instrument24);
+// Point sizes are the ones each cut was converted at (its header's "size:");
+// GfxRenderer derives the reader's spaced line height from them.
+EpdFontFamily displayFamily(30, &display30);
+EpdFontFamily largeFamily(44, &large44);
+EpdFontFamily hugeFamily(64, &huge64);
+EpdFontFamily uiFamily(20, &ui20);
+EpdFontFamily tileFamily(10, &tile10);
+EpdFontFamily buttonFamily(14, &button14);
+EpdFontFamily readingSmallFamily(11, &reading11);
+EpdFontFamily readingMidFamily(13, &reading13);
+EpdFontFamily readingFamily(14, &reading14);
+EpdFontFamily readingBoldSmallFamily(12, &readingBold12);
+EpdFontFamily readingBoldFamily(16, &readingBold16);
+EpdFontFamily serifTileFamily(13, &instrument13);
+EpdFontFamily serifSmallFamily(10, &instrument10);
+EpdFontFamily serifTitleFamily(24, &instrument24);
+
+// FORK CHANGE: Noto Serif, which CrossPoint 2.0 no longer carries (see SerifFontIds.h).
+EpdFont notoserif12Regular(&notoserif_12_regular);
+EpdFont notoserif12Bold(&notoserif_12_bold);
+EpdFont notoserif12Italic(&notoserif_12_italic);
+EpdFont notoserif12BoldItalic(&notoserif_12_bolditalic);
+EpdFontFamily notoserif12Family(12, &notoserif12Regular, &notoserif12Bold, &notoserif12Italic, &notoserif12BoldItalic);
+EpdFont notoserif14Regular(&notoserif_14_regular);
+EpdFont notoserif14Bold(&notoserif_14_bold);
+EpdFont notoserif14Italic(&notoserif_14_italic);
+EpdFont notoserif14BoldItalic(&notoserif_14_bolditalic);
+EpdFontFamily notoserif14Family(14, &notoserif14Regular, &notoserif14Bold, &notoserif14Italic, &notoserif14BoldItalic);
+EpdFont notoserif16Regular(&notoserif_16_regular);
+EpdFont notoserif16Bold(&notoserif_16_bold);
+EpdFont notoserif16Italic(&notoserif_16_italic);
+EpdFont notoserif16BoldItalic(&notoserif_16_bolditalic);
+EpdFontFamily notoserif16Family(16, &notoserif16Regular, &notoserif16Bold, &notoserif16Italic, &notoserif16BoldItalic);
+EpdFont notoserif18Regular(&notoserif_18_regular);
+EpdFont notoserif18Bold(&notoserif_18_bold);
+EpdFont notoserif18Italic(&notoserif_18_italic);
+EpdFont notoserif18BoldItalic(&notoserif_18_bolditalic);
+EpdFontFamily notoserif18Family(18, &notoserif18Regular, &notoserif18Bold, &notoserif18Italic, &notoserif18BoldItalic);
 
 bool registered = false;
 
@@ -162,6 +203,11 @@ void verifyCutMetrics() {
   }
 }
 
+bool readingCutsCarry(const uint32_t cp) {
+  return readingFamily.hasCodepoint(cp) && readingBoldFamily.hasCodepoint(cp) && readingSmallFamily.hasCodepoint(cp) &&
+         readingBoldSmallFamily.hasCodepoint(cp);
+}
+
 void ensureFonts(GfxRenderer& renderer) {
   if (registered) return;
   verifyCutMetrics();
@@ -182,6 +228,10 @@ void ensureFonts(GfxRenderer& renderer) {
   renderer.insertFont(kSerifTileFontId, serifTileFamily);
   renderer.insertFont(kSerifSmallFontId, serifSmallFamily);
   renderer.insertFont(kSerifTitleFontId, serifTitleFamily);
+  renderer.insertFont(NOTOSERIF_12_FONT_ID, notoserif12Family);
+  renderer.insertFont(NOTOSERIF_14_FONT_ID, notoserif14Family);
+  renderer.insertFont(NOTOSERIF_16_FONT_ID, notoserif16Family);
+  renderer.insertFont(NOTOSERIF_18_FONT_ID, notoserif18Family);
   registered = true;
 }
 

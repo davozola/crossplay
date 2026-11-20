@@ -1,8 +1,10 @@
 #include "StudyScreens.h"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "../../components/icons/listIcons.h"
+#include "../ui/ToyboxFormat.h"
 
 namespace studyui {
 
@@ -155,7 +157,12 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   // button of its own.
   char headline[32];
   const int waiting = model.due + model.fresh;
-  if (waiting > 0) {
+  if (model.clockUnset) {
+    // Counted by a wrong date, so neither the count nor ALL CLEAR is true:
+    // a Sticky months behind read NOTHING DUE TODAY over a deck full of due
+    // cards, in this, the largest type on the screen (#727).
+    std::snprintf(headline, sizeof(headline), "WRONG DATE");
+  } else if (waiting > 0) {
     std::snprintf(headline, sizeof(headline), "%d TO GO", waiting);
   } else {
     if (model.otherWaiting > 0) {
@@ -171,7 +178,9 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   screen.target().text(fui::makeRect(body.x, body.y, body.width, 60), headline, hero);
 
   char state[64];
-  if (waiting > 0) {
+  if (model.clockUnset) {
+    std::snprintf(state, sizeof(state), "SYNC TO SET THE CLOCK");
+  } else if (waiting > 0) {
     std::snprintf(state, sizeof(state), "%d DUE   %d NEW", model.due, model.fresh);
   } else if (model.reviewed > 0) {
     std::snprintf(state, sizeof(state), "%d REVIEWED   %d%% RIGHT", model.reviewed,
@@ -184,7 +193,7 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   sub.align = fui::TextAlign::Left;
   screen.target().text(toybox::inkCentred(fui::makeRect(body.x, body.y + 62, body.width, 26), toybox::kUiCut), state,
                        sub);
-  if (waiting > 0) {
+  if (waiting > 0 && !model.clockUnset) {
     screen.frame().hit(fui::makeRect(body.x, body.y, body.width, 96), ActionStudy, 0);
   }
 
@@ -222,14 +231,14 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
     nextLine += 24;
   }
   // A warning rides the scope line rather than getting one of its own. At four
-  // doors this screen has no spare row: above the ornament the brackets start
-  // 5px below the line before it, and below the caption is the top door. The
-  // nudge it displaces is routine; a warning is neither routine nor silent.
+  // doors this screen has no spare row: the ornament gives up height to keep
+  // its brackets clear of the line above, and below the caption is the top
+  // door. The nudge it displaces is routine; a warning is neither routine nor
+  // silent.
   char warning[48] = "";
+  // A wrong clock is not here: the headline says it.
   if (model.writeFailed) {
     std::snprintf(warning, sizeof(warning), "SOME REVIEWS DID NOT SAVE");
-  } else if (model.clockUnset) {
-    std::snprintf(warning, sizeof(warning), "THIS READER LOST THE DATE -- SYNC TO SET IT");
   } else if (model.decksOverCap > 0) {
     std::snprintf(warning, sizeof(warning), "%d DECK%s HERE CANNOT BE OPENED OR SENT", model.decksOverCap,
                   model.decksOverCap == 1 ? "" : "S");
@@ -237,10 +246,15 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   // Scope, on its own line so it cannot push the headline out of its box: the
   // counts above are this deck's, and with more than one on the card they read
   // as the whole account's.
+  // The bottom of the last line drawn above the ornament.
+  int wordsBottom = body.y + nextLine;
   if (warning[0] != '\0') {
     fui::TextStyle warn = small;
     screen.target().text(fui::makeRect(body.x, body.y + nextLine, body.width, 22), warning, warn);
-  } else if (model.deckCount > 1) {
+    wordsBottom = body.y + nextLine + 22;
+  } else if (model.deckCount > 1 && !model.clockUnset) {
+    // Not under a wrong clock: what waits in the other decks was counted from
+    // that same wrong date.
     fui::TextStyle scope = small;
     scope.color = fui::Color::DarkGray;
     char elsewhere[64];
@@ -254,6 +268,7 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
       std::snprintf(elsewhere, sizeof(elsewhere), "TODAY'S COUNTS ARE FOR THIS DECK");
     }
     screen.target().text(fui::makeRect(body.x, body.y + nextLine, body.width, 22), elsewhere, scope);
+    wordsBottom = body.y + nextLine + 22;
   }
 
   // The ornament, bracketed the way the board is. With three doors below
@@ -263,7 +278,9 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   // was drawn straight through the top one.
   const int doorsHere = 2 + (model.deckCount > 1 ? 1 : 0) + (model.paired ? 1 : 0);
   const int doorBand = doorsHere * toybox::kRowHeight + (doorsHere - 1) * toybox::kMargin;
-  const int panelTop = body.y + 210;
+  // The top arm stands 18 above the panel and at least as far below the words
+  // above it as the caption stands below the bottom arm.
+  const int panelTop = std::max(body.y + 210, wordsBottom + 16 + 18);
   // The brackets hang 36px below the panel, so the caption clears them by
   // 44 -- less and a bottom arm is drawn through the text (the ui suite
   // checks exactly this).
@@ -272,7 +289,9 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   int panelHeight = body.bottom() - doorBand - toybox::kMargin - captionDrop - captionH - panelTop;
   if (panelHeight > 190) panelHeight = 190;
   if (panelHeight < 84) panelHeight = 84;
-  const fui::Rect panel = fui::makeRect(body.x + 10, panelTop, body.width - 20, panelHeight);
+  // The brackets stand 18 outside the panel, on the page's margin, as every
+  // other bracketed front door's do.
+  const fui::Rect panel = fui::makeRect(body.x + 18, panelTop, body.width - 36, panelHeight);
   brackets(screen, fui::makeRect(panel.x - 18, panel.y - 18, panel.width + 36, panel.height + 54), 32);
   timeline(screen, fui::makeRect(panel.x + 12, panel.y + 8, panel.width - 24, panelHeight - 16), model);
 
@@ -303,7 +322,9 @@ void buildDeck(toybox::Screen& screen, const DeckModel& model) {
   // read NOTHING TO REVIEW and sit there looking live: same box, same glyph,
   // no response. It becomes the way to that work instead.
   const bool elsewhereOnly = waiting == 0 && model.otherWaiting > 0;
-  rows[doorCount].label = model.clockUnset ? "SYNC TO SET THE CLOCK"
+  // Shut under a wrong clock, saying when it opens. The label has to fit the
+  // door at the UI cut; host-tests/ui measures it.
+  rows[doorCount].label = model.clockUnset ? "REVIEW AFTER SYNC"
                           : waiting > 0    ? "START REVIEWING"
                           : elsewhereOnly  ? "REVIEW ANOTHER DECK"
                                            : "NOTHING TO REVIEW";
@@ -723,6 +744,101 @@ PairConfirmLayout buildPairConfirm(toybox::Screen& screen) {
   screen.target().text(fui::makeRect(body.x, layout.pill.y - 34, body.width, 24), "NOT ME? PRESS BACK",
                        syncText(toybox::kTileFont, fui::TextAlign::Center, fui::Color::DarkGray));
   return layout;
+}
+
+// ---- The card pager.
+
+namespace {
+constexpr int16_t kPagerWidth = 176;
+// The pill the header's PHOTO control is drawn as, so the two read as one
+// family on the same screen.
+constexpr int16_t kPagerHeight = 34;
+constexpr int16_t kPagerArrowCell = 44;
+// Past the pill's own ends, how far an arrow's target reaches: the whole band
+// out to the body's edge, so a thumb that lands beside the arrow still pages.
+}  // namespace
+
+CardPagerLayout cardPagerLayout(const fui::Rect body) {
+  CardPagerLayout layout;
+  layout.band = fui::makeRect(body.x, static_cast<int16_t>(body.bottom() - kCardPagerBand), body.width, kCardPagerBand);
+  const int16_t width = body.width < kPagerWidth ? body.width : kPagerWidth;
+  layout.pill =
+      fui::makeRect(static_cast<int16_t>(body.x + (body.width - width) / 2),
+                    static_cast<int16_t>(layout.band.y + (kCardPagerBand - kPagerHeight) / 2), width, kPagerHeight);
+  const int16_t previousEnd = static_cast<int16_t>(layout.pill.x + kPagerArrowCell);
+  const int16_t nextStart = static_cast<int16_t>(layout.pill.right() - kPagerArrowCell);
+  layout.previous = fui::makeRect(layout.band.x, layout.band.y, static_cast<int16_t>(previousEnd - layout.band.x),
+                                  layout.band.height);
+  layout.next = fui::makeRect(nextStart, layout.band.y, static_cast<int16_t>(layout.band.right() - nextStart),
+                              layout.band.height);
+  return layout;
+}
+
+void drawCardPager(fui::DrawTarget& target, const CardPagerLayout& layout, const int page, const int pages) {
+  if (pages <= 1) return;
+  const fui::Paint ink = fui::Paint::solid(fui::Color::Black);
+  const fui::Rect& pill = layout.pill;
+  const uint8_t radius = static_cast<uint8_t>(pill.height / 2);
+  const bool canBack = page > 0;
+  const bool canOn = page < pages - 1;
+
+  // Knocked out to white first, as the PHOTO pill is, so the outline does not
+  // let anything behind it show through.
+  target.fill(pill, fui::Paint::solid(fui::Color::White), radius);
+  const fui::Rect left = fui::makeRect(pill.x, pill.y, kPagerArrowCell, pill.height);
+  const fui::Rect right =
+      fui::makeRect(static_cast<int16_t>(pill.right() - kPagerArrowCell), pill.y, kPagerArrowCell, pill.height);
+  // A spent arrow keeps its place and dims: its cell takes the dithered ground
+  // a disabled stepper wears (toybox::disabledStepperStyles), since there is
+  // no grey ink on this panel to dim the chevron itself with.
+  if (!canBack) {
+    target.fill(left, fui::Paint::dither(fui::Color::LightGray), radius, fui::CornerTopLeft | fui::CornerBottomLeft);
+  }
+  if (!canOn) {
+    target.fill(right, fui::Paint::dither(fui::Color::LightGray), radius, fui::CornerTopRight | fui::CornerBottomRight);
+  }
+  target.stroke(pill, ink, toybox::kHairline, radius);
+  target.line(fui::Point{left.right(), static_cast<int16_t>(pill.y + 1)},
+              fui::Point{left.right(), static_cast<int16_t>(pill.bottom() - 2)}, toybox::kHairline, ink);
+  target.line(fui::Point{static_cast<int16_t>(right.x - 1), static_cast<int16_t>(pill.y + 1)},
+              fui::Point{static_cast<int16_t>(right.x - 1), static_cast<int16_t>(pill.bottom() - 2)}, toybox::kHairline,
+              ink);
+
+  // The chevrons: two strokes each, pointing out of the pill.
+  const int16_t cy = static_cast<int16_t>(pill.y + pill.height / 2);
+  constexpr int16_t kReach = 7;
+  constexpr int16_t kDepth = 4;
+  for (int side = 0; side < 2; ++side) {
+    const fui::Rect& cell = side == 0 ? left : right;
+    const int16_t cx = static_cast<int16_t>(cell.x + cell.width / 2);
+    const int16_t tip = static_cast<int16_t>(side == 0 ? cx - kDepth : cx + kDepth);
+    const int16_t tail = static_cast<int16_t>(side == 0 ? cx + kDepth : cx - kDepth);
+    target.line(fui::Point{tail, static_cast<int16_t>(cy - kReach)}, fui::Point{tip, cy}, 2, ink);
+    target.line(fui::Point{tip, cy}, fui::Point{tail, static_cast<int16_t>(cy + kReach)}, 2, ink);
+  }
+
+  // "%d / %d"
+  constexpr int kLabelChars = 2 * toybox::kIntChars + toybox::literalChars(" / ") + 1;
+  char label[kLabelChars];
+  std::snprintf(label, sizeof(label), "%d / %d", page + 1, pages);
+  // The small cut, the one Sea Salt's pager and the shelf's counters use: a
+  // page count is a caption, and at the UI cut it filled the pill.
+  fui::TextStyle style;
+  style.font = toybox::kTileFont;
+  style.align = fui::TextAlign::Center;
+  style.color = fui::Color::Black;
+  style.maxLines = 1;
+  const fui::Rect middle =
+      fui::makeRect(left.right(), pill.y, static_cast<int16_t>(right.x - left.right()), pill.height);
+  target.text(toybox::inkCentred(middle, toybox::kTileCut), label, style);
+}
+
+CardPagerHit cardPagerHit(const CardPagerLayout& layout, const int x, const int y) {
+  const auto inside = [x, y](const fui::Rect& r) { return x >= r.x && x < r.right() && y >= r.y && y < r.bottom(); };
+  if (!inside(layout.band)) return CardPagerHit::Outside;
+  if (inside(layout.previous)) return CardPagerHit::Previous;
+  if (inside(layout.next)) return CardPagerHit::Next;
+  return CardPagerHit::Between;
 }
 
 }  // namespace studyui

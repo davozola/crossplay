@@ -18,6 +18,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../../util/DeviceHostname.h"
 #include "../../util/QrUtils.h"
+#include "../ClockFloor.h"
 #include "../Shelf.h"
 #include "../live/LiveBridge.h"
 #include "../live/LiveEngine.h"
@@ -49,6 +50,8 @@ static_assert(wallpapers::kSleepQuickResume == CrossPointSettings::SLEEP_SCREEN_
 static_assert(wallpapers::kSleepTransparentCustom == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT_CUSTOM,
               "sleep mode mirror drifted");
 static_assert(wallpapers::kSleepNote == CrossPointSettings::SLEEP_SCREEN_MODE::NOTE, "sleep mode mirror drifted");
+static_assert(wallpapers::kSleepCoverTransparent == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_TRANSPARENT,
+              "sleep mode mirror drifted");
 static_assert(wallpapers::kSleepModeCount == CrossPointSettings::SLEEP_SCREEN_MODE::SLEEP_SCREEN_MODE_COUNT,
               "a sleep screen mode was added upstream; WallpapersCore's mirror and its rules must be updated");
 
@@ -2048,7 +2051,10 @@ void WallpapersActivity::refreshLiveLines() {
   schedule.paired = liveConfigured();
   schedule.on = liveRunning_;
   liveScheduleNote_ = live::scheduleNote(schedule);
-  liveNextCheck_ = live::nextCheckPhrase(schedule, static_cast<int64_t>(std::time(nullptr)));
+  // The same "no clock" the engine sees (LiveEngine nowEpoch): a clock earlier
+  // than this firmware's build is not a time to count from.
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  liveNextCheck_ = live::nextCheckPhrase(schedule, clockfloor::trusted(now) ? now : 0);
 }
 
 // The address the phone opens. Station mode only: the hotspot has no NAT and a

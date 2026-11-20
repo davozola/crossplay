@@ -27,6 +27,7 @@
 #include "../ui/ToyboxSerif.h"
 #include "../ui/ToyboxTheme.h"
 #include "JukeboxNet.h"
+#include "../ui/SerifFontIds.h"
 
 namespace fui = freeink::ui;
 namespace lab = toyboxlab;

@@ -32,12 +32,12 @@
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxSerif.h"
 #include "../ui/ToyboxTheme.h"
-#include "../weather/WeatherScreens.h"
+#include "../meteo/WeatherScreens.h"
 #include "TodayStyles.h"
 
 namespace fui = freeink::ui;
 namespace lab = toyboxlab;
-namespace wx = weather;
+namespace wx = meteo;
 namespace mk = markets;
 namespace nv = naval;
 

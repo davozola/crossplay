@@ -62,8 +62,10 @@
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
 #include "presenter/PresenterActivity.h"
+#include "readingstats/ReadingStatsActivity.h"
 #include "reversi/ReversiActivity.h"
 #include "rpn/RpnActivity.h"
+#include "rss/RssActivity.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "sudoku/SudokuActivity.h"
@@ -79,8 +81,8 @@
 #include "underhand/UnderhandActivity.h"
 #include "wallpapers/WallpapersActivity.h"
 #include "wavelength/WavelengthActivity.h"
-#include "weather/WeatherActivity.h"
-#include "wikipedia/WikipediaActivity.h"
+#include "meteo/WeatherActivity.h"
+#include "wikies/WikipediaActivity.h"
 #include "wordle/WordleActivity.h"
 #include "yahtzee/YahtzeeActivity.h"
 
@@ -248,7 +250,7 @@ constexpr shelf::Item kApps[] = {
     {"JUKEBOX", &icon_jukebox_32, &JukeboxActivity::create, 3, true, "Mando para Plexamp",
      "Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto y volumen desde "
      "aquí. Se enlaza a tu cuenta de Plex con un código."},
-    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create, 1, true, "Wikipedia en español",
+    {"WIKIPEDIA", &icon_wikipedia_32, &WikiesActivity::create, 1, true, "Wikipedia en español",
      "Busca y lee cualquier artículo de Wikipedia en español por wifi, como un libro. Los que abres se quedan en la "
      "tarjeta para releerlos sin red."},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create, 3, false, "Calculadora de teclas grandes",
@@ -276,7 +278,7 @@ constexpr shelf::Item kApps[] = {
      "Dos relojes para un tablero entre los dos; cada uno toca su mitad de la pantalla."},
     {"HANDWRITING", &icon_notebook_32, &HandwritingActivity::create, 3, false, "Libreta para el dedo",
      "Páginas para escribir y dibujar; cada una se guarda también como imagen."},
-    {"WEATHER", &icon_weather_32, &WeatherActivity::create, 0, true, "Previsión para tus ciudades",
+    {"WEATHER", &icon_weather_32, &MeteoActivity::create, 0, true, "Previsión para tus ciudades",
      "De Open-Meteo, hasta seis ciudades, con tableros de tres y de cinco y actualización automática."},
     {"NAVAL WEATHER", &icon_naval_32, &NavalActivity::create, 0, true, "Viento, oleaje y agua",
      "El parte marítimo de los sitios guardados en Weather: viento en nudos, olas, mar de fondo y temperatura del "
@@ -290,6 +292,12 @@ constexpr shelf::Item kApps[] = {
      "Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda."},
     {"RPN 12C", &icon_rpn_32, &RpnActivity::create, 3, false, "Calculadora financiera RPN",
      "Al estilo de la HP-12C: pila de cuatro niveles, n, i, PV, PMT, FV, NPV e IRR."},
+    // From CrossPlay 1.16. Upstream's WEATHER is left off the shelf: this
+    // fork's own Weather (src/apps_local/meteo) is the one shown.
+    {"RSS", &icon_rss_32, &RssActivity::create, 1, false, "Tus webs, lo último primero",
+     "Los feeds que eliges, leídos al abrir por Wi-Fi y guardados en la tarjeta para leerlos sin red."},
+    {"READING STATS", &icon_readingstats_32, &ReadingStatsActivity::create, 1, false, "Tu lectura en cifras",
+     "Tiempo leído esta semana, la racha, los minutos de cada día de las dos últimas semanas y los libros acabados este año."},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

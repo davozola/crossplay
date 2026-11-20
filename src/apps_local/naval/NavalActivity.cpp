@@ -23,8 +23,8 @@
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
-#include "../weather/WeatherSave.h"
-#include "../weather/WeatherScreens.h"
+#include "../meteo/WeatherSave.h"
+#include "../meteo/WeatherScreens.h"
 #include "NavalPaths.h"
 
 namespace fui = freeink::ui;
@@ -217,28 +217,28 @@ void NavalActivity::onExit() {
 void NavalActivity::loadPlaces() {
   placeCount_ = 0;
   selected_ = 0;
-  if (!Storage.exists(weather::kSavePath)) return;
+  if (!Storage.exists(meteo::kSavePath)) return;
   HalFile file;
-  if (!Storage.openFileForRead("NAVL", weather::kSavePath, file)) return;
+  if (!Storage.openFileForRead("NAVL", meteo::kSavePath, file)) return;
   uint8_t version = 0;
-  if (file.read(&version, 1) != 1 || version != weather::kSaveVersion) return;
-  auto s = makeUniqueNoThrow<weather::SaveState>();
+  if (file.read(&version, 1) != 1 || version != meteo::kSaveVersion) return;
+  auto s = makeUniqueNoThrow<meteo::SaveState>();
   if (!s) {
     LOG_ERR("NAVL", "OOM: places");
     return;
   }
-  if (file.read(reinterpret_cast<uint8_t*>(s.get()), sizeof(weather::SaveState)) != sizeof(weather::SaveState)) return;
-  placeCount_ = s->count <= weather::kMaxPlaces ? s->count : 0;
+  if (file.read(reinterpret_cast<uint8_t*>(s.get()), sizeof(meteo::SaveState)) != sizeof(meteo::SaveState)) return;
+  placeCount_ = s->count <= meteo::kMaxPlaces ? s->count : 0;
   for (int i = 0; i < placeCount_; ++i) {
     places_[i] = s->places[i];
-    places_[i].name[weather::kNameChars - 1] = 0;
-    places_[i].region[weather::kRegionChars - 1] = 0;
+    places_[i].name[meteo::kNameChars - 1] = 0;
+    places_[i].region[meteo::kRegionChars - 1] = 0;
   }
   selected_ = s->selected < placeCount_ ? s->selected : 0;
 }
 
 void NavalActivity::cachePath(const char* which, char* out, const size_t cap) const {
-  const weather::Place& p = places_[selected_];
+  const meteo::Place& p = places_[selected_];
   naval::cachePathOf(p.lat, p.lon, which, out, cap);
 }
 
@@ -313,7 +313,7 @@ void NavalActivity::startFetch() {
 }
 
 NavalActivity::Fetched NavalActivity::fetchSea(const bool asked) {
-  const weather::Place& p = places_[selected_];
+  const meteo::Place& p = places_[selected_];
   char url[512];
   char path[80];
   std::string body;
@@ -426,7 +426,7 @@ void NavalActivity::loadAuto() {
   HalFile file;
   uint8_t saved = 0;
   if (!Storage.openFileForRead("NAVL", kAutoPath, file) || file.read(&saved, 1) < 1) return;
-  for (const int choice : weatherui::kAutoChoices) {
+  for (const int choice : meteoui::kAutoChoices) {
     if (choice == saved) autoMinutes_ = choice;
   }
 }
@@ -617,9 +617,9 @@ void NavalActivity::loop() {
   const fui::ActionEvent event = interactions_.route(input);
   // The picker is WEATHER's, and so are its actions.
   if (view_ == View::AutoPicker) {
-    if (event.action != weatherui::ActionChooseAuto) return;
+    if (event.action != meteoui::ActionChooseAuto) return;
     int chosen = -1;
-    for (const int choice : weatherui::kAutoChoices) {
+    for (const int choice : meteoui::kAutoChoices) {
       if (choice == event.value) chosen = choice;
     }
     if (chosen < 0) return;
@@ -799,7 +799,7 @@ void NavalActivity::buildNow(toybox::Screen& screen) {
   int y = toybox::kChromeHeight + 10;
 
   // The place, with a step either side when there is more than one.
-  const weather::Place& place = places_[selected_];
+  const meteo::Place& place = places_[selected_];
   if (placeCount_ > 1) {
     lab::button(screen, lab::rect(x, y, 52, 46), "<", ActionPlace, 0, false, false);
     lab::button(screen, lab::rect(x + inner - 52, y, 52, 46), ">", ActionPlace, 1, false, false);
@@ -1582,7 +1582,7 @@ void NavalActivity::render(RenderLock&&) {
   if (view_ == View::Status || !sea_) {
     buildStatus(screen);
   } else if (view_ == View::AutoPicker) {
-    weatherui::buildAutoPicker(screen, autoMinutes_);
+    meteoui::buildAutoPicker(screen, autoMinutes_);
   } else if (view_ == View::Source) {
     buildSource(screen);
   } else if (view_ == View::Day && haveSea_) {

@@ -47,6 +47,7 @@ mkdir -p "$BUILD_DIR"
   ../../src/apps_local/forehead/ForeheadCore.cpp \
   ../../src/apps_local/forehead/ForeheadScreens.cpp \
   ../../src/apps_local/hackernews/HackerNewsScreens.cpp \
+  ../../src/apps_local/rss/RssScreens.cpp \
   ../../src/apps_local/hex/HexScreens.cpp \
   ../../src/apps_local/hex/HexCore.cpp \
   ../../src/apps_local/instapaper/InstapaperScreens.cpp \
@@ -91,5 +92,8 @@ mkdir -p "$BUILD_DIR"
   ../../src/apps_local/hearts/HeartsScreens.cpp \
   ../../src/apps_local/yahtzee/YahtzeeScreens.cpp \
   ../../src/apps_local/wikipedia/WikipediaScreens.cpp \
+  ../../src/apps_local/weather/WeatherScreens.cpp \
+  ../../src/apps_local/readingstats/ReadingStatsScreens.cpp \
+  ../../src/apps_local/readingstats/ReadingStatsTitles.cpp \
   test_ui.cpp -o "$BUILD_DIR/test_ui"
 "$BUILD_DIR/test_ui"

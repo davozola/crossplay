@@ -5,7 +5,7 @@
 #include "../../activities/Activity.h"
 #include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxScreen.h"
-#include "../weather/WeatherCore.h"
+#include "../meteo/WeatherCore.h"
 #include "NavalCore.h"
 
 // NAVAL WEATHER: wind, waves, swell and water for the places WEATHER keeps,
@@ -80,7 +80,7 @@ class NavalActivity final : public Activity {
   uint32_t lastFetchMs_ = 0;
   autorefresh::Quiet quiet_;
 
-  weather::Place places_[weather::kMaxPlaces];
+  meteo::Place places_[meteo::kMaxPlaces];
   int placeCount_ = 0;
   int selected_ = 0;
 

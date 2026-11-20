@@ -247,9 +247,10 @@ else
     grep -q "id=\"$id\"" "$WP" && ok || bad "wikipedia.js asks for #$id and wikipedia/index.html has no such element"
   done
 fi
-# The page must reach the pack through one constant, and the manifest must be
-# written LAST: the device treats a pack as present the moment it sees it.
-grep -q '^const PACK_BASE_URL = "https://' "$WJ" && ok || bad "wikipedia.js has no PACK_BASE_URL constant at the top"
+# The page must reach the packs through one constant (the host; each language
+# is a folder of it), and the manifest must be written LAST: the device treats
+# a pack as present the moment it sees it.
+grep -q '^const PACK_HOST = "https://' "$WJ" && ok || bad "wikipedia.js has no PACK_HOST constant at the top"
 last_write="$(grep -nE 'writeText\(wiki, "manifest.json"|copyOne\(wiki, step' "$WJ" | tail -1)"
 printf '%s' "$last_write" | grep -q 'manifest.json' && ok || bad "wikipedia.js does not write manifest.json after the last copy"
 # ?mock=1 must be the ONLY thing that points the page away from the pack host.
@@ -1001,6 +1002,35 @@ else
   while IFS= read -r line; do echo "      $line"; done <<< "$fetch_out"
 fi
 
+
+# -- the last step names the button that starts the firmware ------------------
+#
+# GitHub #314 and #336: a Sticky flashed from the site ended on "Unplug the USB
+# cable and plug it back in" and sat in the flasher stub, looking frozen. The
+# flow leaves every chip in the stub (no serial reset). A replug power-cycles
+# the battery-less boards, whose firmware then waits for the power button
+# (coldBootImpliesPowerButton); the Sticky's battery rides through a replug and
+# the stub ignores the power button, so only its reset pin restarts it.
+if restart_bad="$(python3 - "$INSTALL" <<'PY' 2>&1
+import re, sys
+src = open(sys.argv[1]).read()
+block = src[src.index("var DEVICES = {"):]
+block = block[:block.index("\n  };")]
+want = {"sticky": "reset button"}
+for dev, body in re.findall(r"\n    ([a-z0-9]+): \{(.*?)\n    \}", block, re.S):
+    m = re.search(r"restart:\s*((?:\"[^\"]*\"\s*\+?\s*)+)", body)
+    text = "".join(re.findall(r'"([^"]*)"', m.group(1))) if m else ""
+    need = want.get(dev, "power button")
+    if need not in text:
+        print(f"{dev} must name the {need}: {text!r}")
+PY
+)"; then
+  if [ -z "$restart_bad" ]; then ok; else
+    while IFS= read -r line; do bad "install.js last step -- $line"; done <<< "$restart_bad"
+  fi
+else
+  bad "could not read install.js DEVICES: $restart_bad"
+fi
 
 echo "$checks checks, $failed failed"
 [ "$failed" -eq 0 ]

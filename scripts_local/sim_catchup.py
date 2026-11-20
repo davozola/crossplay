@@ -303,7 +303,7 @@ def main(env):
         src / "HalClock.h",
         "  bool syncFromNTP();",
         "  void setTimezone(const char *posixTz) {\n"
-        "    ::setenv(\"TZ\", posixTz && posixTz[0] != '\\0' ? posixTz : \"UTC0\", 1);\n"
+        '    ::setenv("TZ", posixTz && posixTz[0] != \'\\0\' ? posixTz : "UTC0", 1);\n'
         "    ::tzset();\n"
         "  }\n"
         "  bool syncFromNTP();",
@@ -330,7 +330,7 @@ def main(env):
         src / "Arduino.h",
         "  void restart() {}",
         "  void restart() {}\n"
-        "  const char *getChipModel() { return \"ESP32-S3\"; }\n"
+        '  const char *getChipModel() { return "ESP32-S3"; }\n'
         "  uint8_t getChipRevision() { return 0; }\n"
         "  uint32_t getFlashChipSize() { return 16u * 1024u * 1024u; }",
         "ESPMock chip/flash accessors",
@@ -481,12 +481,15 @@ def main(env):
         marker="sys/statvfs.h",
     )
 
+    # storageRoot() is the simulator's own (crosspoint_simulator::storageRoot,
+    # pulled in by a using-declaration); before 4c78f3ff it was a file-local
+    # configuredStorageRoot().
     patch(
         src / "HalStorage.cpp",
         "bool HalStorage::begin() {",
         "bool HalStorage::freeBytes(uint64_t &out) {\n"
         "  struct statvfs st {};\n"
-        "  if (statvfs(configuredStorageRoot().c_str(), &st) != 0) return false;\n"
+        "  if (statvfs(storageRoot().c_str(), &st) != 0) return false;\n"
         "  out = static_cast<uint64_t>(st.f_bavail) *\n"
         "        static_cast<uint64_t>(st.f_frsize);\n"
         "  return true;\n"
@@ -613,16 +616,9 @@ def main(env):
         "WebServer request-argument members",
         marker="_currentArgCount",
     )
-    # The plugin endpoints walk a String character by character.
-    patch(
-        src / "WString.h",
-        "  size_t length() const { return s.length(); }",
-        "  size_t length() const { return s.length(); }\n"
-        "  const char *begin() const { return s.c_str(); }\n"
-        "  const char *end() const { return s.c_str() + s.length(); }",
-        "String::begin/end (range-for)",
-        marker="const char *begin() const",
-    )
+    # String::begin/end (the plugin endpoints walk a String character by
+    # character) came off this list in the CrossPoint 2.0 sync: the simulator
+    # at 4c78f3ff has its own, and a second pair no longer compiles.
     # Upstream's per-book content keys (lib/DeviceSecret, lib/Epub/BookKey,
     # 2026-10) keep a device secret in NVS. The simulator's nvs.h and
     # esp_random.h shadow sim-stubs/, so they are patched here. A blob read
@@ -701,7 +697,7 @@ def main(env):
     patch(
         src / "HalDisplay.cpp",
         "SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);",
-        "(std::getenv(\"CROSSPOINT_SIM_HIDDEN\") ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) |\n"
+        '(std::getenv("CROSSPOINT_SIM_HIDDEN") ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) |\n'
         "                                SDL_WINDOW_ALLOW_HIGHDPI);",
         "HalDisplay: CROSSPOINT_SIM_HIDDEN opens the window hidden",
         marker="CROSSPOINT_SIM_HIDDEN",
@@ -725,6 +721,180 @@ def main(env):
         "inline bool isEegoA4() { return false; }",
         "BoardConfig::isEegoA4 (never, on a host)",
         marker="isEegoA4",
+    )
+    # Upstream's power-button classifier (#4407, 2026-11-15) asks the board how
+    # its buttons report: CrossPointSettings::hasPowerDoubleClick() and
+    # MappedInputManager compare BoardConfig::ACTIVE.inputStyle with
+    # DigitalConfirmPowerHold, the Sticky's shared key. The simulator at
+    # 84c3421d (2026-11-10) predates it. The enum is the SDK's, names and order;
+    # the member is APPENDED with a default, like displayWidth above, so every
+    # positional profile initialiser keeps compiling. DigitalButtons is the X4
+    # Pro's own value (XTEINK_X4_PRO in the SDK), the board this simulator is.
+    patch(
+        src / "BoardConfig.h",
+        "struct BoardProfile {",
+        "enum class InputStyle : uint8_t {\n"
+        "  XteinkAdcLadder,\n"
+        "  DigitalButtons,\n"
+        "  DigitalConfirmBackHold,\n"
+        "  DigitalConfirmPowerHold,\n"
+        "  DigitalFiveKey,\n"
+        "  DigitalTwoButton,\n"
+        "  OnePageAdcLadder,\n"
+        "};\n"
+        "\n"
+        "struct BoardProfile {",
+        "BoardConfig::InputStyle (enum)",
+        marker="enum class InputStyle",
+    )
+    patch(
+        src / "BoardConfig.h",
+        "  float uiScale = 1.0f;\n};",
+        "  float uiScale = 1.0f;\n  InputStyle inputStyle = InputStyle::DigitalButtons;\n};",
+        "BoardProfile inputStyle (the X4 Pro's DigitalButtons)",
+        marker="InputStyle inputStyle",
+    )
+    # Two HalDisplay calls upstream added after the simulator's 84c3421d: the
+    # reader's ReaderRefreshScope (#4362) tells the panel a book page is up, so
+    # a panel with a reading waveform can use it, and the Picco's charge strip
+    # paints through a retained grayscale overlay. A host window has neither
+    # waveform nor retained overlay, so the first does nothing and the second
+    # answers false, which is the "not shown" both callers already handle by
+    # falling back to a plain refresh.
+    patch(
+        src / "HalDisplay.h",
+        "  const char* controllerName() const;",
+        "  const char* controllerName() const;\n"
+        "  void setReaderRefresh(bool) {}\n"
+        "  bool displayRetainedGrayscaleOverlay(uint16_t, uint16_t, uint16_t, uint16_t, bool) { return false; }",
+        "HalDisplay::setReaderRefresh + displayRetainedGrayscaleOverlay (no waveform on a host)",
+        marker="setReaderRefresh",
+    )
+    # main.cpp powers the panel controller down between inputs (EEGO A4, #4494);
+    # a host window has no controller to rest.
+    patch(
+        src / "HalDisplay.h",
+        "  const char* controllerName() const;",
+        "  const char* controllerName() const;\n  void controllerIdle() {}",
+        "HalDisplay::controllerIdle (no controller on a host)",
+        marker="controllerIdle",
+    )
+    # The EEGO A4 wake-hold check (#4407) reads the power key directly, past the
+    # debounce. lib/hal answers isPressed(BTN_POWER) when emulated; so does this.
+    patch(
+        src / "HalGPIO.h",
+        "  bool isPressed(uint8_t buttonIndex) const;",
+        "  bool isPressed(uint8_t buttonIndex) const;\n"
+        "  bool isPowerButtonPhysicallyPressed() const { return isPressed(BTN_POWER); }",
+        "HalGPIO::isPowerButtonPhysicallyPressed (the debounced key, on a host)",
+        marker="isPowerButtonPhysicallyPressed",
+    )
+    # OPDS reads WWW-Authenticate through getCombinedHeader(), which joins
+    # repeated headers with ", " (the SDK's SecureHttpClient). The simulator's
+    # client keeps one value per name, so the joined value is that one value.
+    patch(
+        src / "SecureHttpClient.h",
+        "  std::string getHeader(const std::string& name) const { return http_.getHeader(name); }",
+        "  std::string getHeader(const std::string& name) const { return http_.getHeader(name); }\n"
+        "  std::string getCombinedHeader(const char* lowercaseName) const { return http_.getHeader(lowercaseName); }",
+        "SecureHttpClient::getCombinedHeader (one value per name on a host)",
+        marker="getCombinedHeader",
+    )
+    # A request the caller can abandon. On the device SecureClient asks the abort
+    # callback through the handshake, the wait for the status line and every
+    # body read, so Back ends a hung request at once (RssFetch, the Weather
+    # fetch). The simulator's curl ran to its own timeout with the callback
+    # asked only before and after, so a hung host held the app for the whole
+    # timeout and no simulator run could show the difference. Now the request
+    # in flight carries the callback (abortPoll), curl's output is read without
+    # blocking, the callback is asked every 50ms, and an abort ends curl.
+    # "echo $$; exec curl" hands back curl's own pid: exec keeps the shell's.
+    patch(
+        src / "SimHttpFetch.h",
+        '#include "SimHttpRoutes.h"',
+        "#include <fcntl.h>\n"
+        "#include <poll.h>\n"
+        "#include <signal.h>\n"
+        "\n"
+        "#include <functional>  // simAbortIncludes\n"
+        "\n"
+        '#include "SimHttpRoutes.h"',
+        "SimHttpFetch.h includes for an abortable curl",
+        marker="simAbortIncludes",
+    )
+    patch(
+        src / "SimHttpFetch.h",
+        "inline bool fetchWithCurl(",
+        "// The abort callback of the request in flight; one request runs at a time.\n"
+        "inline std::function<bool()>& abortPoll() {\n"
+        "  static std::function<bool()> poll;\n"
+        "  return poll;\n"
+        "}\n"
+        "\n"
+        "// Reads curl's output, its pid first, asking shouldAbort every 50ms. On an\n"
+        "// abort curl is ended and nothing it printed is kept.\n"
+        "inline void readAbortable(FILE* pipe, const std::function<bool()>& shouldAbort, std::string& out) {\n"
+        "  const int fd = fileno(pipe);\n"
+        "  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);\n"
+        "  std::string raw;\n"
+        "  pid_t pid = 0;\n"
+        "  for (;;) {\n"
+        "    struct pollfd ready = {fd, POLLIN, 0};\n"
+        "    if (::poll(&ready, 1, 50) > 0) {\n"
+        "      char buffer[256];\n"
+        "      const ssize_t n = read(fd, buffer, sizeof(buffer));\n"
+        "      if (n == 0) break;\n"
+        "      if (n > 0) raw.append(buffer, static_cast<size_t>(n));\n"
+        "    }\n"
+        "    if (pid == 0) {\n"
+        "      const size_t newline = raw.find('\\n');\n"
+        "      if (newline != std::string::npos) {\n"
+        "        pid = static_cast<pid_t>(std::atol(raw.substr(0, newline).c_str()));\n"
+        "        raw.erase(0, newline + 1);\n"
+        "      }\n"
+        "    }\n"
+        "    if (shouldAbort()) {\n"
+        "      if (pid > 0) kill(pid, SIGTERM);\n"
+        "      raw.clear();\n"
+        "      break;\n"
+        "    }\n"
+        "  }\n"
+        "  out = raw;\n"
+        "}\n"
+        "\n"
+        "inline bool fetchWithCurl(",
+        "SimHttpFetch abortPoll + readAbortable (a hung host can be left)",
+        marker="readAbortable(FILE*",
+    )
+    patch(
+        src / "SimHttpFetch.h",
+        '  FILE* pipe = popen(cmd.c_str(), "r");',
+        "  const std::function<bool()> shouldAbort = abortPoll();  // simAbortCmd\n"
+        '  if (shouldAbort) cmd = "echo $$; exec " + cmd;\n'
+        '  FILE* pipe = popen(cmd.c_str(), "r");',
+        "fetchWithCurl runs curl so its pid is known when a request can be abandoned",
+        marker="simAbortCmd",
+    )
+    patch(
+        src / "SimHttpFetch.h",
+        "  while (fgets(statusBuffer.data(), static_cast<int>(statusBuffer.size()), pipe)) {\n"
+        "    statusText += statusBuffer.data();\n"
+        "  }",
+        "  if (shouldAbort) readAbortable(pipe, shouldAbort, statusText);  // simAbortRead\n"
+        "  while (!shouldAbort && fgets(statusBuffer.data(), static_cast<int>(statusBuffer.size()), pipe)) {\n"
+        "    statusText += statusBuffer.data();\n"
+        "  }",
+        "fetchWithCurl reads curl without blocking when a request can be abandoned",
+        marker="simAbortRead",
+    )
+    patch(
+        src / "ResumableFetch.h",
+        "    result.status = http.GET();",
+        "    sim_http_fetch::abortPoll() = shouldAbort;  // simAbortHook\n"
+        "    result.status = http.GET();\n"
+        "    sim_http_fetch::abortPoll() = nullptr;",
+        "fetchResumable hands its abort callback to the request in flight",
+        marker="simAbortHook",
     )
     # Upstream's capacitive page keys (Metalio E-Ink 4, 2026-10): MappedInputManager
     # asks for them on every board, and a host has none.
@@ -794,6 +964,34 @@ def main(env):
         print(
             f"[sim-catchup] HalStorage parity: {len(_mine)} methods, both sides agree"
         )
+
+    # AnimatedGIF paces playFrame(bSync=true) with Arduino's millis()/delay(),
+    # guarded only by __MACH__ and __LINUX__ (a macro no compiler defines). So
+    # the macOS simulator skips the pacing and builds, while a Linux or browser
+    # simulator build calls functions nothing declares there and stops. The
+    # simulator gets the macOS behaviour everywhere; the device is untouched
+    # (SIMULATOR is a simulator-only define).
+    gif = (
+        pathlib.Path(env.subst("$PROJECT_LIBDEPS_DIR"))
+        / env.subst("$PIOENV")
+        / "AnimatedGIF"
+        / "src"
+        / "AnimatedGIF.cpp"
+    )
+    patch(
+        gif,
+        "#if !defined( __MACH__ ) && !defined( __LINUX__ )\nlong lTime = millis();",
+        "#if !defined( __MACH__ ) && !defined( __LINUX__ ) && !defined( SIMULATOR )\nlong lTime = millis();",
+        "AnimatedGIF: no millis() in the simulator (start of a frame)",
+        marker="!defined( SIMULATOR )\nlong lTime",
+    )
+    patch(
+        gif,
+        "#if !defined( __MACH__ ) && !defined( __LINUX__ ) \n        lTime = millis() - lTime;",
+        "#if !defined( __MACH__ ) && !defined( __LINUX__ ) && !defined( SIMULATOR )\n        lTime = millis() - lTime;",
+        "AnimatedGIF: no millis()/delay() in the simulator (end of a frame)",
+        marker="!defined( SIMULATOR )\n        lTime = millis() - lTime",
+    )
     require_all_applied()
 
 

@@ -591,7 +591,7 @@ void NotesActivity::startPhone() {
       // The saved network is joined behind the page; the picker is for when there is none.
       ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
         if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
-          showNotice("Typing on your phone needs Wi-Fi. Nothing changed.");
+          showNotice("Editing on your phone needs Wi-Fi. Nothing changed.");
           return;
         }
         startPhone();

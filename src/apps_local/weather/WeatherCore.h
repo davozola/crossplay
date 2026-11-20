@@ -1,117 +1,214 @@
 #pragma once
 
-// WEATHER's model: Open-Meteo's forecast and geocoding answers read into fixed
-// structs, the WMO weather codes folded into the handful of skies the panel
-// draws, and the URLs that ask for them. Freestanding (no Arduino), so the
-// parsing runs as a host test against captured responses.
+// WEATHER's rules, freestanding: no Arduino, no renderer, no card, no radio.
+// host-tests/weather builds this file with nothing but the standard library
+// and lib/Utf8 on the include path.
+//
+// What lives here is everything that can be wrong without a device:
+//
+//   * reading Open-Meteo's two answers -- the forecast (now plus seven days)
+//     and the geocoder's list of places -- out of their JSON;
+//   * the two files this app keeps on the card, the place and the last
+//     forecast, written and read back;
+//   * what a stale forecast still has to say: which of its days is today, and
+//     how long ago it was read ("UPDATED YESTERDAY 08:12");
+//   * Celsius or Fahrenheit, and which countries default to which;
+//   * the names of the days, and the words for the sky;
+//   * a place name cleaned where it enters, so the screens never meet a
+//     character their face cannot draw.
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace weather {
 
-// Every hour of every day held: the day sheets draw a whole day each.
+// Seven days, today first: what one forecast request asks for and what the
+// main screen draws (today, then six rows).
 constexpr int kDays = 7;
-constexpr int kHours = kDays * 24;
-constexpr int kMaxPlaces = 6;
-constexpr int kMaxResults = 6;
-constexpr int kNameChars = 28;
-constexpr int kRegionChars = 36;
+// The geocoder is asked for this many places; the search screen shows the ones
+// that fit and says when there were more.
+constexpr int kMaxMatches = 10;
+// A temperature Open-Meteo did not give (a null in its arrays).
+constexpr int16_t kNoTemp = INT16_MIN;
+// The longest search the field takes, in bytes.
+constexpr size_t kMaxQuery = 40;
+// The longest place name kept, in bytes. Longer names are cut on a character
+// boundary before anything measures them; the screens fit what is left.
+constexpr size_t kMaxName = 64;
 
-// What the icon draws. WMO 4677's ~28 codes in nine shapes.
-enum class Sky : uint8_t { Clear, PartCloud, Cloud, Fog, Drizzle, Rain, Showers, Snow, Thunder };
+enum class Units : uint8_t { Celsius, Fahrenheit };
 
-Sky skyOf(int wmo);
-// A short label for a WMO code, upper case, ASCII.
-const char* labelOf(int wmo);
+// The picture for a sky. Night only matters for the reading taken now: the
+// daily rows are days. None is a code with no words (a null in the answer):
+// nothing is drawn for it, because a guessed cloud is a forecast.
+enum class Icon : uint8_t { Sun, Moon, CloudSun, CloudMoon, Cloud, Fog, Drizzle, Rain, Snow, Thunder, None };
 
-struct Current {
-  float temp = 0;
-  float feels = 0;
-  float wind = 0;  // km/h
-  int humidity = 0;
-  int windDir = -1;  // degrees it blows from, -1 when the answer has none
-  int cloud = -1;    // cover, percent, -1 when the answer has none
-  int code = 0;
-  bool isDay = true;
-  char time[17] = "";  // "YYYY-MM-DDTHH:MM", the place's local time
-};
-
-struct Hour {
-  int8_t hour = 0;    // local hour of day
-  int8_t precip = 0;  // chance of it, percent
-  int8_t day = -1;    // index into Forecast::days, or -1 for an hour outside them
-  int16_t code = 0;
-  float temp = 0;
-};
-
+// One day of the forecast. Temperatures are tenths of a degree Celsius;
+// rainPct is the day's highest chance of precipitation, -1 when not given.
 struct Day {
   int16_t year = 0;
   int8_t month = 0;
   int8_t day = 0;
-  int8_t precip = 0;
-  int16_t code = 0;
-  float max = 0;
-  float min = 0;
-  char sunrise[6] = "";  // "HH:MM"
-  char sunset[6] = "";
-  // The day sheet's extras. Negative when the answer did not carry one (a
-  // forecast cached before they were asked for).
-  float rainMm = -1;
-  float windMax = -1;  // km/h
-  float uvMax = -1;
-  float feelsMax = 0;
-  float feelsMin = 0;
-  bool hasFeels = false;
+  int16_t code = -1;  // WMO weather code
+  int16_t maxC = kNoTemp;
+  int16_t minC = kNoTemp;
+  int8_t rainPct = -1;
 };
 
 struct Forecast {
-  Current current;
-  Hour hours[kHours];
-  int hourCount = 0;
+  // The reading now, in the place's own time ("2026-11-17T14:00").
+  char localTime[17] = "";
+  int16_t nowC = kNoTemp;
+  int16_t nowCode = -1;
+  bool isDay = true;
+  // The place's offset from UTC when the forecast was made, in seconds.
+  int32_t utcOffset = 0;
   Day days[kDays];
   int dayCount = 0;
 };
 
-struct Place {
-  char name[kNameChars] = "";      // ASCII, upper case
-  char region[kRegionChars] = "";  // "CATALONIA, SPAIN"
-  float lat = 0;
-  float lon = 0;
+// The forecast as it was last read, and when. fetchedUtc is 0 when the device
+// clock could not be trusted at the time; localTime then stands in for it.
+struct Cache {
+  Forecast forecast;
+  int64_t fetchedUtc = 0;
+  // The place it belongs to, so a forecast for the last city is never drawn
+  // under the name of the next one.
+  double lat = 0;
+  double lon = 0;
 };
 
-// False unless the answer carries a current block and at least one day.
-bool parseForecast(const char* json, size_t len, Forecast& out);
-// Number of places read into `out`, at most `max`. Zero for no match.
-int parseGeocode(const char* json, size_t len, Place* out, int max);
+// The city, chosen once. `name` and `region` are already clean (cleanName).
+struct Place {
+  std::string name;
+  std::string region;  // "Illinois, United States"
+  char country[3] = "";
+  double lat = 0;
+  double lon = 0;
+  Units units = Units::Celsius;
+  // Set when the player chose the units in the menu. Until then they follow
+  // the country of whichever city is chosen.
+  bool unitsChosen = false;
+};
 
-// UTF-8 to upper-case ASCII: accents dropped (MALAGA, SAO PAULO, ZURICH),
-// anything without a Latin reading skipped. The panel's faces are ASCII.
-void foldAscii(const char* utf8, size_t len, char* out, size_t cap);
+// One of the geocoder's answers, cleaned.
+struct Match {
+  std::string name;
+  std::string region;
+  char country[3] = "";
+  double lat = 0;
+  double lon = 0;
+};
 
-void forecastUrl(const Place& place, char* out, size_t cap);
-void geocodeUrl(const char* query, char* out, size_t cap);
+// Whether the face the screens draw names in has a glyph for `cp`. The
+// activity answers from the real font; tests answer from a table.
+using CanDraw = bool (*)(uint32_t cp);
 
-// The index in `hours` of the current hour, or of the first hour held when the
-// current one is not among them.
-int nowIndex(const Forecast& f);
-// The first hour of day `d` in `hours` and how many of its hours are held;
-// zero when none are.
-int hoursOfDay(const Forecast& f, int d, int& first);
-// The hour of day (with its minutes as a fraction) a "HH:MM" names, or -1.
-float clockHours(const char* hhmm);
+// --- Reading Open-Meteo -----------------------------------------------------
 
-// 0 = Monday.
-int weekday(int year, int month, int day);
-const char* weekdayLong(int wd);   // "MONDAY"
-const char* weekdayName(int wd);   // "MON"
-const char* monthName(int month);  // "JAN", 1-based
+// The forecast endpoint's answer. False when it is not JSON, or has no
+// current temperature, or no days: a forecast missing those is not one.
+bool parseForecast(const std::string& json, Forecast& out);
 
-// Rounded for display, in Celsius or Fahrenheit.
-int displayTemp(float celsius, bool fahrenheit);
-int displayWind(float kmh, bool imperial);
+// The geocoder's answer. A search that found nothing answers with no
+// "results" key at all, which is true with no matches; false only when the
+// answer is not JSON. Places whose name cleans to nothing drawable are kept
+// under the best name that remains (placeLabel).
+bool parseMatches(const std::string& json, CanDraw canDraw, std::vector<Match>& out);
 
-// Same place to within ~1 km: the geocoder and a saved entry agree.
-bool samePlace(const Place& a, const Place& b);
+// The two requests, built on a base that the simulator can point elsewhere.
+std::string forecastUrl(const char* base, double lat, double lon);
+std::string geocodeUrl(const char* base, const std::string& query);
+std::string urlEncode(const std::string& text);
+
+// --- The card ---------------------------------------------------------------
+
+std::string serializePlace(const Place& place);
+bool parsePlace(const std::string& text, Place& out);
+std::string serializeCache(const Cache& cache);
+bool parseCache(const std::string& text, Cache& out);
+// Whether a cache was read for this place.
+bool cacheIsFor(const Cache& cache, const Place& place);
+
+// --- What a forecast says, and when ----------------------------------------
+
+// The index of today among the forecast's days: the first day not before
+// today in the place's own time. 0 when the clock is unknown (nowUtc 0); -1
+// when every day is already past, because a week that has happened is not
+// the coming one and is never drawn as if it were.
+int firstDay(const Cache& cache, int64_t nowUtc);
+
+// What the card can say about now. The reading taken with the forecast, when
+// that was today in the place's own time (or the clock cannot say); on any
+// later day there is no reading for now, only today's row of the forecast,
+// whose sky stands in as a day and whose temperatures are a high and a low,
+// not a now. A reading from Sunday drawn as now on Wednesday showed Sunday's
+// "7 PARTLY CLOUDY" over Wednesday's overcast "H 5 L 0".
+struct Now {
+  bool reading = false;     // tempC is a reading taken today
+  int16_t tempC = kNoTemp;  // tenths of a degree C; kNoTemp unless `reading`
+  int16_t code = -1;        // the sky for now: the reading's, or today's row's
+  bool isDay = true;
+};
+Now nowFor(const Cache& cache, int64_t nowUtc);
+
+// "UPDATED 14:07", "UPDATED YESTERDAY 14:07", "UPDATED MON 14:07" or
+// "UPDATED 12 NOV": when the forecast was read, in the place's own time,
+// against today when the clock knows it.
+std::string updatedLabel(const Cache& cache, int64_t nowUtc, bool twelveHour);
+
+// Every name weekdayShort() can answer, Sunday first. Exported so a screen can
+// size its day column to the widest of them, whichever days are showing.
+inline constexpr const char* kWeekdayNames[7] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+
+// "MON".."SUN" for a calendar date.
+const char* weekdayShort(int year, int month, int day);
+const char* weekdayShort(const Day& day);
+
+// The words and the picture for a WMO weather code.
+const char* skyWords(int code);
+Icon skyIcon(int code, bool isDay);
+// What the day's chance of precipitation is a chance of: "SNOW" under a snow
+// code, "RAIN" under anything else.
+const char* chanceWord(int code);
+
+// A temperature in whole degrees of `units`, rounded half away from zero.
+int displayTemp(int16_t tenthsC, Units units);
+// "7", "-3", or "--" for a temperature that was not given. The degree sign is
+// drawn by the screen: the Jersey cuts carry no U+00B0.
+std::string tempText(int16_t tenthsC, Units units);
+// "40%" or "" when not given.
+std::string rainText(int8_t pct);
+
+// Fahrenheit for the United States, its territories, and the handful of
+// countries that also use it; Celsius everywhere else.
+Units defaultUnitsFor(const char* countryCode);
+
+// --- Text from outside -----------------------------------------------------
+
+// A place name as it enters: composed (NFC), typography folded to ASCII, then
+// letters, digits, spaces and the punctuation names carry (- ' . , ( ) /)
+// kept where `canDraw` has a glyph for them, everything else dropped. Runs of
+// space collapse; the result is trimmed and cut to kMaxName bytes.
+std::string cleanName(const std::string& raw, CanDraw canDraw);
+
+// The name to show for a place: its name, or when nothing of it survived,
+// its region, or when nothing of that did either, its coordinates
+// ("35.69N 139.69E"). Never empty.
+std::string placeLabel(const std::string& name, const std::string& region, double lat, double lon);
+// What tells a place from another of the name: the first part of its region
+// that is not the name again ("Illinois" for a Springfield, "Switzerland" for
+// a Zurich whose canton is also Zurich). Empty when there is no such part, and
+// when the name could not be drawn, since the label is then the region itself
+// or the coordinates. The screens set it after the label, a comma between,
+// and keep it whole: it is never cut, and never the first thing lost.
+std::string placeQualifier(const std::string& name, const std::string& region);
+
+// The search as typed: ASCII the keyboard sent, trimmed, spaces collapsed.
+// Two characters is the least the geocoder answers.
+std::string cleanQuery(const std::string& typed);
+constexpr size_t kMinQuery = 2;
 
 }  // namespace weather

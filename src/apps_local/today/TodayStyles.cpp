@@ -20,12 +20,13 @@
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxSerif.h"
 #include "../ui/ToyboxTheme.h"
-#include "../weather/WeatherCore.h"
-#include "../weather/WeatherScreens.h"
+#include "../meteo/WeatherCore.h"
+#include "../meteo/WeatherScreens.h"
+#include "../ui/SerifFontIds.h"
 
 namespace fui = freeink::ui;
 namespace lab = toyboxlab;
-namespace wx = weather;
+namespace wx = meteo;
 namespace nv = naval;
 namespace mk = markets;
 
@@ -377,7 +378,7 @@ void classic(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) {
   if (d.hasForecast) {
     const wx::Forecast& f = d.forecast;
     lab::caption(screen, x, y, inner / 2, d.place.name, fui::TextAlign::Left, fui::Color::DarkGray);
-    weatherui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, x + 52, y + 82, 92);
+    meteoui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, x + 52, y + 82, 92);
     std::snprintf(a, sizeof(a), "%d", wx::displayTemp(f.current.temp, d.fahrenheit));
     const int tx = x + 116;
     lab::label(screen, lab::rect(tx, y + 44, 110, toybox::kDisplayCut.inkHeight), a, toybox::kDisplayFont,
@@ -397,7 +398,7 @@ void classic(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) {
       const int cx = right - (3 - k) * colW - colW / 2;
       lab::caption(screen, cx - colW / 2, y, colW, clockcore::weekdayEs(wx::weekday(day.year, day.month, day.day)),
                    fui::TextAlign::Center, fui::Color::DarkGray);
-      weatherui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 56, 44);
+      meteoui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 56, 44);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.max, d.fahrenheit));
       lab::caption(screen, cx - colW / 2, y + 96, colW, b, fui::TextAlign::Center);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.min, d.fahrenheit));
@@ -558,7 +559,7 @@ void panel(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) {
   const int weatherH = 150;
   if (d.hasForecast) {
     const wx::Forecast& f = d.forecast;
-    weatherui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, x + 58, y + 62, 112);
+    meteoui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, x + 58, y + 62, 112);
     std::snprintf(a, sizeof(a), "%d", wx::displayTemp(f.current.temp, d.fahrenheit));
     const int tx = x + 128;
     renderer.drawText(toybox::kLargeFontId, tx, y - 10, a, true);
@@ -578,7 +579,7 @@ void panel(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) {
       // The day's first three letters: the columns are narrow.
       std::snprintf(b, sizeof(b), "%.3s", clockcore::weekdayEs(wx::weekday(day.year, day.month, day.day)));
       lab::caption(screen, cx - colW / 2, y + 2, colW, b, fui::TextAlign::Center, fui::Color::DarkGray);
-      weatherui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 50, 40);
+      meteoui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 50, 40);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.max, d.fahrenheit));
       lab::caption(screen, cx - colW / 2, y + 84, colW, b, fui::TextAlign::Center);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.min, d.fahrenheit));
@@ -1321,7 +1322,7 @@ void poster(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   const int weatherTop = y;
   if (d.hasForecast) {
     const wx::Sky sky = wx::skyOf(d.forecast.current.code);
-    weatherui::skyIcon(screen, sky, isDaytime(page), colX + 40, y + 36, 80);
+    meteoui::skyIcon(screen, sky, isDaytime(page), colX + 40, y + 36, 80);
     y += 84;
     std::snprintf(a, sizeof(a), "%d\xC2\xB0", wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
     // The temperature in the clock's own numerals, to stand up to the hour.
@@ -1629,7 +1630,7 @@ void mosaic(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   tag(m + 16, y + 14, "TIEMPO");
   if (d.hasForecast) {
     const wx::Sky sky = wx::skyOf(d.forecast.current.code);
-    weatherui::skyIcon(screen, sky, isDaytime(page), m + 62, y + 84, 88);
+    meteoui::skyIcon(screen, sky, isDaytime(page), m + 62, y + 84, 88);
     const int temp = wx::displayTemp(d.forecast.current.temp, d.fahrenheit);
     const int shown = temp < 0 ? -temp : temp;
     float nx = static_cast<float>(m + 124);
@@ -1821,7 +1822,7 @@ void ticket(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   const int cw = inner / 4;
   if (d.hasForecast) {
     const wx::Sky sky = wx::skyOf(d.forecast.current.code);
-    weatherui::skyIcon(screen, sky, isDaytime(page), x + 30, y + 30, 64);
+    meteoui::skyIcon(screen, sky, isDaytime(page), x + 30, y + 30, 64);
     std::snprintf(a, sizeof(a), "%d\xC2\xB0", wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
     field(x + cw, y, "AHORA", a);
     tempRange(page, a, sizeof(a));
@@ -2147,7 +2148,7 @@ void classicWide(toybox::Screen& screen, GfxRenderer& renderer, const Page& page
   // Weather: now on the left, the next three days on the right.
   if (d.hasForecast) {
     const wx::Forecast& f = d.forecast;
-    weatherui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, lx + 48, y + 60, 92);
+    meteoui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, lx + 48, y + 60, 92);
     std::snprintf(a, sizeof(a), "%d", wx::displayTemp(f.current.temp, d.fahrenheit));
     const int tx = lx + 108;
     lab::label(screen, lab::rect(tx, y + 18, 90, toybox::kDisplayCut.inkHeight), a, toybox::kDisplayFont,
@@ -2167,7 +2168,7 @@ void classicWide(toybox::Screen& screen, GfxRenderer& renderer, const Page& page
       const int cx = right - (3 - k) * colW - colW / 2;
       lab::caption(screen, cx - colW / 2, y, colW, clockcore::weekdayEs(wx::weekday(day.year, day.month, day.day)),
                    fui::TextAlign::Center, fui::Color::DarkGray);
-      weatherui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 44, 40);
+      meteoui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 44, 40);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.max, d.fahrenheit));
       lab::caption(screen, cx - colW / 2, y + 76, colW, b, fui::TextAlign::Center);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.min, d.fahrenheit));
@@ -2310,7 +2311,7 @@ void panelWide(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) 
   y = 14;
   if (d.hasForecast) {
     const wx::Forecast& f = d.forecast;
-    weatherui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, rx + 52, y + 52, 100);
+    meteoui::skyIcon(screen, wx::skyOf(f.current.code), f.current.isDay, rx + 52, y + 52, 100);
     std::snprintf(a, sizeof(a), "%d", wx::displayTemp(f.current.temp, d.fahrenheit));
     const int tx = rx + 112;
     renderer.drawText(toybox::kLargeFontId, tx, y - 10, a, true);
@@ -2329,7 +2330,7 @@ void panelWide(toybox::Screen& screen, GfxRenderer& renderer, const Page& page) 
       const int cx = right - (3 - k) * colW - colW / 2;
       std::snprintf(b, sizeof(b), "%.3s", clockcore::weekdayEs(wx::weekday(day.year, day.month, day.day)));
       lab::caption(screen, cx - colW / 2, y + 2, colW, b, fui::TextAlign::Center, fui::Color::DarkGray);
-      weatherui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 50, 40);
+      meteoui::skyIcon(screen, wx::skyOf(day.code), true, cx, y + 50, 40);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.max, d.fahrenheit));
       lab::caption(screen, cx - colW / 2, y + 84, colW, b, fui::TextAlign::Center);
       std::snprintf(b, sizeof(b), "%d", wx::displayTemp(day.min, d.fahrenheit));
@@ -2776,7 +2777,7 @@ void posterWide(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
     const int room = bandTop - 8 - y - 6;
     const int size = room < colW ? room : colW;
     if (size > 30) {
-      weatherui::skyIcon(screen, wx::skyOf(d.forecast.current.code), isDaytime(page), colX + colW / 2, y + 6 + room / 2,
+      meteoui::skyIcon(screen, wx::skyOf(d.forecast.current.code), isDaytime(page), colX + colW / 2, y + 6 + room / 2,
                          size > 96 ? 96 : size);
     }
   }
@@ -3089,7 +3090,7 @@ void mosaicWide(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   tag(rx + 16, y + 14, "TIEMPO");
   if (d.hasForecast) {
     const wx::Sky sky = wx::skyOf(d.forecast.current.code);
-    weatherui::skyIcon(screen, sky, isDaytime(page), rx + 60, y + 80, 84);
+    meteoui::skyIcon(screen, sky, isDaytime(page), rx + 60, y + 80, 84);
     const int temp = wx::displayTemp(d.forecast.current.temp, d.fahrenheit);
     const int shown = temp < 0 ? -temp : temp;
     float nx = static_cast<float>(rx + 120);
@@ -3278,7 +3279,7 @@ void ticketWide(toybox::Screen& screen, GfxRenderer& r, const Page& page) {
   const int cw = inner / 4;
   if (d.hasForecast) {
     const wx::Sky sky = wx::skyOf(d.forecast.current.code);
-    weatherui::skyIcon(screen, sky, isDaytime(page), x + 30, y + 26, 60);
+    meteoui::skyIcon(screen, sky, isDaytime(page), x + 30, y + 26, 60);
     std::snprintf(a, sizeof(a), "%d\xC2\xB0", wx::displayTemp(d.forecast.current.temp, d.fahrenheit));
     field(x + cw - 30, y, "AHORA", a);
     tempRange(page, a, sizeof(a));

@@ -98,7 +98,10 @@ void ShelfFolderActivity::openSheet(const int item) {
       LOG_ERR("SHELF", "OOM: %u bytes for a picture", static_cast<unsigned>(shelfshots::kRawBytes));
     } else if (reader.init(false)) {
       reader.setSource(shot->data, shot->size);
-      reader.skipZlibHeader();
+      // The two zlib header bytes (CMF, FLG). Upstream dropped
+      // InflateReader::skipZlibHeader() as unused, so it is skipped here.
+      uzlib_get_byte(reader.raw());
+      uzlib_get_byte(reader.raw());
       if (reader.read(bits.get(), shelfshots::kRawBytes)) {
         sheetPicture = std::move(bits);
       } else {

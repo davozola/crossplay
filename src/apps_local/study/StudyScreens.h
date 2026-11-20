@@ -60,10 +60,12 @@ struct DeckModel {
   int lifetimeReviews = 0;
   bool sessionOver = false;  // nothing left to answer right now
   bool writeFailed = false;
-  // No wall clock yet (a flat battery clears the RTC; a sync sets it). Every
-  // review answered in this state is stamped near the epoch and would be
-  // replayed into the real Anki collection as the card's last review, so the
-  // app refuses to log one -- and therefore must refuse to ask for one.
+  // No wall clock yet (a flat battery clears the RTC; a sync sets it), or one
+  // the deck proves wrong (study::clockUntrusted). Every review answered in
+  // this state is stamped with that date and would be replayed into the real
+  // Anki collection as the card's last review, so the app refuses to log one
+  // -- and therefore must refuse to ask for one. The headline says WRONG DATE
+  // rather than a count or ALL CLEAR worked out from that date.
   bool clockUnset = false;
   // Deck folders on the card past the number this reader can open. Their
   // reviews cannot be sent, so silence here reads as "nothing outstanding".
@@ -166,16 +168,40 @@ void buildDeckPicker(toybox::Screen& screen, DeckPickerModel& model);
 // ---- Pairing, in the same chrome. The builders draw the band, the words
 // and the confirm pill; they return the rects for the two things only the
 // activity can draw -- the QR bitmap (QrUtils wants the renderer) and the
-// username (NotoSerif via UITheme: the toybox cuts are ASCII-subset, and a
+// username (Noto Sans via UITheme: the toybox cuts are ASCII-subset, and a
 // CJK account name in them would blind the anti-hijack gate).
 
 // Draws everything but the QR itself; returns the box the QR goes in.
 fui::Rect buildPairQr(toybox::Screen& screen, const char* code);
 
 struct PairConfirmLayout {
-  fui::Rect username;  // the activity draws the account name here, in serif
+  fui::Rect username;  // the activity draws the account name here, in Noto Sans
   fui::Rect pill;      // the tap gate; the activity keeps it for hit-testing
 };
 PairConfirmLayout buildPairConfirm(toybox::Screen& screen);
+
+// ---- The pager under a card that runs longer than one screen: "< 2 / 3 >".
+//
+// The card face itself is the activity's, drawn by hand; the pager is a
+// control on it, so it is drawn here, where host-tests/ui can see what it
+// drew and where its arrows are. It takes the foot of the card body, and only
+// on a face with more than one page -- a card that fits draws exactly what it
+// always drew.
+inline constexpr int16_t kCardPagerBand = 52;
+
+struct CardPagerLayout {
+  fui::Rect band;      // the foot of the body; the card's text stops above it
+  fui::Rect pill;      // the drawn control
+  fui::Rect previous;  // tap target for the page before: the band's left end, through the left arrow
+  fui::Rect next;      // tap target for the page after: the right arrow, through the band's right end
+};
+CardPagerLayout cardPagerLayout(fui::Rect body);
+
+// `page` counts from 0. An arrow with no page to go to is dimmed, never
+// removed (docs/design-language.md).
+void drawCardPager(fui::DrawTarget& target, const CardPagerLayout& layout, int page, int pages);
+
+enum class CardPagerHit : uint8_t { Outside, Previous, Next, Between };
+CardPagerHit cardPagerHit(const CardPagerLayout& layout, int x, int y);
 
 }  // namespace studyui

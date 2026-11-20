@@ -55,6 +55,13 @@ Chan), whose independently compiled table this one is checked against byte for
 byte. Full text at `assets_local/go/LICENSE-ardugo`, with the derivation in
 `assets_local/go/README.md`.
 
+**CrossNext**, MIT, by manuelx900, from
+[manuelx900/CrossNext](https://github.com/manuelx900/CrossNext), a fork built
+from CrossPlay that carries this repository's own LICENSE. Study's long-card
+paging adapts its design: the page arithmetic in
+`src/apps_local/study/StudyText.h` (`TextPages`) and the page-turn rule in
+`src/apps_local/study/StudyPaging.h`.
+
 **Libraries linked into the build**, each under its own licence as published:
 
 | Library               | Author          |
@@ -81,6 +88,13 @@ mirror.
 snapshot of the front page, one thread's comments and two articles so the app
 can be tried offline; the device itself fetches live from the public
 [Algolia API](https://hn.algolia.com/api).
+
+**Weather** forecasts and place names come from
+[Open-Meteo](https://open-meteo.com/), under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), credited here, in
+[docs/apps/weather.md](docs/apps/weather.md) and on the website's Weather card.
+The device asks Open-Meteo when the app opens or is refreshed, and nothing of it
+is shipped in the firmware.
 
 **Trivia** questions are built from the
 [Jeopardy! clue dataset](https://github.com/jwolle1/jeopardy_clue_dataset), a
