@@ -110,7 +110,7 @@ void TodayActivity::onExit() {
   // The orientation and the clip are the renderer's, not this app's: hand
   // them back upright and open.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -427,7 +427,7 @@ void TodayActivity::render(RenderLock&&) {
   const time_t t = time(nullptr);
   shownMinute_ = t >= kClockSetAfter ? static_cast<int>((t / 60) % 100000) : -2;
   // The clip is in logical coordinates and whoever drew last left theirs.
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();

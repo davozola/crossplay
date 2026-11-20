@@ -203,7 +203,7 @@ void PaintActivity::drawButton(const int index, const bool selected) const {
 
 void PaintActivity::render(RenderLock&&) {
   moved_ = false;
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   renderer.clearScreen();
   if (sheet_) {
     const uint8_t* bits = sheet_->bits();

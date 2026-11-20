@@ -724,7 +724,7 @@ void MancalaActivity::buildBoardWide(toybox::Screen& screen) {
 void MancalaActivity::render(RenderLock&&) {
   renderer.setOrientation(wide_ ? GfxRenderer::Orientation::LandscapeCounterClockwise
                                 : GfxRenderer::Orientation::Portrait);
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();

@@ -44,7 +44,7 @@ void ClockActivity::onExit() {
   // The orientation and the clip are the renderer's, not this app's: hand
   // them back upright and open, or the next page is cut where this one ended.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   Activity::onExit();
 }
 
@@ -172,7 +172,7 @@ void ClockActivity::render(RenderLock&&) {
   shownMinute_ = m.valid ? m.hour * 60 + m.minute : -2;
   // The clip is in logical coordinates and whoever drew last left theirs:
   // open it to the whole panel as it is turned now.
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   renderer.clearScreen();
   clockfaces::draw(renderer, face_, m);
   if (hintUntilMs_ != 0 && static_cast<int32_t>(static_cast<uint32_t>(millis()) - hintUntilMs_) < 0) {

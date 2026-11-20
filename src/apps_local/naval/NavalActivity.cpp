@@ -203,7 +203,7 @@ void NavalActivity::onEnter() {
 void NavalActivity::onExit() {
   // The orientation and the clip are the renderer's: hand them back upright.
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -1567,7 +1567,7 @@ void NavalActivity::render(RenderLock&&) {
   const bool board = onItsSide();
   renderer.setOrientation(board ? GfxRenderer::Orientation::LandscapeCounterClockwise
                                 : GfxRenderer::Orientation::Portrait);
-  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setClipRect(0, 0, 32767, 32767);  // open, as the renderer starts: a screen-sized clip set upright cuts a page drawn wide
   renderer.clearScreen();
   // A size up in the small slot; on its side the title slot is the big number's.
   toybox::Faces faces;
