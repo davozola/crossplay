@@ -544,24 +544,53 @@ bool applyCnbcQuote(const char* json, const size_t len, const Asset asset, Quote
   return applyCnbcQuoteFor(json, len, infoOf(asset).symbol, q);
 }
 
-bool applyCnbcQuoteFor(const char* json, const size_t len, const char* want, Quote& q) {
+int weekdaysBetween(const int32_t from, const int32_t to) {
+  int n = 0;
+  for (int32_t d = from + 1; d < to; ++d) {
+    // Day 0 was a Thursday.
+    const int weekday = static_cast<int>(((d % 7) + 11) % 7);  // 0 is Sunday
+    if (weekday != 0 && weekday != 6) ++n;
+  }
+  return n;
+}
+
+bool applyCnbcQuoteFor(const char* json, const size_t len, const char* want, Quote& q, bool* gap) {
+  if (gap != nullptr) *gap = false;
   if (!q.valid || q.count < 1) return false;
   const Span list = member(member(flatjson::root(json, len), "FormattedQuoteResult"), "FormattedQuote");
   if (!list.ok()) return false;
   bool found = false;
+  bool refused = false;
   forEach(list, 16, [&](int, const Span& quote) {
     char symbol[12];
     flatjson::string(member(quote, "symbol"), symbol, sizeof(symbol));
-    if (found || std::strcmp(symbol, want) != 0) return;
+    if (found || refused || std::strcmp(symbol, want) != 0) return;
     const double last = loose(member(quote, "last"));
     if (last <= 0) return;
-    found = true;
     char when[12];
     flatjson::string(member(quote, "last_time"), when, sizeof(when));
     const int year = digitsOf(when, 4);
     const int month = digitsOf(when + 5, 2);
     const int day = digitsOf(when + 8, 2);
-    if (year > 0 && month >= 1 && month <= 12 && day >= 1) {
+    const bool dated = year > 0 && month >= 1 && month <= 12 && day >= 1;
+    if (gap != nullptr) {
+      // A kept history takes a new session only when it is the very next one
+      // and the quote says where the one before it closed.
+      char change[16];
+      flatjson::string(member(quote, "change"), change, sizeof(change));
+      const int32_t newest = q.days[q.count - 1];
+      const int32_t today = dated ? daysFromCivil(year, month, day) : 0;
+      if (!dated || (today > newest && (today - newest > 5 || weekdaysBetween(newest, today) > 0 || change[0] == 0))) {
+        refused = true;
+        *gap = true;
+        return;
+      }
+      // The close held for the session before was the price when it was last
+      // asked for, which may have been mid-session: this is where it ended.
+      if (today > newest) q.closes[q.count - 1] = static_cast<float>(last - loose(member(quote, "change")));
+    }
+    found = true;
+    if (dated) {
       const int32_t today = daysFromCivil(year, month, day);
       // A quote older than the bars adds nothing but its year's range.
       const bool stale = today < q.days[q.count - 1];
@@ -652,6 +681,14 @@ void closeRange(const Quote& q, const int sessions, float& lo, float& hi) {
     if (q.closes[i] < lo) lo = q.closes[i];
     if (q.closes[i] > hi) hi = q.closes[i];
   }
+}
+
+bool historyFresh(const Quote& q, const int64_t now, const bool roundTheClock) {
+  if (!q.valid || q.count < 2 || q.historyAt <= 0 || now < 1700000000) return false;
+  if (now < q.historyAt) return false;
+  if (now - q.historyAt >= (roundTheClock ? kCandlesFreshSeconds : kHistoryFreshSeconds)) return false;
+  if (roundTheClock && q.days[q.count - 1] != static_cast<int32_t>(now / 86400)) return false;
+  return true;
 }
 
 bool sessionOpen(const Quote& q) {

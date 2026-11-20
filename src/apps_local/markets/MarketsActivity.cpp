@@ -46,12 +46,14 @@ void MarketsActivity::onEnter() {
   for (int i = 0; i < mk::kAssets; ++i) loadCached(static_cast<mk::Asset>(i));
   marketsstore::loadPortfolio(portfolio_);
   reprice();
+  fetchedAt_ = marketsstore::fetchedAt();
   view_ = View::Dashboard;
   lastFetchMs_ = static_cast<uint32_t>(millis());
   quiet_.touched();
+  // Left on auto, it comes back on auto, with a fetch straight away: behind
+  // the quotes kept from last time, which are what the first frame shows.
+  if (autoMinutes_ > 0) startRefresh(false);
   requestUpdate();
-  // Left on auto, it comes back on auto, with a fetch straight away.
-  if (autoMinutes_ > 0) startRefresh();
 }
 
 void MarketsActivity::applyOrientation() {
@@ -118,14 +120,30 @@ int MarketsActivity::fetchAll() {
   lastFetchMs_ = static_cast<uint32_t>(millis());
   const time_t t = time(nullptr);
   // Only once the clock has been set; a reader fresh from a flash has 1970.
-  if (ok > 0 && t > 1700000000) {
-    struct tm parts = {};
-    localtime_r(&t, &parts);
-    fetchedHour_ = parts.tm_hour;
-    fetchedMinute_ = parts.tm_min;
-  }
+  if (ok > 0 && t > 1700000000) fetchedAt_ = static_cast<int64_t>(t);
   reprice();
   return ok;
+}
+
+// "21:40" for today, "18 NOV 21:40" for any other day: quotes read off the
+// card must not pass for this morning's.
+void MarketsActivity::sayUpdated() {
+  updated_[0] = 0;
+  if (fetchedAt_ <= 0) return;
+  static constexpr const char* kMonths[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+  const time_t at = static_cast<time_t>(fetchedAt_);
+  const time_t now = time(nullptr);
+  struct tm then = {};
+  struct tm today = {};
+  localtime_r(&at, &then);
+  localtime_r(&now, &today);
+  if (then.tm_year == today.tm_year && then.tm_yday == today.tm_yday) {
+    std::snprintf(updated_, sizeof(updated_), "%02d:%02d", then.tm_hour % 24, then.tm_min % 60);
+  } else {
+    std::snprintf(updated_, sizeof(updated_), "%d %s %02d:%02d", then.tm_mday % 32, kMonths[then.tm_mon % 12],
+                  then.tm_hour % 24, then.tm_min % 60);
+  }
 }
 
 void MarketsActivity::reprice() { marketsstore::pricePortfolio(portfolio_, priced_, euro_, period_); }
@@ -212,7 +230,17 @@ void MarketsActivity::pick(const int instrument, const bool fresh) {
   }
 }
 
-void MarketsActivity::startRefresh() {
+void MarketsActivity::startRefresh(const bool asked) {
+  // With a page of quotes showing and a network to join alone, the page stays:
+  // the join and the fetch happen behind it.
+  const bool showing = view_ == View::Dashboard || view_ == View::Detail || view_ == View::Portfolio;
+  if (job_ == Job::Refresh && showing && step_ == Step::Idle &&
+      (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone())) {
+    behindDue_ = true;
+    behindPainted_ = false;
+    behindAsked_ = asked;
+    return;
+  }
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false);
   wifiActivated_ = true;
@@ -242,6 +270,16 @@ void MarketsActivity::startRefresh() {
     } else {
       startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
     }
+  }
+}
+
+// Says what a round that somebody asked for did not bring; a full one says nothing.
+void MarketsActivity::reportRound(const int ok) {
+  if (ok < 0) {
+    showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK. THE LAST QUOTES FETCHED STAY ON THE CARD.", true);
+  } else if (ok != mk::kAssets || std::strncmp(report_, "ALL", 3) != 0) {
+    // Say which source it was; what did arrive is on the page behind this.
+    showStatus(ok == 0 ? "NO ANSWER" : "NOT ALL ANSWERED", report_, true);
   }
 }
 
@@ -297,15 +335,34 @@ void MarketsActivity::loop() {
     }
     lastFetchMs_ = static_cast<uint32_t>(millis());
     quiet_.touched();
-    if (ok < 0) {
-      view_ = statusBack_;
-      showStatus("NO WI-FI", "COULD NOT JOIN THE SAVED NETWORK. THE LAST QUOTES FETCHED STAY ON THE CARD.", true);
-    } else if (ok == mk::kAssets && std::strncmp(report_, "ALL", 3) == 0) {
-      view_ = statusBack_;
-    } else {
-      // Say which source it was; what did arrive is on the dashboard behind this.
-      view_ = statusBack_;
-      showStatus(ok == 0 ? "NO ANSWER" : "NOT ALL ANSWERED", report_, true);
+    view_ = statusBack_;
+    reportRound(ok);
+    requestUpdate();
+    return;
+  }
+
+  if (behindDue_ && step_ == Step::Idle) {
+    if (!behindPainted_) {
+      // The tag has to be on the panel before the radio blocks.
+      behindPainted_ = true;
+      requestUpdateAndWait();
+      return;
+    }
+    wifiActivated_ = true;
+    int ok = -1;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) ok = fetchAll();
+    }
+    behindDue_ = false;
+    behindPainted_ = false;
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    quiet_.touched();
+    if (behindAsked_) {
+      reportRound(ok);
+    } else if (ok < 0 && autoMinutes_ > 0) {
+      // Nobody asked: the page keeps what it shows and tries again soon.
+      autorefresh::retrySoon(lastFetchMs_, static_cast<uint32_t>(autoMinutes_) * 60000u, lastFetchMs_);
     }
     requestUpdate();
     return;
@@ -508,13 +565,13 @@ void MarketsActivity::render(RenderLock&&) {
     static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE, id);
   };
 
+  sayUpdated();
   switch (view_) {
     case View::Dashboard: {
       marketsui::DashboardModel m;
       m.quotes = quotes_;
       m.autoMinutes = autoMinutes_;
-      m.fetchedHour = fetchedHour_;
-      m.fetchedMinute = fetchedMinute_;
+      m.updated = updated_;
       m.portfolio = &portfolio_;
       m.priced = priced_;
       m.period = period_;
@@ -544,6 +601,7 @@ void MarketsActivity::render(RenderLock&&) {
       m.inEuro = inEuro_;
       m.period = period_;
       m.faces = faces;
+      m.updated = updated_;
       m.page = portfolioPage_;
       marketsui::buildPortfolio(surface, m);
       break;
@@ -598,6 +656,7 @@ void MarketsActivity::render(RenderLock&&) {
     const auto labels = mappedInput.mapLabels("Back", "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
+  if (behindDue_) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer();
   quiet_.paintPending = false;
 }

@@ -52,9 +52,9 @@ struct FaceSwap {
 struct DashboardModel {
   const markets::Quote* quotes = nullptr;  // kAssets of them
   int autoMinutes = 0;
-  // When the quotes were last fetched, by this reader's clock; -1 when not yet.
-  int fetchedHour = -1;
-  int fetchedMinute = 0;
+  // When the quotes were last fetched, by this reader's clock: "21:40", or
+  // "18 NOV 21:40" when that was another day. Empty when not yet.
+  const char* updated = "";
   // The portfolio's line on the page on its side; null leaves it out.
   const markets::Portfolio* portfolio = nullptr;
   const markets::Priced* priced = nullptr;
@@ -82,8 +82,9 @@ struct PortfolioModel {
   const markets::Priced* priced = nullptr;  // one for each holding
   double euro = 0;                          // a euro in dollars; 0 when unknown
   markets::Period period = markets::Period::Day;
-  int page = 0;         // of the holdings, when there are more than fit
-  bool inEuro = false;  // counted in euros, when the rate is known
+  const char* updated = "";  // as the dashboard's
+  int page = 0;              // of the holdings, when there are more than fit
+  bool inEuro = false;       // counted in euros, when the rate is known
   FaceSwap faces;
 };
 

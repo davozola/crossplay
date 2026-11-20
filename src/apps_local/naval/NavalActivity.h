@@ -38,7 +38,9 @@ class NavalActivity final : public Activity {
   bool loadCache();
   void cachePath(const char* which, char* out, size_t cap) const;
   bool readFile(const char* path, std::unique_ptr<char[]>& body, size_t& size) const;
-  void startFetch();
+  // `asked` is a fetch somebody tapped for, which says so when it fails; one
+  // the page starts by itself keeps quiet and leaves what it shows.
+  void startFetch(bool asked = true);
   void runFetch();
   // The selected place's sea and wind, kept on the card. Needs the radio up.
   // `asked` is a fetch the owner tapped for; a round on auto spends meteoblue's
@@ -79,6 +81,11 @@ class NavalActivity final : public Activity {
   int autoMinutes_ = 0;
   uint32_t lastFetchMs_ = 0;
   autorefresh::Quiet quiet_;
+  // A fetch behind the page: the forecast on the card stays up, with a small
+  // tag in the corner, and is replaced when the new one arrives.
+  bool behindDue_ = false;
+  bool behindPainted_ = false;
+  bool behindAsked_ = false;
 
   meteo::Place places_[meteo::kMaxPlaces];
   int placeCount_ = 0;

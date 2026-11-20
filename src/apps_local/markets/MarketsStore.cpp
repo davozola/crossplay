@@ -4,6 +4,7 @@
 #include <Logging.h>
 #include <Memory.h>
 
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -19,7 +20,8 @@ namespace mk = markets;
 namespace {
 
 constexpr char kCacheDir[] = "/.crosspoint/markets";
-constexpr uint8_t kCacheVersion = 4;     // 1 kept the source's raw answer
+constexpr uint8_t kCacheVersion = 5;  // 1 kept the source's raw answer; 5 says when the history was asked
+constexpr uint8_t kCacheBeforeHistoryAt = 4;
 constexpr size_t kMaxBody = 128 * 1024;  // 300 daily candles are ~22 KB
 // CNBC's endpoints are written for a browser; the others take anything.
 constexpr char kBrowserAgent[] =
@@ -28,6 +30,7 @@ constexpr char kBrowserAgent[] =
 constexpr char kPicksPath[] = "/.crosspoint/markets/picks";
 constexpr char kCustomsPath[] = "/.crosspoint/markets/custom";
 constexpr char kPortfolioPath[] = "/.crosspoint/markets/cartera";
+constexpr char kFetchedPath[] = "/.crosspoint/markets/fetched";
 bool picksLoaded = false;
 
 void cachePath(const int instrument, const char* ext, char* out, const size_t cap) {
@@ -85,13 +88,17 @@ bool loadInstrument(const int instrument, mk::Quote& out) {
   HalFile file;
   if (!Storage.openFileForRead("MKTS", path, file)) return false;
   uint8_t version = 0;
-  if (file.read(&version, 1) != 1 || version != kCacheVersion) return false;
+  if (file.read(&version, 1) != 1 || (version != kCacheVersion && version != kCacheBeforeHistoryAt)) return false;
   auto fresh = makeUniqueNoThrow<mk::Quote>();
   if (!fresh) {
     LOG_ERR("MKTS", "OOM: a quote");
     return false;
   }
-  if (file.read(reinterpret_cast<uint8_t*>(fresh.get()), sizeof(mk::Quote)) != sizeof(mk::Quote)) return false;
+  // The one before ends where `historyAt` now begins, and still reads: its
+  // closes show at once and are asked for again on the first round.
+  const size_t bytes = version == kCacheVersion ? sizeof(mk::Quote) : offsetof(mk::Quote, historyAt);
+  if (file.read(reinterpret_cast<uint8_t*>(fresh.get()), bytes) != static_cast<int>(bytes)) return false;
+  if (version != kCacheVersion) fresh->historyAt = 0;
   if (!fresh->valid || fresh->count < 2 || fresh->count > mk::kMaxCloses) return false;
   fresh->currency[sizeof(fresh->currency) - 1] = 0;
   fresh->zone[sizeof(fresh->zone) - 1] = 0;
@@ -110,6 +117,15 @@ void saveInstrument(const int instrument, const mk::Quote& quote) {
 }
 
 }  // namespace
+
+int64_t fetchedAt() {
+  if (!Storage.exists(kFetchedPath)) return 0;
+  HalFile file;
+  int64_t at = 0;
+  if (!Storage.openFileForRead("MKTS", kFetchedPath, file)) return 0;
+  if (file.read(reinterpret_cast<uint8_t*>(&at), sizeof(at)) != static_cast<int>(sizeof(at))) return 0;
+  return at > 1700000000 ? at : 0;
+}
 
 void loadPicks() {
   if (picksLoaded) return;
@@ -225,7 +241,8 @@ bool loadCached(const mk::Asset asset, mk::Quote& out) {
 
 // Everything wanted is fetched one instrument at a time: crypto from Coinbase's
 // candles, the rest from CNBC's bars, and then one CNBC quote laid over all of
-// those. A quote replaces the one held only once it has parsed, so an error
+// those. A history already on the card is kept and grown by those quotes, so
+// most rounds are the quote answers and little else. A quote replaces the one held only once it has parsed, so an error
 // page never costs a good one.
 int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap) {
   loadPicks();
@@ -257,6 +274,8 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
     return 0;
   }
   bool have[kMaxWanted] = {};
+  // Held from an earlier round today: only the price is asked for.
+  bool kept[kMaxWanted] = {};
   char url[384];
   std::unique_ptr<char[]> body;
   size_t size = 0;
@@ -273,50 +292,85 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
   const time_t clock = time(nullptr);
   int32_t today = clock > 1700000000 ? static_cast<int32_t>(clock / 86400) : 0;
 
+  // A history on the card is kept and grown by the quote answers: asking every
+  // instrument for a year of closes again was most of a round's time.
+  int keptCount = 0;
+  for (int i = 0; i < count; ++i) {
+    const bool always = mk::instrumentAt(wanted[i]).always;
+    kept[i] =
+        loadInstrument(wanted[i], fetched[i]) && mk::historyFresh(fetched[i], static_cast<int64_t>(clock), always);
+    if (kept[i]) ++keptCount;
+  }
+  LOG_INF("MKTS", "%d of %d histories kept from an earlier round", keptCount, count);
+
+  // The whole history of one instrument, the way every round used to ask.
+  auto fetchHistory = [&](const int i) {
+    const mk::AssetInfo& info = mk::instrumentAt(wanted[i]);
+    bool parsed = false;
+    if (info.always) {
+      mk::coinbaseUrlFor(info.symbol, url, sizeof(url));
+      parsed = get(url, body, size, status) && mk::parseCoinbase(body.get(), size, fetched[i]);
+      if (parsed) {
+        // The day's change of what never closes is over the last 24 hours.
+        // Without this answer it falls back to the daily candle's.
+        mk::coinbaseStatsUrlFor(info.symbol, url, sizeof(url));
+        int statsStatus = 0;
+        if (get(url, body, size, statsStatus)) mk::applyCoinbaseStats(body.get(), size, fetched[i]);
+        if (clock > 1700000000) fetched[i].time = static_cast<int64_t>(clock);
+        if (today == 0) today = fetched[i].days[fetched[i].count - 1];
+      }
+      outcome(parsed, status, word, sizeof(word));
+    } else if (today == 0) {
+      std::snprintf(word, sizeof(word), "NO DATE");
+    } else {
+      // A year of bars, and the four months this always asked for if the
+      // source will not give that many.
+      mk::cnbcBarsUrlSpan(info.symbol, today, mk::kYearOfDays, url, sizeof(url));
+      parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
+      if (!parsed) {
+        body.reset();
+        mk::cnbcBarsUrlFor(info.symbol, today, url, sizeof(url));
+        parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
+      }
+      outcome(parsed, status, word, sizeof(word));
+    }
+    body.reset();
+    if (parsed) {
+      std::snprintf(fetched[i].currency, sizeof(fetched[i].currency), "%s", mk::currencyOf(wanted[i]));
+      fetched[i].historyAt = clock > 1700000000 ? static_cast<int64_t>(clock) : 0;
+    }
+    kept[i] = false;
+    have[i] = parsed;
+    if (!parsed) fail(wanted[i]);
+  };
+
   for (int pass = 0; pass < 2; ++pass) {
     for (int i = 0; i < count; ++i) {
       const mk::AssetInfo& info = mk::instrumentAt(wanted[i]);
       if (info.always != (pass == 0)) continue;
-      bool parsed = false;
-      if (info.always) {
-        mk::coinbaseUrlFor(info.symbol, url, sizeof(url));
-        parsed = get(url, body, size, status) && mk::parseCoinbase(body.get(), size, fetched[i]);
-        if (parsed) {
-          // The day's change of what never closes is over the last 24 hours.
-          // Without this answer it falls back to the daily candle's.
-          mk::coinbaseStatsUrlFor(info.symbol, url, sizeof(url));
-          int statsStatus = 0;
-          if (get(url, body, size, statsStatus)) mk::applyCoinbaseStats(body.get(), size, fetched[i]);
-          if (clock > 1700000000) fetched[i].time = static_cast<int64_t>(clock);
-          if (today == 0) today = fetched[i].days[fetched[i].count - 1];
+      if (kept[i] && info.always) {
+        // What never closes, with today's candles held: its price and its 24 hours.
+        mk::coinbaseStatsUrlFor(info.symbol, url, sizeof(url));
+        const bool priced = get(url, body, size, status) && mk::applyCoinbaseStats(body.get(), size, fetched[i]);
+        body.reset();
+        if (priced) {
+          fetched[i].time = static_cast<int64_t>(clock);
+          have[i] = true;
+          continue;
         }
-        outcome(parsed, status, word, sizeof(word));
-      } else if (today == 0) {
-        std::snprintf(word, sizeof(word), "NO DATE");
-      } else {
-        // A year of bars, and the four months this always asked for if the
-        // source will not give that many.
-        mk::cnbcBarsUrlSpan(info.symbol, today, mk::kYearOfDays, url, sizeof(url));
-        parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
-        if (!parsed) {
-          body.reset();
-          mk::cnbcBarsUrlFor(info.symbol, today, url, sizeof(url));
-          parsed = get(url, body, size, status) && mk::parseCnbcBars(body.get(), size, fetched[i]);
-        }
-        outcome(parsed, status, word, sizeof(word));
       }
-      body.reset();
-      if (parsed) std::snprintf(fetched[i].currency, sizeof(fetched[i].currency), "%s", mk::currencyOf(wanted[i]));
-      have[i] = parsed;
-      if (!parsed) fail(wanted[i]);
+      // The rest of what is kept is priced by the quote answers below.
+      if (kept[i] && !info.always) continue;
+      fetchHistory(i);
     }
   }
 
   // One quote answer for every CNBC instrument that has bars.
   const char* symbols[kMaxWanted];
   int symbolCount = 0;
+  auto quoted = [&](const int i) { return (have[i] || kept[i]) && !mk::instrumentAt(wanted[i]).always; };
   for (int i = 0; i < count; ++i) {
-    if (have[i] && !mk::instrumentAt(wanted[i]).always) symbols[symbolCount++] = mk::instrumentAt(wanted[i]).symbol;
+    if (quoted(i)) symbols[symbolCount++] = mk::instrumentAt(wanted[i]).symbol;
   }
   // A handful to an answer: the URL has room for only so many symbols.
   constexpr int kQuotesAtOnce = 8;
@@ -325,12 +379,21 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
     mk::cnbcQuoteUrlFor(symbols + from, n, url, sizeof(url));
     if (get(url, body, size, status)) {
       for (int i = 0; i < count; ++i) {
-        if (have[i] && !mk::instrumentAt(wanted[i]).always) {
-          mk::applyCnbcQuoteFor(body.get(), size, mk::instrumentAt(wanted[i]).symbol, fetched[i]);
+        if (!quoted(i)) continue;
+        // What was kept has arrived once its price has, and grows by the
+        // session the quote brings; with sessions missing it is asked for whole below.
+        bool gap = false;
+        if (mk::applyCnbcQuoteFor(body.get(), size, mk::instrumentAt(wanted[i]).symbol, fetched[i],
+                                  kept[i] ? &gap : nullptr)) {
+          have[i] = true;
         }
       }
     }
     body.reset();
+  }
+  // Kept, and no quote came for it or sessions were missing: asked for whole, as before.
+  for (int i = 0; i < count; ++i) {
+    if (kept[i] && !have[i]) fetchHistory(i);
   }
 
   int arrived = 0;
@@ -347,6 +410,16 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
     if (i < mk::kAssets) {
       quotes[i] = fetched[i];
       ++cards;
+    }
+  }
+  // When this was, for the page to say next time it opens from the card.
+  const time_t ended = time(nullptr);
+  if (arrived > 0 && ended > 1700000000) {
+    HalFile file;
+    if (Storage.openFileForWrite("MKTS", kFetchedPath, file)) {
+      const int64_t at = static_cast<int64_t>(ended);
+      file.write(reinterpret_cast<const uint8_t*>(&at), sizeof(at));
+      file.flush();
     }
   }
   if (arrived == count) {
