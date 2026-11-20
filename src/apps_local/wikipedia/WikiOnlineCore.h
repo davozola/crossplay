@@ -29,12 +29,24 @@ struct Hit {
 std::string searchUrl(const std::string& query);
 std::string randomUrl();
 std::string articleUrl(uint32_t pageId);
+// The same article asked for by name, for the lists that only carry titles.
+std::string articleUrlByTitle(const std::string& title);
+// The most viewed pages of a day, or of a whole month with day 0.
+std::string topUrl(int year, int month, int day);
+// Twenty articles of a category of the wiki ("Wikipedia:Artículos
+// destacados"), in title order from `startAt` on.
+std::string categoryUrl(const std::string& category, const std::string& startAt);
 
 // ---------------------------------------------------------------- answers
 
 // The hits of a search or random answer, in the order above, without repeats,
 // at most `max` appended. Returns how many.
 int parseHits(const char* json, size_t len, int max, std::vector<Hit>& out);
+
+// The articles of a most-viewed answer, in rank order, without the pages that
+// are not articles (the main page, the search page, files...). They carry a
+// title and no id. The answer may be cut short: what is whole is read.
+int parseTop(const char* json, size_t len, int max, std::vector<Hit>& out);
 
 // Case and accents folded, for matching what was typed against saved titles.
 std::string foldTitle(const std::string& title);

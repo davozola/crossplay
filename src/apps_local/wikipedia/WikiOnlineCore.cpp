@@ -123,8 +123,7 @@ bool isSpace(const char c) { return c == ' ' || c == '\n' || c == '\r' || c == '
 
 // Sections that are nothing once the references and the links are gone.
 bool leftOut(const std::string& heading) {
-  static const char* const kNames[] = {"referencias", "enlaces externos", "notas y referencias",
-                                       "referencias y notas"};
+  static const char* const kNames[] = {"referencias", "enlaces externos", "notas y referencias", "referencias y notas"};
   std::string lower;
   for (const char c : heading) lower += (c >= 'A' && c <= 'Z') ? static_cast<char>(c + 32) : c;
   for (const char* name : kNames) {
@@ -154,6 +153,37 @@ std::string articleUrl(const uint32_t pageId) {
   return std::string(kApi) + "&action=query&prop=extracts&redirects=1&pageids=" + std::to_string(pageId);
 }
 
+std::string articleUrlByTitle(const std::string& title) {
+  std::string url = std::string(kApi) + "&action=query&prop=extracts&redirects=1&titles=";
+  percentEncode(url, title);
+  return url;
+}
+
+std::string topUrl(const int year, const int month, const int day) {
+  char path[128];
+  if (day > 0) {
+    snprintf(path, sizeof(path), "%04d/%02d/%02d", year, month, day);
+  } else {
+    snprintf(path, sizeof(path), "%04d/%02d/all-days", year, month);
+  }
+  return std::string("https://wikimedia.org/api/rest_v1/metrics/pageviews/top/es.wikipedia/all-access/") + path;
+}
+
+std::string categoryUrl(const std::string& category, const std::string& startAt) {
+  std::string url = std::string(kApi) +
+                    "&action=query&list=categorymembers&cmnamespace=0&cmtype=page&cmlimit=20&cmsort=sortkey"
+                    "&cmtitle=";
+  percentEncode(url,
+                "Categor\xC3\xAD"
+                "a:" +
+                    category);
+  if (!startAt.empty()) {
+    url += "&cmstartsortkeyprefix=";
+    percentEncode(url, startAt);
+  }
+  return url;
+}
+
 // ---------------------------------------------------------------- answers
 
 int parseHits(const char* json, const size_t len, const int max, std::vector<Hit>& out) {
@@ -162,6 +192,58 @@ int parseHits(const char* json, const size_t len, const int max, std::vector<Hit
   hitsFrom(flatjson::member(query, "prefixsearch"), max, out, added);
   hitsFrom(flatjson::member(query, "search"), max, out, added);
   hitsFrom(flatjson::member(query, "random"), max, out, added);
+  hitsFrom(flatjson::member(query, "categorymembers"), max, out, added);
+  return added;
+}
+
+int parseTop(const char* json, const size_t len, const int max, std::vector<Hit>& out) {
+  // Pages that are counted and are not articles.
+  static const char* const kNotArticles[] = {"Wikipedia:",
+                                             "Especial:",
+                                             "Special:",
+                                             "Archivo:",
+                                             "Categor\xC3\xAD"
+                                             "a:",
+                                             "Portal:",
+                                             "Plantilla:",
+                                             "Ayuda:",
+                                             "Usuario:",
+                                             "Usuaria:",
+                                             "Discusi\xC3\xB3n:",
+                                             "MediaWiki:",
+                                             "M\xC3\xB3"
+                                             "dulo:",
+                                             "Wikiproyecto:"};
+  static const char kKey[] = "\"article\":\"";
+  const size_t keyLen = sizeof(kKey) - 1;
+  const char* const end = json + len;
+  int added = 0;
+  const char* p = json;
+  while (added < max && p + keyLen < end) {
+    const void* found = memmem(p, static_cast<size_t>(end - p), kKey, keyLen);
+    if (!found) break;
+    const char* start = static_cast<const char*>(found) + keyLen - 1;  // at the opening quote
+    const char* close = start + 1;
+    while (close < end && *close != '"') close += (*close == '\\' && close + 1 < end) ? 2 : 1;
+    if (close >= end) break;  // cut mid-title
+    flatjson::Span span;
+    span.p = start;
+    span.end = close + 1;
+    std::string title = jsonString(span);
+    p = close + 1;
+    for (char& c : title) {
+      if (c == '_') c = ' ';
+    }
+    bool article = !title.empty() && title != "-";
+    for (const char* prefix : kNotArticles) {
+      if (title.compare(0, strlen(prefix), prefix) == 0) article = false;
+    }
+    if (!article) continue;
+    Hit hit;
+    hit.title = std::move(title);
+    out.push_back(std::move(hit));
+    ++added;
+  }
   return added;
 }
 
@@ -291,7 +373,8 @@ void ExtractReader::jsonChar(const char c) {
   if (expectValue_ && !isSpace(c)) {
     // A bare value: a number, true, false or null.
     if (c == ',' || c == '}' || c == ']') {
-      if (lastKey_ == "pageid" && !number_.empty()) pageId_ = static_cast<uint32_t>(strtoul(number_.c_str(), nullptr, 10));
+      if (lastKey_ == "pageid" && !number_.empty())
+        pageId_ = static_cast<uint32_t>(strtoul(number_.c_str(), nullptr, 10));
       if ((lastKey_ == "missing" || lastKey_ == "invalid") && number_ == "true") missing_ = true;
       expectValue_ = false;
       return;
@@ -392,12 +475,18 @@ void ExtractReader::entityDone(const bool terminated) {
   entity_.clear();
   if (terminated) {
     uint32_t cp = 0;
-    if (name == "amp") cp = '&';
-    else if (name == "lt") cp = '<';
-    else if (name == "gt") cp = '>';
-    else if (name == "quot") cp = '"';
-    else if (name == "apos") cp = '\'';
-    else if (name == "nbsp") cp = 0xA0;
+    if (name == "amp")
+      cp = '&';
+    else if (name == "lt")
+      cp = '<';
+    else if (name == "gt")
+      cp = '>';
+    else if (name == "quot")
+      cp = '"';
+    else if (name == "apos")
+      cp = '\'';
+    else if (name == "nbsp")
+      cp = 0xA0;
     else if (name.size() > 1 && name[0] == '#') {
       const bool hex = name[1] == 'x' || name[1] == 'X';
       cp = static_cast<uint32_t>(strtoul(name.c_str() + (hex ? 2 : 1), nullptr, hex ? 16 : 10));
@@ -449,8 +538,9 @@ void ExtractReader::handleTag() {
     }
     return;
   }
-  if (!closing && !selfClosed && (strcmp(name, "style") == 0 || strcmp(name, "script") == 0 ||
-                                  strcmp(name, "table") == 0 || strcmp(name, "figure") == 0)) {
+  if (!closing && !selfClosed &&
+      (strcmp(name, "style") == 0 || strcmp(name, "script") == 0 || strcmp(name, "table") == 0 ||
+       strcmp(name, "figure") == 0)) {
     snprintf(skipName_, sizeof(skipName_), "%s", name);
     skipDepth_ = 1;
     return;

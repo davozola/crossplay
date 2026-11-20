@@ -46,9 +46,13 @@ class WikipediaActivity final : public Activity {
   bool skipLoopDelay() override;
 
  private:
-  enum class View : uint8_t { Search, Article, Contents, Notice };
+  enum class View : uint8_t { Search, Article, Contents, List, Notice };
+  // What the list view is showing: the ways to discover, a list Wikipedia
+  // answered with, the articles on the card, or those same ones to delete.
+  enum class ListKind : uint8_t { Discover, Hits, Saved, Delete };
+  enum class Feed : uint8_t { TopDay, TopMonth, Featured, Good };
   // Work that needs the network, run from loop() once its status is painted.
-  enum class Job : uint8_t { None, Search, Random, Open };
+  enum class Job : uint8_t { None, Search, Random, Open, Feed };
   enum class Fail : uint8_t { None, Network, Missing, Card };
   struct Visit {
     uint32_t id;
@@ -78,8 +82,19 @@ class WikipediaActivity final : public Activity {
   void startJob(Job job);
   void runJob();
   bool online();
-  bool fetchSmall(const std::string& url, std::string& body);
-  Fail download(uint32_t id, const std::string& titleHint);
+  bool fetchSmall(const std::string& url, std::string& body, size_t cap);
+  Fail download(uint32_t& id, const std::string& titleHint);
+  void runFeed();
+
+  // lists
+  void showList(ListKind kind, const std::string& title);
+  void showDiscover();
+  void showSaved(bool deleting);
+  void closeList();
+  void listTapped(int row);
+  void forget(uint32_t id);
+  void forgetAll();
+  uint32_t savedIdFor(const std::string& title) const;
   void runSearch();
   void runRandom();
 
@@ -129,6 +144,16 @@ class WikipediaActivity final : public Activity {
   std::optional<autorefresh::Radio> radio_;
   uint32_t radioUsedMs_ = 0;
   bool netUsed_ = false;
+
+  // lists
+  ListKind listKind_ = ListKind::Discover;
+  Feed feed_ = Feed::TopDay;
+  std::string listTitle_;
+  std::vector<std::string> listRows_;
+  std::vector<wikies::Hit> listHits_;
+  int listFirst_ = 0;
+  int listShown_ = 0;
+  bool fromList_ = false;  // the open article was picked from the list view
 
   // the card: every article kept, most recently opened first
   std::vector<wikies::Hit> saved_;

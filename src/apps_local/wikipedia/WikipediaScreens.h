@@ -31,6 +31,8 @@ enum : fui::ActionId {
   ActionClear = 12,     // clear the query
   ActionField = 13,     // the field itself: raises the keyboard where it is hidden
   ActionMore = 14,      // the contents list's next window
+  ActionDiscover = 16,  // the home's door to the lists: most read, featured...
+  ActionSaved = 17,     // the count line: the articles kept on the card
   ActionPrevious = 15,  // the article band's way back: the previous article, or the search
 };
 
@@ -54,6 +56,8 @@ struct SearchModel {
   // One line under the matches, in the app's voice: what pressing IR will do,
   // or that there is no Wi-Fi and these are only the saved articles.
   const char* hint = nullptr;
+  // There are articles on the card: the count line opens their list.
+  bool manage = false;
   const char* continueTitle = nullptr;
   int continuePage = 0;  // 1-based page CONTINUE lands on; 0 when unknown
   Row recent[kMaxRecent];
