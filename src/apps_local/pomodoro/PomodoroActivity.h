@@ -12,6 +12,10 @@
 // device a full refresh -- the black blink this panel makes anyway, used as
 // punctuation the same way FOREHEAD uses it for its buzzer.
 //
+// Leaving the app does not stop the clock: where it stood and when it was left
+// go to the card, and coming back adds the time away. A phase that ended
+// meanwhile rings on the way back in, not while another app has the panel.
+//
 // The logic lives in PomodoroCore so host-tests/pomodoro can run it.
 
 #include <memory>

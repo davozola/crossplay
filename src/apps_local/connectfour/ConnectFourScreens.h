@@ -15,12 +15,20 @@ enum : fui::ActionId {
   ActionHowToNext = 2,
   ActionAgain = 3,
   ActionDone = 4,
+  ActionUndo = 20,  // take the last drop back
+  ActionHint = 21,  // show a column worth playing
 };
 
-enum class MenuRow : int { Play = 0, PlayNearby, HowTo, Count };
+// Continue is only on the menu while there is a game to go back to.
+enum class MenuRow : int { Continue = 0, Play, Level, PlayNearby, HowTo, Count };
 
 struct MenuModel {
   const char* nearbyName = nullptr;
+  const char* levelName = "";  // how hard the built-in opponent plays
+  bool hasSavedGame = false;
+  // Against that level: won and lost.
+  int levelWon = 0;
+  int levelLost = 0;
   int selected = -1;
   // The record and the last game's final slab, for the front door's ornament.
   // Cells are column-major bottom-up with light normalised to this device's
@@ -48,6 +56,9 @@ struct BoardModel {
   uint8_t seat = connectfour::kLight;
   bool yourTurn = true;
   const char* opponentName = nullptr;
+  // Against the device: UNDO and HINT sit either side of the status.
+  bool solo = false;
+  bool canUndo = false;
 };
 
 struct ResultModel {

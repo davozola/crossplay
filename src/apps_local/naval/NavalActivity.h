@@ -10,7 +10,9 @@
 
 // NAVAL WEATHER: wind, waves, swell and water for the places WEATHER keeps,
 // a week ahead, fetched from Open-Meteo on request and kept on the card so it
-// still reads at sea with no network. On auto it stays on the panel and
+// still reads at sea with no network. The wind can be meteoblue's instead, for
+// an owner who has a key of theirs: the key is typed once or left in a file on
+// the card, stays on the card, and is never in the firmware or a log. On auto it stays on the panel and
 // fetches again by itself, with the radio up only for the fetch and a nap in
 // between.
 class NavalActivity final : public Activity {
@@ -28,7 +30,7 @@ class NavalActivity final : public Activity {
   void requestUpdate(bool immediate = false) override;
 
  private:
-  enum class View : uint8_t { Now, Day, Status, AutoPicker };
+  enum class View : uint8_t { Now, Day, Status, AutoPicker, Source };
   enum class Fetched : uint8_t { Ok, NoAnswer, NoSea };
   enum class Step : uint8_t { Idle, Joining, Ready, Running };
 
@@ -39,7 +41,31 @@ class NavalActivity final : public Activity {
   void startFetch();
   void runFetch();
   // The selected place's sea and wind, kept on the card. Needs the radio up.
-  Fetched fetchSea();
+  // `asked` is a fetch the owner tapped for; a round on auto spends meteoblue's
+  // credits no more than once every few hours.
+  Fetched fetchSea(bool asked);
+  void loadSource();
+  void saveSource();
+  void saveKey();
+  void askKey();
+  void buildSource(toybox::Screen& screen);
+  void buildWide(toybox::Screen& screen);
+  void buildWideDay(toybox::Screen& screen);
+  void drawRose(toybox::Screen& screen, int cx, int cy, int r, const naval::Hour& h);
+  void drawWindow(toybox::Screen& screen, int x, int y, int w, int h);
+  void drawBars(toybox::Screen& screen, const freeink::ui::Rect& r, int d, float top, bool fine);
+  void wideStrip(toybox::Screen& screen, int y, int h);
+  void wideFact(toybox::Screen& screen, int x, int y, int w, const char* name, const char* value, const char* detail);
+  void wideFacts(toybox::Screen& screen, int x, int y, int w, int pitch, const naval::Hour& h);
+  void wideWind(toybox::Screen& screen, int x, int y, int w, const naval::Hour& h, int underX, int underY, int underW);
+  void dayHit(toybox::Screen& screen, const freeink::ui::Rect& r, int d);
+  void autoLabel(char* out, size_t cap) const;
+  int windowOf(int d, int& first) const;
+  naval::DayStats statsFor(int d) const;
+  float scaleOf(int d) const;
+  bool onItsSide() const;
+  void loadView();
+  void saveView();
   void loadAuto();
   void saveAuto();
   void showStatus(const char* headline, const char* detail, bool dismissable);
@@ -62,6 +88,19 @@ class NavalActivity final : public Activity {
   std::unique_ptr<naval::Sea> sea_;
   bool haveSea_ = false;
   int dayOpen_ = 0;
+  // The hours looked at (08 to 21, or all of them) and which way up the week is.
+  bool daylight_ = true;
+  bool wide_ = false;
+  int wideLayout_ = 1;  // 0 a table, 1 seven columns, 2 today by the hour
+  int tallLayout_ = 0;  // upright: 0 now and a table, 1 the week in big rows, 2 today by the hour
+
+  // The wind's source, and the owner's key for it.
+  bool useMeteoblue_ = false;
+  char key_[40] = "";
+  bool meteoblueFailed_ = false;
+  int meteoblueStatus_ = 0;
+  uint32_t meteoblueAtMs_ = 0;  // 0: not yet this session
+  int meteobluePlace_ = -1;
 
   const char* statusHeadline_ = "";
   const char* statusDetail_ = "";

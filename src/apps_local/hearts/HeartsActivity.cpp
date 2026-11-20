@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "../Shelf.h"
+#include "../ui/SoloGame.h"
 #include "../ui/Toybox.h"
 #include "../ui/ToyboxTheme.h"
 
@@ -20,6 +21,7 @@ namespace {
 constexpr const char* kSavePath = "/.crosspoint/hearts.sav";
 constexpr const char* kSkillPath = "/.crosspoint/hearts.skill";
 constexpr const char* kStatsPath = "/.crosspoint/hearts.res";
+constexpr const char* kLevelsPath = "/.crosspoint/hearts-levels.cfg";
 
 // Bumped when the save layout changes, per the cache-format rule. An old save
 // is discarded rather than misread, which for a card game means a table with
@@ -651,6 +653,12 @@ void HeartsActivity::render(RenderLock&&) {
     // "HAND 1, PART PLAYED" was shown for a hand that had finished and scored.
     model.savedHandDone = game.phase == Phase::HandOver || game.phase == Phase::GameOver;
     model.sharp = skill == Skill::Sharp;
+    {
+      sologame::LevelStats levels;
+      sologame::loadStats("HEARTS", kLevelsPath, levels);
+      model.levelWon = levels.won[model.sharp ? 1 : 0];
+      model.levelLost = levels.lost[model.sharp ? 1 : 0];
+    }
     model.confirmingNew = confirmingNew;
     fillStats(model);
     ui::buildMenu(screen, model);
@@ -742,6 +750,11 @@ void HeartsActivity::recordResult(const int place) const {
   const uint8_t byte = static_cast<uint8_t>(place);
   file.write(&byte, 1);
   file.flush();
+  // And against the table it was played at.
+  sologame::LevelStats levels;
+  sologame::loadStats("HEARTS", kLevelsPath, levels);
+  levels.count(skill == Skill::Sharp ? 1 : 0, place == 1 ? 0 : 1);
+  sologame::saveStats("HEARTS", kLevelsPath, levels);
 }
 
 void HeartsActivity::fillStats(ui::MenuModel& model) const {

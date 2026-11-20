@@ -179,11 +179,13 @@ inline int search(const Board& board, const uint8_t player, const uint8_t mover,
   return search(board, player, other(mover), depth - 1, alpha, beta);
 }
 
-constexpr int kLevels = 3;
+constexpr int kLevels = 4;
 
 // The square the device plays for the side to move, -1 when it has none.
 // Level 0 plays any allowed square, leaning to the one that turns most;
-// level 1 looks at what each square is worth; level 2 thinks four moves on.
+// level 1 looks at what each square is worth; level 2 thinks four moves on;
+// level 3 thinks six on, and once eight squares or fewer are left it plays the
+// rest out exactly, to the last stone.
 inline int choose(const Board& board, const int level, Rng& rng) {
   const uint8_t player = board.turn;
   int best = -1;
@@ -198,8 +200,14 @@ inline int choose(const Board& board, const int level, Rng& rng) {
       score = turned + rng.below(6);
     } else if (level == 1) {
       score = squareValue(board.side, i) * 3 + turned + rng.below(3);
-    } else {
+    } else if (level == 2) {
       score = search(next, player, other(player), 3, -100000, 100000) * 4 + rng.below(3);
+    } else {
+      // Deep enough to reach the end is the end counted, not judged.
+      int empties = 0;
+      for (int k = 0; k < next.cells(); ++k) empties += next.cell[k] == Empty ? 1 : 0;
+      const int depth = empties <= 8 ? empties + 2 : 5;
+      score = search(next, player, other(player), depth, -100000, 100000);
     }
     if (score > bestScore) {
       bestScore = score;

@@ -19,6 +19,7 @@
 #include "../Shelf.h"
 #include "../jukebox/JukeboxNet.h"
 #include "../jukebox/JukeboxPlay.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
@@ -282,18 +283,25 @@ void LinerNotesActivity::play() {
   }
   radioUsed_ = true;
   WiFi.mode(WIFI_STA);
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           interactionsReady_ = false;
-                           clean_ = true;
-                           if (result.isCancelled) {
-                             note_ = "NO WI-FI: PLEXAMP IS REACHED OVER YOUR NETWORK.";
-                           } else {
-                             note_ = "ASKING PLEXAMP...";
-                             playStep_ = 1;
-                           }
-                           requestUpdate();
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      interactionsReady_ = false;
+      clean_ = true;
+      if (result.isCancelled) {
+        note_ = "NO WI-FI: PLEXAMP IS REACHED OVER YOUR NETWORK.";
+      } else {
+        note_ = "ASKING PLEXAMP...";
+        playStep_ = 1;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void LinerNotesActivity::startAlbum() {
@@ -312,6 +320,9 @@ void LinerNotesActivity::startAlbum() {
       break;
     case jukebox::Started::NoServer:
       note_ = "OPEN JUKEBOX AND BROWSE THE LIBRARY ONCE, SO IT LEARNS THE SERVER.";
+      break;
+    case jukebox::Started::Unreachable:
+      note_ = "THE MEDIA SERVER DID NOT ANSWER. IS IT ON, AND ON THIS NETWORK?";
       break;
     case jukebox::Started::NoQueue:
       note_ = "THE MEDIA SERVER DID NOT FIND THIS ALBUM.";

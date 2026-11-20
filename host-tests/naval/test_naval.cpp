@@ -106,6 +106,45 @@ int main() {
   windUrl(41.38f, 2.17f, url, sizeof(url));
   check(std::strstr(url, "wind_speed_unit=kn") && std::strstr(url, "wind_gusts_10m"), "wind url in knots");
 
+  // The sailing hours only: a night gale does not make the day's maximum.
+  {
+    auto night = std::make_unique<Sea>(*sea);
+    int first = 0;
+    const int n = hoursOfDay(*night, 1, first);
+    for (int i = first; i < first + n; ++i) night->hours[i].wind = night->hours[i].hour == 3 ? 60.0f : 10.0f;
+    check(statsOf(*night, 1).windMax > 59, "the whole day sees the 03:00 gale");
+    check(statsOf(*night, 1, 8, 21).windMax < 11, "08 to 21 does not");
+    check(statsOf(*night, 1, 8, 21).day == night->hours[first].day, "and still says which day it is");
+  }
+
+  // meteoblue's wind over the same hours: metres a second in, knots on the page.
+  {
+    const Hour first = sea->hours[0];
+    char mb[512];
+    std::snprintf(mb, sizeof(mb),
+                  "{\"units\":{\"time\":\"YYYY-MM-DD hh:mm\",\"windspeed\":\"ms-1\"},\"data_1h\":{\"time\":"
+                  "[\"%04d-%02d-%02d %02d:00\",\"1999-01-01 00:00\"],\"windspeed\":[10.0,3.0],"
+                  "\"winddirection\":[225,90]}}",
+                  sea->year, first.month, first.day, first.hour);
+    sea->hours[0].gust = 5;
+    check(parseMeteoblueWind(mb, std::strlen(mb), *sea), "meteoblue wind is read");
+    check(sea->windIsMeteoblue, "and the sea says whose wind it is");
+    check(sea->hours[0].wind > 19.4f && sea->hours[0].wind < 19.5f, "10 m/s is 19.4 knots");
+    check(sea->hours[0].windFrom == 225, "with its direction");
+    check(sea->hours[0].gust < 0, "a gust the new wind overtakes is dropped");
+    const char* none = "{\"data_1h\":{\"time\":[\"1999-01-01 00:00\"],\"windspeed\":[3.0]}}";
+    auto other = std::make_unique<Sea>(*sea);
+    other->windIsMeteoblue = false;
+    check(!parseMeteoblueWind(none, std::strlen(none), *other), "no matching hour is no wind");
+    char key[40];
+    check(tidyKey("  AbCd1234efGH5678\r\n", key, sizeof(key)) && std::strcmp(key, "AbCd1234efGH5678") == 0,
+          "a key is tidied of spaces and line ends");
+    check(!tidyKey(" \n", key, sizeof(key)), "nothing is not a key");
+    char url[256];
+    meteoblueUrl(41.39f, 2.16f, "KEY", url, sizeof(url));
+    check(std::strstr(url, "basic-1h") && std::strstr(url, "apikey=KEY"), "the URL asks for basic-1h with the key");
+  }
+
   if (failures == 0) std::printf("naval: all tests passed\n");
   return failures == 0 ? 0 : 1;
 }

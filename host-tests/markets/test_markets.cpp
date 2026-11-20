@@ -290,7 +290,17 @@ int main() {
     check(!unpackPortfolio(bytes, sizeof(bytes), back) && back.count == 0, "a file holding the euro rate is not ours");
     check(setPosition(pf, 9, 0) && pf.count == 1 && pf.positions[0].instrument == 0, "zero removes");
     for (int k = 0; k < kInstruments; ++k) setPosition(pf, k, 1);
-    check(pf.count == kMaxPositions, "full at six");
+    check(pf.count > 6 && pf.count <= kMaxPositions, "holds more than the six it once did, and no more than its room");
+    {
+      // A file written when a portfolio held six: 2 + 6 * 9 bytes, and still read.
+      uint8_t old[2 + 6 * 9] = {1, 1, 0};
+      const double amount = 0.5;
+      std::memcpy(old + 3, &amount, sizeof(amount));
+      Portfolio was;
+      check(unpackPortfolio(old, sizeof(old), was) && was.count == 1 && near(was.positions[0].amount, 0.5),
+            "the shorter file of before still loads");
+      check(!unpackPortfolio(old, 5, was), "a file cut short does not");
+    }
   }
   {  // typing an amount
     AmountEntry e;

@@ -66,7 +66,9 @@ const char* rowValue(const SettingsModel& model, const MenuRow row) {
     case MenuRow::TakeBack:
       return model.canTakeBack ? "" : "NONE";
     case MenuRow::Level:
-      return model.level == 0 ? "EASY" : (model.level == 1 ? "NORMAL" : "HARD");
+      // The caller's line with the record on it; the bare name without one.
+      if (model.levelText[0] != 0) return model.levelText;
+      return model.level == 0 ? "EASY" : (model.level == 1 ? "MEDIUM" : "HARD");
     case MenuRow::PlayAs:
       return model.humanPlaysWhite ? "WHITE" : "BLACK";
     case MenuRow::Opponent:

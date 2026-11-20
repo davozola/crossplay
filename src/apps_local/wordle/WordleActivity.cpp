@@ -16,6 +16,7 @@
 #include "../../components/UITheme.h"
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
 
@@ -355,17 +356,24 @@ void WordleActivity::beginImport() {
     importStep_ = ImportStep::Ready;
     return;
   }
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           if (result.isCancelled) {
-                             importStep_ = ImportStep::Failed;
-                             importDetail_ = "NO WI-FI";
-                           } else {
-                             importStep_ = ImportStep::Ready;
-                             importDetail_ = "DOWNLOADING";
-                           }
-                           requestUpdate();
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        importStep_ = ImportStep::Failed;
+        importDetail_ = "NO WI-FI";
+      } else {
+        importStep_ = ImportStep::Ready;
+        importDetail_ = "DOWNLOADING";
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void WordleActivity::runImport() {

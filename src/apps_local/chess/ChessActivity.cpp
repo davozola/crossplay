@@ -113,6 +113,7 @@ void ChessActivity::resetGame() {
   chess::setStartPosition(position);
   selectedSquare = -1;
   gameOver = false;
+  resultCounted = false;
   engineThinking = false;
   historyCount = 0;
   historyBase = 0;
@@ -128,6 +129,7 @@ void ChessActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadSettings();
+  sologame::loadStats("CHESS", "/.crosspoint/chess-levels.cfg", levelStats);
   hasSavedGame = loadGame();
   if (!hasSavedGame) {
     resetGame();
@@ -615,6 +617,19 @@ int ChessActivity::squareAtPoint(const int x, const int y) const {
   return rank * 8 + file;
 }
 
+// A game against the computer that has just ended, into the record for its level.
+void ChessActivity::countResult() {
+  if (!gameOver || resultCounted || !vsComputer()) return;
+  resultCounted = true;
+  int outcome = 2;
+  if (drawReason == DrawReason::None && chess::isInCheck(position)) {
+    const bool whiteWon = !position.whiteToMove;
+    outcome = whiteWon == humanPlaysWhite ? 0 : 1;
+  }
+  levelStats.count(level, outcome);
+  sologame::saveStats("CHESS", "/.crosspoint/chess-levels.cfg", levelStats);
+}
+
 void ChessActivity::refreshLegalMoves() {
   chess::generateLegalMoves(position, legalMoves);
   drawReason = DrawReason::None;
@@ -623,6 +638,7 @@ void ChessActivity::refreshLegalMoves() {
   // in both cases the side to move having no move is the older, stronger fact.
   if (legalMoves.count == 0) {
     gameOver = true;
+    countResult();
     return;
   }
   if (currentRepetitionCount() >= 3) {
@@ -632,6 +648,7 @@ void ChessActivity::refreshLegalMoves() {
     drawReason = DrawReason::FiftyMove;
   }
   gameOver = drawReason != DrawReason::None;
+  countResult();
 }
 
 void ChessActivity::resetRepetition() {
@@ -724,8 +741,10 @@ void ChessActivity::playEngineMove() {
   // Depth 3 with a node cap. The cap is the safety net: if a position blows up
   // combinatorially the search stops early and still returns its best move so
   // far, rather than stalling the loop and tripping the watchdog.
-  static constexpr int kDepthForLevel[3] = {1, 3, 4};
-  constexpr uint32_t kNodeBudget = 60000;
+  // The easy one reads a single ply, as it always has. The other two deepen
+  // to a budget and follow captures to the end (chess::think).
+  static constexpr int kDepthForLevel[3] = {1, 3, chess::kThinkDepth};
+  static constexpr uint32_t kBudgetForLevel[3] = {60000, 40000, 110000};
   // A COPY, and this is the whole of the flicker fix. search() makes and
   // unmakes thousands of moves on whatever position it is handed, and the
   // render task reads `position` straight out of this object while the main
@@ -738,7 +757,9 @@ void ChessActivity::playEngineMove() {
   // task. The repaint it asks for is still in flight when the search starts,
   // so deferring by a pass moved the race rather than closing it.
   chess::Position scratch = position;
-  const chess::SearchResult result = chess::search(scratch, kDepthForLevel[level], searchBuffers, kNodeBudget);
+  const chess::SearchResult result =
+      level == 0 ? chess::search(scratch, kDepthForLevel[0], searchBuffers, kBudgetForLevel[0])
+                 : chess::think(scratch, kDepthForLevel[level], searchBuffers, kBudgetForLevel[level]);
   LOG_DBG("CHESS", "engine: %u nodes, score %d%s", static_cast<unsigned>(result.nodes), result.score,
           result.budgetExhausted ? " (budget hit)" : "");
   if (!result.hasMove) {
@@ -1110,6 +1131,9 @@ chessui::SettingsModel ChessActivity::settingsModel() const {
   model.humanPlaysWhite = humanPlaysWhite;
   model.showHints = showHints;
   model.level = level;
+  std::snprintf(model.levelText, sizeof(model.levelText), "%s  %d-%d-%d",
+                level == 0 ? "EASY" : (level == 1 ? "MEDIUM" : "HARD"), levelStats.won[level % 3] % 1000,
+                levelStats.lost[level % 3] % 1000, levelStats.drawn[level % 3] % 1000);
   model.canTakeBack = canTakeBack();
   model.restartPending = restartPending();
   model.selected = menuIndex;

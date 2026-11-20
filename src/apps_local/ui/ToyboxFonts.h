@@ -55,6 +55,10 @@ constexpr int kButtonFontId = 0x70B0'0009;
 // overflows.
 constexpr int kReadingSmallFontId = 0x70B0'000A;
 constexpr int kReadingBoldSmallFontId = 0x70B0'000B;
+// One step under the reading cut, for prose that wants a few more words to the
+// line without dropping to the small cut. NEWS sets its headlines and articles
+// in it.
+constexpr int kReadingMidFontId = 0x70B0'000E;
 
 // Two cuts above the display cut, for a screen whose whole content is one word
 // read from the other side of a room.

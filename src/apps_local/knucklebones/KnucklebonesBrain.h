@@ -100,4 +100,58 @@ inline int chooseColumn(const Game& game) {
   return best;
 }
 
+// --- The hard one ---------------------------------------------------------------
+//
+// The one-ply reader above places the die where the board looks best this
+// instant, and this game is not won that way: it is won by when the boards
+// fill and by what a column is worth three dice from now. So the hard one
+// plays each choice out to the end, many times, with dice of its own and both
+// sides placing as the reader above would, and keeps the column that won most.
+//
+// Its dice come from a generator seeded by what is on the table, never from
+// the game's own: the state it is handed carries the real one, and that field
+// is every die still to come. Wiped from the first copy, as above.
+
+enum class Level : uint8_t { Normal = 0, Hard = 1 };
+constexpr int kLevels = 2;
+constexpr int kPlayouts = 400;
+
+inline int chooseColumnFor(const Game& game, const Level level) {
+  if (level == Level::Normal) return chooseColumn(game);
+  const int seat = game.turn;
+  int best = -1;
+  long bestValue = 0;
+  uint32_t dice = positionHash(game) | 1u;
+  const uint32_t offset = positionHash(game) % static_cast<uint32_t>(kColumns);
+  for (int step = 0; step < kColumns; ++step) {
+    const int column = static_cast<int>((offset + static_cast<uint32_t>(step)) % kColumns);
+    if (!canPlace(game, column)) continue;
+    Game first = game;
+    first.rng = 0;
+    if (!place(first, column)) continue;
+    long value = 0;
+    for (int n = 0; n < kPlayouts; ++n) {
+      Game trial = first;
+      // place() rolled the next die from the wiped generator: roll it again here.
+      trial.rng = nextRandom(dice) | 1u;
+      if (!over(trial)) trial.die = roll(trial.rng);
+      int guard = 0;
+      while (!over(trial) && guard++ < 64) {
+        const int next = chooseColumn(trial);
+        if (next < 0 || !place(trial, next)) break;
+      }
+      const int margin = advantage(trial, seat);
+      // A win is a win; the margin only separates columns that win as often.
+      value += (margin > 0 ? 1000 : (margin < 0 ? -1000 : 0)) + margin;
+    }
+    if (best < 0 || value > bestValue) {
+      best = column;
+      bestValue = value;
+    }
+  }
+  return best;
+}
+
+inline const char* levelName(const Level level) { return level == Level::Hard ? "HARD" : "NORMAL"; }
+
 }  // namespace knucklebones

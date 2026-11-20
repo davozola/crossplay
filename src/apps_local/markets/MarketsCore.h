@@ -31,7 +31,7 @@ struct AssetInfo {
 // The catalogue comes first, and after it the slots for what the owner added
 // by ticker or name, which may be empty.
 constexpr int kBuiltIn = 21;
-constexpr int kCustom = 9;
+constexpr int kCustom = 24;
 constexpr int kInstruments = kBuiltIn + kCustom;
 const AssetInfo& instrumentAt(int instrument);
 // False for an empty slot.
@@ -176,7 +176,7 @@ const char* monthName(int month);  // "JAN", 1-based
 
 // --- The portfolio: how much of each thing, and what that comes to. ---
 
-constexpr int kMaxPositions = 6;
+constexpr int kMaxPositions = 24;
 
 struct Position {
   uint8_t instrument;

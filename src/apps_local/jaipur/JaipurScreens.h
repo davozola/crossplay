@@ -27,7 +27,7 @@ enum : fui::ActionId {
 };
 
 // The front door.
-enum class StartRow : uint8_t { Continue, NewGame, PlayNearby, HowToPlay, Count };
+enum class StartRow : uint8_t { Continue, NewGame, Level, PlayNearby, HowToPlay, Count };
 
 struct StartModel {
   bool hasSavedGame = false;
@@ -36,6 +36,7 @@ struct StartModel {
   int played = 0;
   int won = 0;
   int selected = 0;
+  char levelName[24] = "";  // how hard the built-in opponent plays, and the record against it
 };
 
 int startRows(const StartModel& model);

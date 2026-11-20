@@ -4,6 +4,7 @@
 
 #include "../../components/UITheme.h"  // Rect
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "ChessCore.h"
 #include "ChessEngine.h"
@@ -223,6 +224,11 @@ class ChessActivity final : public linkplay::LinkActivity {
 
   int selectedSquare = -1;
   bool gameOver = false;
+  // The finished game has gone into the record: taking a move back and
+  // finishing again must not count twice.
+  bool resultCounted = false;
+  sologame::LevelStats levelStats;
+  void countResult();
   // What a tap on the play surface means. See Activity::surfaceMeaning().
   uint32_t surfaceMeaning() const override;
 

@@ -17,6 +17,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
 #include "../bridge/BridgeHttp.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
 
@@ -845,8 +846,15 @@ void TriviaActivity::routeAction(const int action, const int value) {
       // (xQueueSemaphoreTake, queue.c:1709). The notice this button sits under
       // has always said "connect to WiFi and fetch one"; nothing did.
       WiFi.mode(WIFI_STA);
-      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                             [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); });
+      {
+        // The saved network is joined behind the page; the picker is for when there is none.
+        ActivityResultHandler afterWifi = [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); };
+        if (autorefresh::joinSaved()) {
+          afterWifi(ActivityResult{});
+        } else {
+          startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+        }
+      }
       break;
     case triviaui::ActionMenuRow:
       if (view_ == View::Notice) {  // the READY notice's PLAY button
@@ -906,16 +914,24 @@ void TriviaActivity::routeAction(const int action, const int value) {
           // stack with WiFi never started is a panic rather than a failure --
           // the socket layer takes a mutex that does not exist yet.
           WiFi.mode(WIFI_STA);
-          startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                                 [this](const ActivityResult& result) {
-                                   if (result.isCancelled) return;
-                                   // Queued rather than run here: the sync
-                                   // blocks for a long time and pumps input
-                                   // itself, which must not happen while an
-                                   // action is still being routed.
-                                   syncQueued_ = true;
-                                   requestUpdate();
-                                 });
+          {
+            // The saved network is joined behind the page; the picker is for when there is none.
+            ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+              if (result.isCancelled) return;
+              // Queued rather than run here: the sync
+              // blocks for a long time and pumps input
+              // itself, which must not happen while an
+              // action is still being routed.
+              syncQueued_ = true;
+              requestUpdate();
+            };
+            if (autorefresh::joinSaved()) {
+              afterWifi(ActivityResult{});
+            } else {
+              startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                                     std::move(afterWifi));
+            }
+          }
           return;
         case triviaui::SettingRow::Hidden:
           if (state_.flaggedCount() > 0) {

@@ -24,6 +24,7 @@ enum : fui::ActionId {
   // a second meaning for the row, because it throws a game away and the two
   // must never be one pixel apart in the table.
   ActionDiscard = 8,
+  ActionUndo = 9,  // take the last stone or pass back
 };
 
 enum class MenuRow : int { Play = 0, PlayNearby, Settings, Count };
@@ -66,6 +67,9 @@ struct SettingsModel {
   // gives away komi; White takes the komi and moves second. On these boards
   // that is a real choice rather than a preference.
   uint8_t playAs = go::kBlack;
+  // Against that level: won and lost.
+  int levelWon = 0;
+  int levelLost = 0;
   // Stones the player is spotted, 0 or 2..kMaxHandicap. Non-zero forces them to
   // Black, because a handicap is Black's by definition.
   int handicap = 0;
@@ -98,6 +102,8 @@ struct BoardModel {
   // Two people sharing one device, so "YOUR MOVE" is the wrong words.
   bool sharedDevice = false;
   bool thinking = false;
+  // A move can be taken back: UNDO shares the bottom bar with PASS.
+  bool canUndo = false;
   // You passed and the machine answered with a STONE rather than a pass, which
   // on a board that does not move reads as the machine ignoring you. It is not:
   // there are points belonging to nobody and it is taking them, which is correct

@@ -681,7 +681,10 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
   }
 
   fui::ButtonProps table;
-  table.label = model.sharp ? "TABLE: SHARP" : "TABLE: ROOKIE";
+  char tableLabel[40];
+  std::snprintf(tableLabel, sizeof(tableLabel), "%s  %d-%d", model.sharp ? "SHARP" : "ROOKIE", model.levelWon % 10000,
+                model.levelLost % 10000);
+  table.label = tableLabel;
   table.action = ActionButton;
   table.value = ButtonHint;
   table.styles = toybox::rowStyles();

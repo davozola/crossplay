@@ -40,6 +40,7 @@ struct Sea {
   int16_t year = 0;
   char now[20] = "";  // the place's own clock when it was fetched
   bool hasWind = false;
+  bool windIsMeteoblue = false;  // the wind was laid over from meteoblue's answer
 };
 
 void marineUrl(float lat, float lon, char* out, size_t cap);
@@ -50,6 +51,18 @@ void windUrl(float lat, float lon, char* out, size_t cap);
 bool parseMarine(const char* json, size_t len, Sea& out);
 // Adds the wind to hours already there, matched by date and hour.
 bool parseWind(const char* json, size_t len, Sea& sea);
+
+// meteoblue's basic-1h for a point. The key is the owner's and goes nowhere
+// but this URL.
+void meteoblueUrl(float lat, float lon, const char* key, char* out, size_t cap);
+// Lays meteoblue's wind speed and direction over hours already there, matched
+// by date and hour, in knots whatever unit the answer says it is in. A gust
+// left from the other model that the new wind overtakes is dropped. False
+// when the answer holds no wind for any hour here.
+bool parseMeteoblueWind(const char* json, size_t len, Sea& sea);
+// A key as typed or read from a file: spaces and line ends off, and only what
+// a key is made of. False when nothing usable is left.
+bool tidyKey(const char* in, char* out, size_t cap);
 
 // The hour `now` falls in, or 0.
 int nowIndex(const Sea& sea);
@@ -65,7 +78,9 @@ struct DayStats {
   int8_t month = 0;
   int8_t day = 0;
 };
-DayStats statsOf(const Sea& sea, int d);
+// Over the hours `fromHour`..`toHour` of the day, both included: the whole
+// day unasked, or the hours somebody would actually be out in.
+DayStats statsOf(const Sea& sea, int d, int fromHour = 0, int toHour = 23);
 
 int beaufort(float knots);
 const char* beaufortName(int force);

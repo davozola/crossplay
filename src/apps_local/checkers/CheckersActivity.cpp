@@ -19,12 +19,23 @@ std::unique_ptr<Activity> CheckersActivity::create(GfxRenderer& renderer, Mapped
   return makeUniqueNoThrow<CheckersActivity>(renderer, mappedInput);
 }
 
+namespace {
+constexpr char kGamePath[] = "/.crosspoint/checkers-game.sav";
+constexpr char kStatsPath[] = "/.crosspoint/checkers-levels.cfg";
+}  // namespace
+
 void CheckersActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   screen = ck::Screen::Menu;
   menuSelected = -1;
   loadHistory();
+  loadLevel();
+  sologame::loadStats("CHKR", kStatsPath, levelStats);
+  hasSavedGame = Storage.exists(kGamePath);
+  // Without it the opponent still plays, as the easy one.
+  scratch = makeUniqueNoThrow<ck::Scratch>();
+  if (!scratch) LOG_ERR("CHKR", "OOM: %u bytes for the search", static_cast<unsigned>(sizeof(ck::Scratch)));
   requestUpdate();
 }
 
@@ -32,12 +43,30 @@ void CheckersActivity::onEnter() {
 // fork-local file, the pattern knucklebones.sav set.
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
 constexpr char kHistoryPath[] = "/.crosspoint/checkers.sav";
+constexpr char kLevelPath[] = "/.crosspoint/checkers-level.cfg";
 #endif
 
 // wins losses draws outcome yourPieces theirPieces, then the 64 cells of the
 // final position, always from the light perspective so the ornament draws your
 // men nearest you whatever seat the game was played from.
 constexpr int kHistoryValues = 6 + ck::kCells;
+
+void CheckersActivity::loadLevel() {
+  level = ck::Level::Medium;
+  if (!Storage.exists(kLevelPath)) return;
+  HalFile file;
+  uint8_t saved = 1;
+  if (!Storage.openFileForRead("CHKR", kLevelPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved < ck::kLevels) level = static_cast<ck::Level>(saved);
+}
+
+void CheckersActivity::saveLevel() {
+  HalFile file;
+  if (!Storage.openFileForWrite("CHKR", kLevelPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(level);
+  file.write(&saved, 1);
+  file.flush();
+}
 
 void CheckersActivity::loadHistory() {
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
@@ -85,6 +114,15 @@ void CheckersActivity::recordResult() {
     ++wins;
   else
     ++losses;
+  if (!inMatch()) {
+    // Against the device: counted against the level it was played at, and the
+    // game is no longer one to continue.
+    levelStats.count(static_cast<int>(level), lastOutcome);
+    sologame::saveStats("CHKR", kStatsPath, levelStats);
+    sologame::drop(kGamePath);
+    hasSavedGame = false;
+    history.clear();
+  }
 
   // The final position, rotated to the light perspective when this device
   // played dark, so the saved board always reads with your men nearest you.
@@ -125,8 +163,56 @@ void CheckersActivity::beginSoloGame() {
   ck::start(game);
   seat = ck::kLight;
   resultRecorded = false;
+  history.clear();
+  sologame::drop(kGamePath);
+  hasSavedGame = false;
   clearPick();
   goTo(ck::Screen::Board);
+}
+
+void CheckersActivity::saveSolo() {
+  if (inMatch() || ck::over(game)) return;
+  hasSavedGame = sologame::save("CHKR", kGamePath, game, history, static_cast<uint8_t>(level), seat);
+}
+
+void CheckersActivity::continueSoloGame() {
+  uint8_t savedLevel = static_cast<uint8_t>(level);
+  uint8_t savedSeat = ck::kLight;
+  if (!sologame::load("CHKR", kGamePath, game, history, savedLevel, savedSeat) || ck::over(game)) {
+    // Not a game this can go back to: start one instead of showing a blank board.
+    beginSoloGame();
+    return;
+  }
+  // The game is finished at the level it was begun at.
+  if (savedLevel < ck::kLevels) level = static_cast<ck::Level>(savedLevel);
+  seat = savedSeat == ck::kDarkSeat ? ck::kDarkSeat : ck::kLight;
+  resultRecorded = false;
+  clearPick();
+  goTo(ck::Screen::Board);
+}
+
+// Back to the position before this player's last move, the device's answer
+// to it undone with it.
+void CheckersActivity::takeBack() {
+  if (inMatch() || game.turn != seat) return;
+  if (!history.pop(game)) return;
+  clearPick();
+  saveSolo();
+  requestUpdate();
+}
+
+// What the strongest opponent would play from here, shown the way a picked-up
+// piece is: the piece lifted and the one square to put it on.
+void CheckersActivity::showHint() {
+  if (inMatch() || game.turn != seat || ck::over(game)) return;
+  ck::Move move{};
+  const bool found = scratch ? ck::chooseMoveAt(game, ck::Level::Strong, *scratch, move) : ck::chooseMove(game, move);
+  if (!found) return;
+  picked = move.from;
+  destinationCount = 1;
+  destinations[0] = move.to;
+  takenMasks[0] = move.taken;
+  requestUpdate();
 }
 
 void CheckersActivity::takeOpponentTurn() {
@@ -135,8 +221,11 @@ void CheckersActivity::takeOpponentTurn() {
   // look like a freeze followed by a skip.
   if (ck::over(game) || game.turn == seat) return;
   ck::Move move{};
-  if (!ck::chooseMove(game, move)) return;
+  const bool chose = scratch ? ck::chooseMoveAt(game, level, *scratch, move) : ck::chooseMove(game, move);
+  if (!chose) return;
   ck::play(game, move);
+  // Kept after every answer, so leaving at any point loses nothing.
+  saveSolo();
   requestUpdate();
 }
 
@@ -293,9 +382,14 @@ void CheckersActivity::gameLoop() {
         if (ck::moveBetween(game, picked, square, move)) {
           // The rules built this move; nothing here constructs one, so a
           // destination they never offered cannot be played.
+          const ck::Game before = game;
           if (ck::play(game, move)) {
             clearPick();
-            if (inMatch()) play.play(game);
+            if (inMatch()) {
+              play.play(game);
+            } else {
+              history.push(before);
+            }
             requestUpdate();
           }
           return;
@@ -324,8 +418,18 @@ void CheckersActivity::gameLoop() {
   switch (event.action) {
     case checkui::ActionMenuRow:
       switch (static_cast<checkui::MenuRow>(event.value)) {
+        case checkui::MenuRow::Continue:
+          continueSoloGame();
+          return;
         case checkui::MenuRow::Play:
           beginSoloGame();
+          return;
+        case checkui::MenuRow::Level:
+          // A tap is the next one round: easy, medium, strong.
+          level = static_cast<ck::Level>((static_cast<int>(level) + 1) % ck::kLevels);
+          saveLevel();
+          menuSelected = static_cast<int>(checkui::MenuRow::Level);
+          requestUpdate();
           return;
         case checkui::MenuRow::PlayNearby:
           enterLink(linkplay::GameId::Checkers);
@@ -337,6 +441,14 @@ void CheckersActivity::gameLoop() {
         case checkui::MenuRow::Count:
           return;
       }
+      return;
+
+    case checkui::ActionUndo:
+      takeBack();
+      return;
+
+    case checkui::ActionHint:
+      showHint();
       return;
 
     case checkui::ActionHowToNext:
@@ -390,6 +502,10 @@ void CheckersActivity::gameRender() {
       model.selected = menuSelected;
       model.hasHistory = hasHistory;
       model.wins = wins;
+      model.levelName = ck::levelName(level);
+      model.hasSavedGame = hasSavedGame;
+      model.levelWon = levelStats.won[static_cast<int>(level)];
+      model.levelLost = levelStats.lost[static_cast<int>(level)];
       model.losses = losses;
       model.draws = draws;
       model.lastOutcome = lastOutcome;
@@ -421,6 +537,8 @@ void CheckersActivity::gameRender() {
       model.seat = seat;
       model.yourTurn = inMatch() ? linkYourTurn() : game.turn == seat;
       model.opponentName = inMatch() ? opponentName() : nullptr;
+      model.solo = !inMatch();
+      model.canUndo = history.count > 0;
       checkui::buildBoard(surface, model);
       break;
     }

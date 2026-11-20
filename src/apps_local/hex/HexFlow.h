@@ -58,13 +58,13 @@ constexpr const char* levelName(const Level level) {
     case Level::Easy:
       return "EASY";
     case Level::Normal:
-      return "NORMAL";
+      return "MEDIUM";
     case Level::Hard:
       return "HARD";
     case Level::Count_:
       break;
   }
-  return "NORMAL";
+  return "MEDIUM";
 }
 
 constexpr Level nextLevel(const Level level) {

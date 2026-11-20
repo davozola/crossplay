@@ -61,9 +61,17 @@ class WeatherActivity final : public Activity {
   Job job_ = Job::None;
   Step step_ = Step::Idle;
   bool wifiActivated_ = false;
+  // A fetch asked for while a forecast is already on the page: it runs behind
+  // the page, with a tag in the corner, instead of taking the screen.
+  bool quietDue_ = false;
+  bool quietPainted_ = false;
   int autoMinutes_ = 0;
   // 0: one city full screen. 1: three on a board. 2: five. A swipe changes it.
   int layout_ = 0;
+  // On its side: a swipe up or down turns the forecast and the board over.
+  bool wide_ = false;
+  int wideLayout_ = 0;  // which of the three pages on its side
+  bool onItsSide() const;
   int pressX_ = -1;
   weatherui::BoardCard cards_[weather::kMaxPlaces];
   uint32_t lastFetchMs_ = 0;

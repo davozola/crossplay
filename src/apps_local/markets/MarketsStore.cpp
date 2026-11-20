@@ -318,8 +318,11 @@ int fetchAll(mk::Quote quotes[mk::kAssets], char* report, const size_t reportCap
   for (int i = 0; i < count; ++i) {
     if (have[i] && !mk::instrumentAt(wanted[i]).always) symbols[symbolCount++] = mk::instrumentAt(wanted[i]).symbol;
   }
-  if (symbolCount > 0) {
-    mk::cnbcQuoteUrlFor(symbols, symbolCount, url, sizeof(url));
+  // A handful to an answer: the URL has room for only so many symbols.
+  constexpr int kQuotesAtOnce = 8;
+  for (int from = 0; from < symbolCount; from += kQuotesAtOnce) {
+    const int n = symbolCount - from < kQuotesAtOnce ? symbolCount - from : kQuotesAtOnce;
+    mk::cnbcQuoteUrlFor(symbols + from, n, url, sizeof(url));
     if (get(url, body, size, status)) {
       for (int i = 0; i < count; ++i) {
         if (have[i] && !mk::instrumentAt(wanted[i]).always) {

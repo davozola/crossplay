@@ -91,6 +91,8 @@ class MarketsActivity final : public Activity {
   int amountInstrument_ = 0;
   markets::AmountEntry entry_;
   markets::Period period_ = markets::Period::Day;
+  int portfolioPage_ = 0;
+  bool inEuro_ = false;  // the portfolio counted in euros
 
   // A search by ticker or name: what was typed, what came back, and which
   // picker it was started from.

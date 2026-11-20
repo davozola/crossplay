@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 
 #include "../../DevMode.h"
 #include "../../SilentRestart.h"
@@ -17,6 +18,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
 #include "../hackernews/HackerNewsCore.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ExtraIcons.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
@@ -45,6 +47,32 @@ enum : fui::ActionId {
 
 constexpr char kDir[] = "/.crosspoint/batch";
 constexpr char kIndexPath[] = "/.crosspoint/batch/index.txt";
+// When the list was last asked for, seconds since 1970.
+constexpr char kSyncedPath[] = "/.crosspoint/batch/synced.bin";
+constexpr uint32_t kSyncEverySeconds = 24u * 3600u;
+
+uint32_t clockNow() {
+  const time_t now = time(nullptr);
+  return now > 1700000000 ? static_cast<uint32_t>(now) : 0;
+}
+
+uint32_t lastSynced() {
+  uint32_t at = 0;
+  HalFile file;
+  if (!Storage.exists(kSyncedPath) || !Storage.openFileForRead("BATCH", kSyncedPath, file)) return 0;
+  if (file.read(reinterpret_cast<uint8_t*>(&at), sizeof(at)) != static_cast<int>(sizeof(at))) return 0;
+  return at;
+}
+
+void noteSynced() {
+  const uint32_t at = clockNow();
+  if (at == 0) return;
+  Storage.ensureDirectoryExists("/.crosspoint/batch");
+  HalFile file;
+  if (!Storage.openFileForWrite("BATCH", kSyncedPath, file)) return;
+  file.write(reinterpret_cast<const uint8_t*>(&at), sizeof(at));
+  file.flush();
+}
 constexpr char kShelfPath[] = "/.crosspoint/batch/shelf";
 constexpr char kStagedPath[] = "/.crosspoint/batch/answer.tmp";
 constexpr size_t kMaxIssueBytes = 320u * 1024u;
@@ -100,6 +128,13 @@ void BatchActivity::onEnter() {
   view_ = View::Archive;
   archivePage_ = 0;
   cleanNext_ = true;
+  // The list is asked for again behind the page once a day.
+  const uint32_t now = clockNow();
+  const uint32_t synced = lastSynced();
+  quietStage_ =
+      (now != 0 && (synced == 0 || now < synced || now - synced >= kSyncEverySeconds) && autorefresh::canJoinAlone())
+          ? 1
+          : 0;
   requestUpdate();
 }
 
@@ -272,21 +307,37 @@ void BatchActivity::start(const Job job) {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          step_ = Step::Idle;
-          job_ = Job::None;
-          showStatus("NO WI-FI", "ISSUES ALREADY OPENED STAY ON THE CARD AND READ WITHOUT IT.", true);
-        } else {
-          step_ = Step::Ready;
-        }
-        requestUpdate();
-      });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        job_ = Job::None;
+        showStatus("NO WI-FI", "ISSUES ALREADY OPENED STAY ON THE CARD AND READ WITHOUT IT.", true);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 // The newest issues from the newsletter's own front page, and the whole
 // archive from the feed the first time, when there is nothing to list yet.
+void BatchActivity::quietFetch() {
+  const View before = view_;
+  statusBack_ = view_;
+  runSync();
+  // Nothing new, or no answer: the list that was there stays and nothing is said.
+  if (view_ == View::Status) view_ = before;
+  cleanNext_ = true;
+}
+
 void BatchActivity::runSync() {
   int added = 0;
   bool reached = false;
@@ -306,6 +357,7 @@ void BatchActivity::runSync() {
     }
   }
   Storage.remove(kStagedPath);
+  if (reached) noteSynced();
   bt::sortIssues(issues_);
   if (added > 0) saveIndex();
   view_ = statusBack_;
@@ -363,6 +415,21 @@ int BatchActivity::rowsPerPage() const {
 }
 
 void BatchActivity::loop() {
+  if (quietStage_ == 1 && step_ == Step::Idle) {
+    quietStage_ = 2;
+    // The page with its mark has to be on the panel before the fetch blocks.
+    requestUpdateAndWait();
+    return;
+  }
+  if (quietStage_ == 2) {
+    quietStage_ = 0;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) quietFetch();
+    }
+    requestUpdate();
+    return;
+  }
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = job_ == Job::Sync ? "LOOKING FOR ISSUES" : "FETCHING THE ISSUE";
@@ -743,6 +810,7 @@ void BatchActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (!cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) cleanNext_ = true;
   if (cleanNext_) fastPaints_ = 0;
+  if (quietStage_ != 0) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
 }

@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "GoCore.h"
 #include "GoFlow.h"
@@ -65,6 +66,7 @@ class GoActivity final : public linkplay::LinkActivity {
   void refreshCount();
   void finishCounting();
   void recordResult();
+  void takeBack();
   void loadSave();
   void writeSave();
   // Whose move it is, asked of the link when there is one and of the rules when
@@ -119,6 +121,10 @@ class GoActivity final : public linkplay::LinkActivity {
   // notifies the render task, so deferring by "one pass" without a flag runs
   // the search while the repaint is still in flight.
   bool thinking = false;
+  // Positions before each move of the player's, for taking one back (this
+  // visit only), and the record against each level.
+  sologame::History<go::Game, 8> history;
+  sologame::LevelStats levelStats;
 
   // Whose area each point is, recomputed only when the count changes rather
   // than every paint: the render task must not do a flood fill of the board on

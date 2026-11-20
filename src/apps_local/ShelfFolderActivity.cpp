@@ -44,7 +44,7 @@ int ShelfFolderActivity::itemAtRow(const int row) const {
   return row < listedCount ? listed[row] : -1;
 }
 
-// What the tab holds. Home is the favourites and then what was last opened;
+// What the tab holds. The first is the favourites and nothing else;
 // a kind is every shown item of that kind; the last tab is every shown item.
 // Nothing is listed twice, and a hidden item is on none of them.
 void ShelfFolderActivity::rebuildList() {
@@ -57,19 +57,12 @@ void ShelfFolderActivity::rebuildList() {
     if (listedCount < kMaxListed && !shelf::isHidden(folder, item)) listed[listedCount++] = item;
   };
   if (tab == 0) {
+    // Only what was starred, in the order it was starred. It used to be filled
+    // out with what was last opened, and a star then landed among rows that
+    // were not stars: the tab could not say where a favourite had gone.
     int held[shelf::kFavouriteSlots];
     const int stars = shelf::favourites(folder, held);
     for (int i = 0; i < stars; ++i) add(held[i]);
-    // Enough of the last opened to fill the page out, and never fewer than three.
-    int recent[shelfcat::kRowsPerPage];
-    const int room = shelfcat::kRowsPerPage - listedCount % shelfcat::kRowsPerPage;
-    const int n = shelf::recents(folder, recent, shelfcat::kRowsPerPage);
-    int taken = 0;
-    for (int i = 0; i < n && taken < (room < 3 ? 3 : room); ++i) {
-      const int before = listedCount;
-      add(recent[i]);
-      taken += listedCount - before;
-    }
     return;
   }
   const int kind = tab - 1;
@@ -205,6 +198,33 @@ void ShelfFolderActivity::setChoosing(const bool on) {
   requestUpdate();
 }
 
+// One step past the end of a tab's pages: the tab beside it, on its first page
+// going forward and its last going back, so a swipe walks the whole folder as
+// one run of pages. A tab with nothing on it is stepped over. False when there
+// is no tab that way.
+bool ShelfFolderActivity::stepSection(const int delta) {
+  if (choosing) return false;
+  const int last = shelf::folders()[folder].tabCount + 1;
+  const int from = tab;
+  for (int to = from + delta; to >= 0 && to <= last; to += delta) {
+    tab = to;
+    rebuildList();
+    if (listedCount == 0) continue;
+    setTab(to);
+    if (delta < 0) {
+      const int pages = shelfui::pageCountFor(itemCount, shelfcat::kRowsPerPage);
+      if (pages > 1) {
+        selected = shelfui::rowForPage(pages - 1, shelfcat::kRowsPerPage);
+        if (folder >= 0 && folder < 8) pageIn[folder] = pages - 1;
+      }
+    }
+    return true;
+  }
+  tab = from;
+  rebuildList();
+  return false;
+}
+
 bool ShelfFolderActivity::showPage(const int page) {
   const int landing = shelfui::rowForPage(page, rowsPerPage);
   // Which page a step actually landed on, because "it moved by two" and "it
@@ -248,11 +268,17 @@ void ShelfFolderActivity::loop() {
     // turns the page while there is a page before to turn to, and leaves only
     // from the first page: swiping right walks back through the pages and
     // then out. A swipe begun at the very edge always leaves.
-    if (mappedInput.wasBackGesture() && swipeStartX >= kBackSwipeEdge && !choosing && itemCount > 0) {
+    if (mappedInput.wasBackGesture() && swipeStartX >= kBackSwipeEdge && !choosing) {
       const int from = shelfui::pageFor(selected, rowsPerPage);
       if (from > 0) {
         swipeStartX = -1;
         showPage(from - 1);
+        return;
+      }
+      // And from a tab's first page it is the tab before, so the same swipe
+      // walks back through the sections and leaves only from the first.
+      if (sheetItem < 0 && stepSection(-1)) {
+        swipeStartX = -1;
         return;
       }
     }
@@ -345,23 +371,18 @@ void ShelfFolderActivity::loop() {
       keyPrev || swipe == MappedInputManager::SwipeDir::Down || swipe == MappedInputManager::SwipeDir::Right;
 
   if (sheetItem >= 0 && (next || prev)) return;
-  if (itemCount > 0 && (next || prev)) {
-    // A folder that fits on one page has no page to step to, and moving the
-    // resumed row to the top instead would be a step that changed something
-    // without going anywhere.
-    const int pages = shelfui::pageCountFor(itemCount, rowsPerPage);
-    if (pages > 1) {
-      const int from = shelfui::pageFor(selected, rowsPerPage);
-      const int to = shelfui::pageStepClamped(from, pages, next ? 1 : -1);
-      // Nothing happens at the ends, and nothing repaints either: a full-panel
-      // refresh that redraws the same eight rows is half a second of blink
-      // saying a step was taken when none was. What says so instead is the page
-      // bar, which reads 3 of 1 2 3.
-      if (to != from) {
-        showPage(to);
-      } else {
-        LOG_DBG("SHELF", "Page %d of %d is an end; step refused", from, pages);
-      }
+  if (next || prev) {
+    // A step goes to the page beside this one, and past a tab's last page to
+    // the tab beside it. Nothing happens at the two ends of the folder, and
+    // nothing repaints either: a full-panel refresh that redraws the same rows
+    // is half a second of blink saying a step was taken when none was.
+    const int pages = itemCount > 0 ? shelfui::pageCountFor(itemCount, rowsPerPage) : 1;
+    const int from = itemCount > 0 ? shelfui::pageFor(selected, rowsPerPage) : 0;
+    const int to = shelfui::pageStepClamped(from, pages, next ? 1 : -1);
+    if (to != from) {
+      showPage(to);
+    } else if (!stepSection(next ? 1 : -1)) {
+      LOG_DBG("SHELF", "Page %d of %d is an end; step refused", from, pages);
     }
     return;
   }

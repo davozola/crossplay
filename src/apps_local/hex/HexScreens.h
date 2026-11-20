@@ -17,6 +17,7 @@ enum : fui::ActionId {
   ActionSettingsRow = 2,
   ActionAgain = 3,
   ActionDone = 4,
+  ActionUndo = 5,  // take the last stone back
 };
 
 enum class MenuRow : int { Play = 0, PlayNearby, Settings, Count };
@@ -47,6 +48,9 @@ struct SettingsModel {
   // keeps Hex's standard first-player advantage, because there is no swap rule
   // -- so this row is a real choice rather than a preference.
   uint8_t playAs = hex::kBlack;
+  // Against that level: won and lost.
+  int levelWon = 0;
+  int levelLost = 0;
 };
 
 struct BoardModel {
@@ -63,6 +67,8 @@ struct BoardModel {
   // Two people sharing one device, so "YOUR MOVE" is the wrong words.
   bool sharedDevice = false;
   bool thinking = false;
+  // A stone can be taken back: UNDO sits over your card.
+  bool canUndo = false;
 };
 
 struct ResultModel {

@@ -21,12 +21,20 @@ std::unique_ptr<Activity> KnucklebonesActivity::create(GfxRenderer& renderer, Ma
   return makeUniqueNoThrow<KnucklebonesActivity>(renderer, mappedInput);
 }
 
+namespace {
+constexpr char kGamePath[] = "/.crosspoint/knucklebones-game.sav";
+constexpr char kStatsPath[] = "/.crosspoint/knucklebones-levels.cfg";
+}  // namespace
+
 void KnucklebonesActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   screen = kb::Screen::Menu;
   menuSelected = -1;
   loadHistory();
+  loadLevel();
+  sologame::loadStats("KNUC", kStatsPath, levelStats);
+  hasSavedGame = Storage.exists(kGamePath);
   requestUpdate();
 }
 
@@ -34,7 +42,25 @@ void KnucklebonesActivity::onEnter() {
 // fork-local file, the same pattern player.cfg set.
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
 constexpr char kHistoryPath[] = "/.crosspoint/knucklebones.sav";
+constexpr char kLevelPath[] = "/.crosspoint/knucklebones-level.cfg";
 #endif
+
+void KnucklebonesActivity::loadLevel() {
+  level = kb::Level::Normal;
+  if (!Storage.exists(kLevelPath)) return;
+  HalFile file;
+  uint8_t saved = 0;
+  if (!Storage.openFileForRead("KNUC", kLevelPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved < kb::kLevels) level = static_cast<kb::Level>(saved);
+}
+
+void KnucklebonesActivity::saveLevel() {
+  HalFile file;
+  if (!Storage.openFileForWrite("KNUC", kLevelPath, file)) return;
+  const uint8_t saved = static_cast<uint8_t>(level);
+  file.write(&saved, 1);
+  file.flush();
+}
 
 void KnucklebonesActivity::loadHistory() {
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
@@ -88,6 +114,14 @@ void KnucklebonesActivity::recordResult() {
     ++losses;
   else
     ++draws;
+  if (!inMatch()) {
+    // Against the device: counted against the level it was played at, and the
+    // match is no longer one to continue.
+    levelStats.count(static_cast<int>(level), mine > theirs ? 0 : (theirs > mine ? 1 : 2));
+    sologame::saveStats("KNUC", kStatsPath, levelStats);
+    sologame::drop(kGamePath);
+    hasSavedGame = false;
+  }
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(SIMULATOR)
   char line[128];
@@ -122,6 +156,29 @@ void KnucklebonesActivity::beginSoloMatch() {
   kb::start(game, static_cast<uint32_t>(millis()) * 2654435761u + 1u);
   seat = 0;
   resultRecorded = false;
+  sologame::drop(kGamePath);
+  hasSavedGame = false;
+  goTo(kb::Screen::Board);
+}
+
+void KnucklebonesActivity::saveSolo() {
+  if (inMatch() || kb::over(game)) return;
+  history.clear();
+  hasSavedGame =
+      sologame::save("KNUC", kGamePath, game, history, static_cast<uint8_t>(level), static_cast<uint8_t>(seat));
+}
+
+void KnucklebonesActivity::continueSoloMatch() {
+  uint8_t savedLevel = static_cast<uint8_t>(level);
+  uint8_t savedSeat = 0;
+  if (!sologame::load("KNUC", kGamePath, game, history, savedLevel, savedSeat) || !kb::plausible(game) ||
+      kb::over(game)) {
+    beginSoloMatch();
+    return;
+  }
+  if (savedLevel < kb::kLevels) level = static_cast<kb::Level>(savedLevel);
+  seat = savedSeat == 1 ? 1 : 0;
+  resultRecorded = false;
   goTo(kb::Screen::Board);
 }
 
@@ -130,9 +187,11 @@ void KnucklebonesActivity::takeOpponentTurn() {
   // half a second to repaint, so playing several of their moves before showing
   // anything would look like a freeze followed by a skip.
   if (kb::over(game) || game.turn == seat) return;
-  const int column = kb::chooseColumn(game);
+  const int column = kb::chooseColumnFor(game, level);
   if (column < 0) return;
   kb::place(game, column);
+  // Kept after every answer, so leaving at any point loses nothing.
+  saveSolo();
   requestUpdate();
 }
 
@@ -233,8 +292,18 @@ void KnucklebonesActivity::gameLoop() {
   switch (event.action) {
     case knuckleui::ActionMenuRow:
       switch (static_cast<knuckleui::MenuRow>(event.value)) {
+        case knuckleui::MenuRow::Continue:
+          continueSoloMatch();
+          return;
         case knuckleui::MenuRow::Play:
           beginSoloMatch();
+          return;
+        case knuckleui::MenuRow::Level:
+          // A tap is the other one.
+          level = static_cast<kb::Level>((static_cast<int>(level) + 1) % kb::kLevels);
+          saveLevel();
+          menuSelected = static_cast<int>(knuckleui::MenuRow::Level);
+          requestUpdate();
           return;
         case knuckleui::MenuRow::PlayNearby:
           // No lobby, no host, no code. They tap this and the next thing they
@@ -310,6 +379,10 @@ void KnucklebonesActivity::gameRender() {
     case kb::Screen::Menu: {
       knuckleui::MenuModel model;
       model.selected = menuSelected;
+      model.levelName = kb::levelName(level);
+      model.hasSavedGame = hasSavedGame;
+      model.levelWon = levelStats.won[static_cast<int>(level)];
+      model.levelLost = levelStats.lost[static_cast<int>(level)];
       model.hasHistory = hasHistory;
       model.lastYours = lastYours;
       model.lastTheirs = lastTheirs;

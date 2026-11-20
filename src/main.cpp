@@ -42,6 +42,7 @@
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "apps_local/Shelf.h"
 #include "apps_local/live/LiveEngine.h"
+#include "apps_local/pomodoro/PomodoroBell.h"
 #include "apps_local/powerprobe/PowerProbe.h"
 #include "apps_local/wake/WakeJobs.h"
 
@@ -1109,6 +1110,9 @@ void loop() {
   }
 
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+
+  // FORK CHANGE: a Pomodoro left running rings from whatever app is open.
+  pomodorobell::poll();
 
   // Under the render lock, so a step never overlaps the themes' gauge reads.
   static bool gaugeCapacityPending = true;

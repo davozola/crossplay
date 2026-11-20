@@ -66,6 +66,8 @@ void GoActivity::onEnter() {
   // the settings came back as the defaults on the next launch.
   go::reset(game, boardSize);
   loadSave();
+  sologame::loadStats("GO", "/.crosspoint/go-levels.cfg", levelStats);
+  history.clear();
 #if defined(ARDUINO_ARCH_ESP32)
   searchEnding = false;
   TaskHandle_t handle = nullptr;
@@ -284,7 +286,22 @@ bool GoActivity::computerToMove() const {
   return game.stage == static_cast<uint8_t>(go::Stage::Playing) && game.toMove != seat;
 }
 
+// Back to before this player's last stone or pass, the computer's answer with it.
+void GoActivity::takeBack() {
+  if (inMatch() || thinking || !myMove()) return;
+  if (game.stage != static_cast<uint8_t>(go::Stage::Playing)) return;
+  if (!history.pop(game)) return;
+  clearAim();
+  disagreed = false;
+  passWasPlayedThrough = false;
+  resultRecorded = false;
+  inProgress = true;
+  writeSave();
+  requestUpdate();
+}
+
 void GoActivity::beginSoloGame() {
+  history.clear();
   // The handicap is its own setting now, not a property of the level. Komi
   // follows it, because those two are one decision: a handicap game is played
   // at half a point, an even one at seven and a half.
@@ -392,7 +409,9 @@ void GoActivity::handlePointActivated(const int point) {
       break;
   }
 
+  const go::Game before = game;
   if (!go::play(game, point)) return;
+  if (!inMatch()) history.push(before);
   clearAim();
   disagreed = false;
   passWasPlayedThrough = false;
@@ -514,6 +533,11 @@ void GoActivity::recordResult() {
   } else {
     ++losses;
   }
+  if (!inMatch() && opponent == go::Opponent::Computer) {
+    levelStats.count(static_cast<int>(level), lastWon ? 0 : 1);
+    sologame::saveStats("GO", "/.crosspoint/go-levels.cfg", levelStats);
+  }
+  history.clear();
   lastMarginHalves = blackHalves > whiteHalves ? blackHalves - whiteHalves : whiteHalves - blackHalves;
   // One byte a point here, unpacked: the front door draws a picture of this and
   // nothing plays on it.
@@ -777,9 +801,17 @@ void GoActivity::gameLoop() {
       }
       return;
 
+    case goui::ActionUndo:
+      takeBack();
+      return;
+
     case goui::ActionPass:
       if (!myMove()) return;
-      if (!go::play(game, go::kPass)) return;
+      {
+        const go::Game before = game;
+        if (!go::play(game, go::kPass)) return;
+        if (!inMatch()) history.push(before);
+      }
       clearAim();
       if (inMatch()) {
         play.play(game);
@@ -913,6 +945,8 @@ void GoActivity::gameRender() {
       model.opponent = opponent;
       model.level = level;
       model.playAs = playAs;
+      model.levelWon = levelStats.won[static_cast<int>(level) % sologame::kStatLevels];
+      model.levelLost = levelStats.lost[static_cast<int>(level) % sologame::kStatLevels];
       model.handicap = opponent == go::Opponent::Computer ? handicap : 0;
       model.boardSize = boardSize;
       goui::buildSettings(surface, model);
@@ -934,6 +968,8 @@ void GoActivity::gameRender() {
       model.opponentName = inMatch() ? theirName : nullptr;
       model.sharedDevice = !inMatch() && opponent == go::Opponent::Human;
       model.thinking = thinking;
+      model.canUndo = !inMatch() && !thinking && myMove() && history.count > 0 &&
+                      game.stage == static_cast<uint8_t>(go::Stage::Playing);
       goui::buildBoard(surface, model);
       break;
     }

@@ -18,6 +18,7 @@
 #include "../../network/HttpDownloader.h"
 #include "../Shelf.h"
 #include "../discover/DiscoverCore.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
@@ -77,9 +78,11 @@ void HistoryActivity::onEnter() {
     day_ = local.tm_mday;
     thisYear_ = year;
   }
-  loadDay();
+  const bool have = loadDay();
   view_ = View::Day;
   cleanNext_ = true;
+  // Today not on the card yet: fetched behind the page, no status screen.
+  quietStage_ = (!have && thisYear_ != 0 && autorefresh::canJoinAlone()) ? 1 : 0;
   requestUpdate();
 }
 
@@ -121,16 +124,30 @@ void HistoryActivity::startFetch() {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) {
-                           if (result.isCancelled) {
-                             step_ = Step::Idle;
-                             showStatus("SIN WIFI", "LOS DIAS QUE YA SE BUSCARON SIGUEN EN LA TARJETA.", true);
-                           } else {
-                             step_ = Step::Ready;
-                           }
-                           requestUpdate();
-                         });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        showStatus("SIN WIFI", "LOS DIAS QUE YA SE BUSCARON SIGUEN EN LA TARJETA.", true);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
+}
+
+void HistoryActivity::quietFetch() {
+  std::vector<hs::Event> fresh;
+  if (!historystore::fetchDay(month_, day_, fresh)) return;
+  events_.swap(fresh);
+  cleanNext_ = true;
 }
 
 void HistoryActivity::runFetch() {
@@ -162,6 +179,21 @@ int HistoryActivity::listed(const int row) const {
 }
 
 void HistoryActivity::loop() {
+  if (quietStage_ == 1 && step_ == Step::Idle) {
+    quietStage_ = 2;
+    // The page with its mark has to be on the panel before the fetch blocks.
+    requestUpdateAndWait();
+    return;
+  }
+  if (quietStage_ == 2) {
+    quietStage_ = 0;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) quietFetch();
+    }
+    requestUpdate();
+    return;
+  }
   if (step_ == Step::Ready) {
     step_ = Step::Running;
     statusHeadline_ = "BUSCANDO";
@@ -480,6 +512,7 @@ void HistoryActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (!cleanNext_ && ++fastPaints_ >= kCleanAfterPaints) cleanNext_ = true;
   if (cleanNext_) fastPaints_ = 0;
+  if (quietStage_ != 0) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;
 }

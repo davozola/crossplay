@@ -318,62 +318,6 @@ void card(toybox::Screen& screen, const fui::Rect& r, const mk::Asset asset, con
   caption(screen, r.x + 14, chartBottom - tagH, tagW, stretch);
 }
 
-// The same card for the page on its side: narrow and tall, so the day's move
-// goes under the price instead of beside it.
-void cardWide(toybox::Screen& screen, const fui::Rect& r, const mk::Asset asset, const mk::Quote& q,
-              const FaceSwap& faces) {
-  const mk::AssetInfo& info = mk::infoOf(asset);
-  fui::ButtonProps b;
-  b.label = "";
-  b.action = ActionOpen;
-  b.value = static_cast<int16_t>(asset);
-  b.styles = toybox::rowStyles();
-  b.radius = kRadius;
-  screen.button(b, r);
-
-  const int pad = 14;
-  const int x = r.x + pad;
-  const int innerW = r.width - pad * 2;
-  int y = r.y + 14;
-  label(screen, rect(x, y, innerW, toybox::kUiCut.inkHeight), info.name, toybox::kUiFont, toybox::kUiCut,
-        fui::TextAlign::Left);
-  y += toybox::kUiCut.inkHeight + 8;
-  if (!q.valid) {
-    caption(screen, x, y, innerW, info.caption);
-    caption(screen, x, r.y + r.height / 2 - 12, innerW, "NO DATA YET", fui::TextAlign::Center);
-    caption(screen, x, r.y + r.height / 2 + 10, innerW, "TAP REFRESH", fui::TextAlign::Center);
-    return;
-  }
-  char status[40];
-  statusLine(asset, q, status, sizeof(status));
-  caption(screen, x, y, innerW, status, fui::TextAlign::Left, fui::Color::DarkGray);
-  y += toybox::kTileCut.inkHeight + 14;
-
-  char price[32];
-  mk::formatPriceShort(q.price, price, sizeof(price));
-  y += priceText(screen, faces, Face::Large, x, y, innerW, price) + 10;
-  const int pillH = 32;
-  const int pillW = changePill(screen, x, y, pillH, mk::dayChangePercent(q));
-  if (q.dayAgo > 0) caption(screen, x + pillW + 8, y + (pillH - toybox::kTileCut.inkHeight) / 2, 40, "24H");
-  y += pillH + 10;
-
-  const int monthSessions = sessionsIn(Span::Month, asset, q);
-  char week[16];
-  char month[16];
-  signedPercent(q, sessionsIn(Span::Week, asset, q), week, sizeof(week));
-  signedPercent(q, monthSessions, month, sizeof(month));
-  char trail[48];
-  std::snprintf(trail, sizeof(trail), "1W %s", week);
-  caption(screen, x, y, innerW, trail);
-  std::snprintf(trail, sizeof(trail), "1M %s", month);
-  caption(screen, x, y, innerW, trail, fui::TextAlign::Right);
-  y += toybox::kTileCut.inkHeight + 8;
-
-  // A month of closes along the foot, inside the card's outline.
-  const int chartBottom = r.y + r.height - 3;
-  if (chartBottom - y > 24) chart(screen, rect(r.x + 3, y, r.width - 6, chartBottom - y), q, monthSessions, true, 2);
-}
-
 // In the band: swap this card for another instrument. Two arrows passing.
 void swapButton(toybox::Screen& screen, const int width) {
   const int side = 48;
@@ -482,6 +426,195 @@ void dashboardFoot(toybox::Screen& screen, const DashboardModel& model, const in
   screen.button(refresh, rect(toybox::kMargin + (third + gap) * 2, footY, inner - (third + gap) * 2, footH));
 }
 
+// --- the dashboard on its side ---------------------------------------------------
+//
+// The whole 800x480 is the board: four quarters, no band, no hints, and what
+// the buttons used to say as words in a strip.
+
+// A place to tap with nothing drawn for it.
+void hit(toybox::Screen& screen, const fui::Rect& r, const fui::ActionId action, const int value = 0) {
+  fui::ButtonProps b;
+  b.label = "";
+  b.action = action;
+  b.value = static_cast<int16_t>(value);
+  b.styles = toybox::rowStyles();
+  b.styles.normal.borderWidth = 0;
+  b.minTouchSize = 0;
+  screen.button(b, r);
+  box(screen, r.x, r.y, r.width, r.height, kPaper);
+}
+
+void autoText(const DashboardModel& model, char* out, const size_t cap) {
+  if (model.autoMinutes <= 0) {
+    std::snprintf(out, cap, "AUTO OFF");
+  } else if (model.autoMinutes >= 60) {
+    std::snprintf(out, cap, "AUTO 1 H");
+  } else {
+    std::snprintf(out, cap, "AUTO %d MIN", model.autoMinutes % 1000);
+  }
+}
+
+struct Worth {
+  bool held = false;    // there is a portfolio
+  bool priced = false;  // and at least one holding has a quote
+  char value[32] = "";
+  bool euros = false;  // `value` is in euros
+  double percent = 0;
+  int count = 0;
+};
+
+Worth worthOf(const DashboardModel& model) {
+  Worth w;
+  if (!model.portfolio || !model.priced || model.portfolio->count == 0) return w;
+  w.held = true;
+  w.count = model.portfolio->count;
+  const mk::Totals t = mk::totalsOf(*model.portfolio, model.priced);
+  w.priced = t.priced > 0;
+  w.euros = model.inEuro && model.euro > 0;
+  mk::formatPriceShort(w.euros ? t.value / model.euro : t.value, w.value, sizeof(w.value));
+  w.percent = mk::percentOf(t.value, t.previous);
+  return w;
+}
+
+const char* overText(const mk::Period period) {
+  static const char* const kOver[mk::kPeriods] = {"TODAY", "1 WEEK", "1 MONTH", "THIS YEAR", "1 YEAR"};
+  return kOver[static_cast<int>(period) % mk::kPeriods];
+}
+
+// The strip along the foot, white on black: when it was fetched, auto, refresh.
+void wideStrip(toybox::Screen& screen, const DashboardModel& model, const int y, const int h) {
+  const int width = screen.device().width;
+  const int half = width / 2;
+  fui::ButtonProps b;
+  b.label = "";
+  b.styles = toybox::rowStyles();
+  b.styles.normal.borderWidth = 0;
+  b.minTouchSize = 0;
+  b.action = ActionAuto;
+  screen.button(b, rect(0, y, half, h));
+  b.action = ActionRefresh;
+  screen.button(b, rect(half, y, width - half, h));
+  box(screen, 0, y, width, h, kInk);
+  const int ty = y + (h - toybox::kTileCut.inkHeight) / 2;
+  char text[48];
+  autoText(model, text, sizeof(text));
+  caption(screen, toybox::kMargin + 2, ty, half - toybox::kMargin, text, fui::TextAlign::Left, fui::Color::White);
+  if (model.fetchedHour >= 0) {
+    std::snprintf(text, sizeof(text), "UPDATED %02d:%02d", model.fetchedHour % 24, model.fetchedMinute % 60);
+    caption(screen, width / 4, ty, half, text, fui::TextAlign::Center, fui::Color::White);
+  }
+  caption(screen, half, ty, width - half - toybox::kMargin - 2, "REFRESH", fui::TextAlign::Right, fui::Color::White);
+}
+
+void noData(toybox::Screen& screen, const fui::Rect& r) {
+  caption(screen, r.x, r.y + r.height / 2 - 12, r.width, "NO DATA YET", fui::TextAlign::Center);
+  caption(screen, r.x, r.y + r.height / 2 + 10, r.width, "TAP REFRESH", fui::TextAlign::Center);
+}
+
+// The biggest cut, from `start` down, in which every valid price fits `maxW`:
+// one size across the board, set by the longest number.
+Face commonFace(toybox::Screen& screen, const DashboardModel& model, Face start, const int maxW) {
+  for (;;) {
+    bind(model.faces, start);
+    bool fits = true;
+    for (int i = 0; i < mk::kAssets; ++i) {
+      if (!model.quotes[i].valid) continue;
+      char text[32];
+      mk::formatPriceShort(model.quotes[i].price, text, sizeof(text));
+      fits = fits && textWidth(screen, text, toybox::kDisplayFont) <= maxW;
+    }
+    if (fits || start == Face::Display || !model.faces.bindTitle) break;
+    start = start == Face::Huge ? Face::Large : Face::Display;
+  }
+  bind(model.faces, Face::Display);
+  return start;
+}
+
+// Four quarters: the three instruments and the portfolio as the fourth.
+void quarter(toybox::Screen& screen, const DashboardModel& model, const int i, const fui::Rect& r, const Face face) {
+  const int pad = 18;
+  const int x = r.x + pad;
+  const int innerW = r.width - pad * 2;
+  int y = r.y + 16;
+  char text[48];
+  if (i >= mk::kAssets) {
+    hit(screen, r, ActionPortfolio);
+    const Worth w = worthOf(model);
+    label(screen, rect(x, y, innerW, toybox::kUiCut.inkHeight), "PORTFOLIO", toybox::kUiFont, toybox::kUiCut,
+          fui::TextAlign::Left);
+    if (!w.held || !w.priced) {
+      caption(screen, x, r.y + r.height / 2, innerW, w.held ? "NOT PRICED YET" : "ADD WHAT YOU HOLD",
+              fui::TextAlign::Left, fui::Color::DarkGray);
+      return;
+    }
+    changePill(screen, 0, y - 2, 32, w.percent, x + innerW);
+    y += toybox::kUiCut.inkHeight + 20;
+    const int inkH = priceText(screen, model.faces, face, x, y, innerW, w.value);
+    std::snprintf(text, sizeof(text), "%s, %s", w.euros ? "EUR" : "USD", overText(model.period));
+    caption(screen, x, y + inkH - toybox::kTileCut.inkHeight, innerW, text, fui::TextAlign::Right,
+            fui::Color::DarkGray);
+    y += inkH + 16;
+    // The biggest holdings, each with its own move.
+    const mk::Portfolio& pf = *model.portfolio;
+    bool used[mk::kMaxPositions] = {};
+    const int rowPitch = toybox::kTileCut.inkHeight + 10;
+    for (int row = 0; row < 3 && y + toybox::kTileCut.inkHeight <= r.y + r.height - 6; ++row) {
+      int best = -1;
+      double bestValue = -1;
+      for (int k = 0; k < pf.count; ++k) {
+        if (used[k] || !model.priced[k].valid) continue;
+        const double value = pf.positions[k].amount * model.priced[k].price;
+        if (value > bestValue) {
+          bestValue = value;
+          best = k;
+        }
+      }
+      if (best < 0) break;
+      used[best] = true;
+      caption(screen, x, y, innerW / 2, mk::instrumentAt(pf.positions[best].instrument).name);
+      mk::formatPriceShort(w.euros ? bestValue / model.euro : bestValue, text, sizeof(text));
+      caption(screen, x + innerW / 3, y, innerW / 3, text, fui::TextAlign::Right, fui::Color::DarkGray);
+      mk::formatPercent(mk::percentOf(model.priced[best].price, model.priced[best].previous), text, sizeof(text));
+      caption(screen, x + innerW - innerW / 3, y, innerW / 3, text, fui::TextAlign::Right);
+      y += rowPitch;
+    }
+    return;
+  }
+  const mk::Asset asset = static_cast<mk::Asset>(i);
+  const mk::Quote& q = model.quotes[i];
+  hit(screen, r, ActionOpen, i);
+  label(screen, rect(x, y, innerW, toybox::kUiCut.inkHeight), mk::infoOf(asset).name, toybox::kUiFont, toybox::kUiCut,
+        fui::TextAlign::Left);
+  if (!q.valid) {
+    noData(screen, r);
+    return;
+  }
+  changePill(screen, 0, y - 2, 32, mk::dayChangePercent(q), x + innerW);
+  y += toybox::kUiCut.inkHeight + 20;
+  mk::formatPriceShort(q.price, text, sizeof(text));
+  const int inkH = priceText(screen, model.faces, face, x, y, innerW, text);
+  statusLine(asset, q, text, sizeof(text));
+  caption(screen, x, y + inkH - toybox::kTileCut.inkHeight, innerW, text, fui::TextAlign::Right, fui::Color::DarkGray);
+  y += inkH + 8;
+  chart(screen, rect(r.x + 2, y, r.width - 4, r.y + r.height - y), q, sessionsIn(Span::Month, asset, q), true, 2);
+}
+
+void wideDashboard(toybox::Screen& screen, const DashboardModel& model) {
+  const int width = screen.device().width;
+  const int height = screen.device().height;
+  const int stripH = 40;
+  const int bodyH = height - stripH;
+  const int halfW = width / 2;
+  const int halfH = bodyH / 2;
+  const Face face = commonFace(screen, model, Face::Large, halfW - 36);
+  for (int i = 0; i < 4; ++i) {
+    quarter(screen, model, i, rect((i % 2) * halfW, (i / 2) * halfH, halfW, halfH), face);
+  }
+  box(screen, halfW, 0, toybox::kHairline, bodyH, kInk);
+  box(screen, 0, halfH, width, toybox::kHairline, kInk);
+  wideStrip(screen, model, bodyH, stripH);
+}
+
 }  // namespace
 
 int sessionsIn(const Span span, const mk::Asset asset, const mk::Quote& quote) {
@@ -500,6 +633,10 @@ int sessionsIn(const Span span, const mk::Asset asset, const mk::Quote& quote) {
 }
 
 void buildDashboard(toybox::Screen& screen, const DashboardModel& model) {
+  if (wide(screen)) {
+    wideDashboard(screen, model);
+    return;
+  }
   chrome(screen, "MARKETS");
   const fui::DeviceContext device = screen.device();
   const int width = device.width;
@@ -508,19 +645,10 @@ void buildDashboard(toybox::Screen& screen, const DashboardModel& model) {
   const int footY = device.height - kBottomReserve - footH - 4;
   const int top = toybox::kChromeHeight + 12;
   const int gap = 10;
-  if (wide(screen)) {
-    // Side by side, one card a column.
-    const int cardW = (inner - gap * (mk::kAssets - 1)) / mk::kAssets;
-    for (int i = 0; i < mk::kAssets; ++i) {
-      cardWide(screen, rect(toybox::kMargin + i * (cardW + gap), top, cardW, footY - 10 - top),
-               static_cast<mk::Asset>(i), model.quotes[i], model.faces);
-    }
-  } else {
-    const int cardH = (footY - 12 - top - gap * (mk::kAssets - 1)) / mk::kAssets;
-    for (int i = 0; i < mk::kAssets; ++i) {
-      card(screen, rect(toybox::kMargin, top + i * (cardH + gap), inner, cardH), static_cast<mk::Asset>(i),
-           model.quotes[i], model.faces);
-    }
+  const int cardH = (footY - 12 - top - gap * (mk::kAssets - 1)) / mk::kAssets;
+  for (int i = 0; i < mk::kAssets; ++i) {
+    card(screen, rect(toybox::kMargin, top + i * (cardH + gap), inner, cardH), static_cast<mk::Asset>(i),
+         model.quotes[i], model.faces);
   }
   dashboardFoot(screen, model, footY, footH);
 }
@@ -822,6 +950,8 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
   const mk::Portfolio& pf = *model.portfolio;
   char a[40];
   char b[72];
+  int pages = 1;
+  int page = 0;
 
   int y = toybox::kChromeHeight + 18;
   if (pf.count == 0) {
@@ -838,27 +968,43 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
                          s);
   } else {
     const mk::Totals t = mk::totalsOf(pf, model.priced);
-    caption(screen, x, y, headW, "TOTAL VALUE, USD");
-    if (t.priced < pf.count) {
-      std::snprintf(a, sizeof(a), "%d OF %d PRICED", t.priced % 100, pf.count % 100);
-      caption(screen, x, y, headW, a, fui::TextAlign::Right);
+    // Everything is priced in dollars; in euros it is the same at the rate
+    // fetched with the quotes, which has to be known to count in them.
+    const bool euros = model.inEuro && model.euro > 0;
+    const double per = euros ? 1.0 / model.euro : 1.0;
+    const char* const unit = euros ? "EUR" : "USD";
+    const int switchW = 132;
+    const int switchH = 30;
+    caption(screen, x, y + (switchH - toybox::kTileCut.inkHeight) / 2, headW - switchW - 8, "TOTAL VALUE");
+    for (int c = 0; c < 2; ++c) {
+      fui::ButtonProps money;
+      money.label = c == 0 ? "USD" : "EUR";
+      money.action = ActionCurrency;
+      money.value = static_cast<int16_t>(c);
+      money.styles = toybox::rowStyles();
+      money.text = toybox::buttonText(screen.theme());
+      money.radius = kRadius;
+      money.minTouchSize = 0;
+      money.enabled = c == 0 || model.euro > 0;
+      money.state = (c == 1) == euros ? fui::StateSelected : fui::StateNormal;
+      screen.button(money, rect(x + headW - switchW + c * (switchW / 2), y, switchW / 2 - 2, switchH));
     }
-    y += toybox::kTileCut.inkHeight + (side ? 12 : 16);
-    mk::formatPriceShort(t.value, a, sizeof(a));
+    y += switchH + (side ? 10 : 14);
+    mk::formatPriceShort(t.value * per, a, sizeof(a));
     y += priceText(screen, model.faces, side ? Face::Large : Face::Huge, x, y, headW, a) + (side ? 12 : 18);
     if (t.priced > 0) {
       const int pillH = side ? 36 : 40;
       const int pillW = changePill(screen, x, y, pillH, mk::percentOf(t.value, t.previous));
-      mk::formatChange(t.value - t.previous, a, sizeof(a));
+      mk::formatChange((t.value - t.previous) * per, a, sizeof(a));
       static const char* const kOver[mk::kPeriods] = {"TODAY", "IN A WEEK", "IN A MONTH", "THIS YEAR", "IN A YEAR"};
       if (side) {
         // The column is too narrow for the sentence: the amount beside the pill, the stretch under it.
-        std::snprintf(b, sizeof(b), "%s USD", a);
+        std::snprintf(b, sizeof(b), "%s %s", a, unit);
         caption(screen, x + pillW + 10, y + 3, headW - pillW - 10, b);
         caption(screen, x + pillW + 10, y + 5 + toybox::kTileCut.inkHeight, headW - pillW - 10,
                 kOver[static_cast<int>(model.period) % mk::kPeriods], fui::TextAlign::Left, fui::Color::DarkGray);
       } else {
-        std::snprintf(b, sizeof(b), "%s USD %s", a, kOver[static_cast<int>(model.period) % mk::kPeriods]);
+        std::snprintf(b, sizeof(b), "%s %s %s", a, unit, kOver[static_cast<int>(model.period) % mk::kPeriods]);
         caption(screen, x + pillW + 14, y + (40 - toybox::kTileCut.inkHeight) / 2, inner - pillW - 14, b);
       }
     }
@@ -883,13 +1029,17 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
     }
     y += 36 + 12;
     if (t.priced > 0 && model.euro > 0) {
-      // The same total in euros, at the rate fetched with the quotes.
-      mk::formatPriceShort(t.value / model.euro, a, sizeof(a));
-      std::snprintf(b, sizeof(b), "%s EUR", a);
+      // The same total in the other of the two, at the rate fetched with the quotes.
+      mk::formatPriceShort(euros ? t.value : t.value / model.euro, a, sizeof(a));
+      std::snprintf(b, sizeof(b), "%s %s", a, euros ? "USD" : "EUR");
       label(screen, rect(x, y, side ? headW : inner / 2, toybox::kUiCut.inkHeight), b, toybox::kUiFont, toybox::kUiCut,
             fui::TextAlign::Left);
       char rate[24];
-      std::snprintf(rate, sizeof(rate), "1 EUR = %.4f USD", model.euro);
+      if (t.priced < pf.count) {
+        std::snprintf(rate, sizeof(rate), "%d OF %d PRICED", t.priced % 100, pf.count % 100);
+      } else {
+        std::snprintf(rate, sizeof(rate), "1 EUR = %.4f USD", model.euro);
+      }
       if (side) {
         caption(screen, x, y + toybox::kUiCut.inkHeight + 8, headW, rate, fui::TextAlign::Left, fui::Color::DarkGray);
       } else {
@@ -911,9 +1061,18 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
 
     // A row a holding: what and how much on the left, its worth and its day
     // on the right. The whole row opens the keypad.
-    int rowH = (listBottom - y) / (pf.count > 0 ? pf.count : 1);
+    // As many as fit at a height that still reads; the rest are a page on.
+    constexpr int kRowMin = 52;
+    int perPage = (listBottom - y) / kRowMin;
+    if (perPage < 1) perPage = 1;
+    if (pf.count <= perPage) perPage = pf.count > 0 ? pf.count : 1;
+    pages = (pf.count + perPage - 1) / perPage;
+    if (pages < 1) pages = 1;
+    page = ((model.page % pages) + pages) % pages;
+    int rowH = (listBottom - y) / perPage;
     if (rowH > 62) rowH = 62;
-    for (int i = 0; i < pf.count; ++i) {
+    const int firstRow = page * perPage;
+    for (int i = firstRow; i < pf.count && i < firstRow + perPage; ++i) {
       const mk::AssetInfo& info = mk::instrumentAt(pf.positions[i].instrument);
       const fui::Rect r = rect(listX, y, listW, rowH);
       fui::ButtonProps row;
@@ -932,10 +1091,10 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
       const mk::Priced& pr = model.priced[i];
       if (pr.valid) {
         char price[24];
-        mk::formatPrice(pr.price, price, sizeof(price));
+        mk::formatPrice(pr.price * per, price, sizeof(price));
         std::snprintf(b, sizeof(b), "%s AT %s", a, price);
         caption(screen, listX, cy, listW * 2 / 3, b, fui::TextAlign::Left, fui::Color::DarkGray);
-        mk::formatPriceShort(pf.positions[i].amount * pr.price, a, sizeof(a));
+        mk::formatPriceShort(pf.positions[i].amount * pr.price * per, a, sizeof(a));
         label(screen, rect(listX + listW / 2, ty, listW / 2, toybox::kUiCut.inkHeight), a, toybox::kUiFont,
               toybox::kUiCut, fui::TextAlign::Right);
         mk::formatPercent(mk::percentOf(pr.price, pr.previous), a, sizeof(a));
@@ -953,7 +1112,8 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
   // The foot: one more holding, and new prices.
   const int gap = 10;
   const int footW = side && pf.count > 0 ? headW : inner;
-  const int half = (footW - gap) / 2;
+  // With more holdings than fit, a third button between the two turns the page.
+  const int half = pages > 1 ? (footW - gap * 2) / 3 : (footW - gap) / 2;
   fui::ButtonProps add;
   add.label = "ADD";
   add.action = ActionAddPosition;
@@ -966,7 +1126,17 @@ void buildPortfolio(toybox::Screen& screen, const PortfolioModel& model) {
   refresh.label = "REFRESH";
   refresh.action = ActionRefresh;
   refresh.enabled = true;
-  screen.button(refresh, rect(x + half + gap, bottom - footH, half, footH));
+  if (pages > 1) {
+    char turn[16];
+    std::snprintf(turn, sizeof(turn), "%d / %d", (page + 1) % 100, pages % 100);
+    fui::ButtonProps next = refresh;
+    next.label = turn;
+    next.action = ActionPortfolioPage;
+    screen.button(next, rect(x + half + gap, bottom - footH, half, footH));
+    screen.button(refresh, rect(x + (half + gap) * 2, bottom - footH, footW - (half + gap) * 2, footH));
+  } else {
+    screen.button(refresh, rect(x + half + gap, bottom - footH, half, footH));
+  }
 }
 
 void buildPicker(toybox::Screen& screen, const PickerModel& model) {

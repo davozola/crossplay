@@ -144,6 +144,7 @@ constexpr CutMetrics kSerifTitleCut{65, 50, 36};  // instrument_24
 // real descenders, and inkCentred centres the CAP band, so mixed-case prose
 // set with it hangs its descenders below the box. Leave prose alone.
 constexpr CutMetrics kReadingSmallCut{31, 25, 17};      // reading_serif_11
+constexpr CutMetrics kReadingMidCut{37, 29, 20};        // reading_serif_13
 constexpr CutMetrics kReadingCut{40, 32, 21};           // reading_serif_14
 constexpr CutMetrics kReadingBoldSmallCut{34, 27, 18};  // reading_serif_bold_12
 constexpr CutMetrics kReadingBoldCut{45, 36, 23};       // reading_serif_bold_16
@@ -165,9 +166,9 @@ constexpr fui::Rect inkCentred(const fui::Rect& box, const CutMetrics& cut) {
 // of air above the capitals, so anything centring by eye needs the real
 // numbers.
 constexpr const CutMetrics* cutForLineHeight(const int16_t lineHeight) {
-  const CutMetrics* all[] = {&kTileCut,    &kButtonCut,           &kUiCut,         &kDisplayCut,    &kLargeCut,
-                             &kHugeCut,    &kSerifSmallCut,       &kSerifTileCut,  &kSerifTitleCut, &kReadingSmallCut,
-                             &kReadingCut, &kReadingBoldSmallCut, &kReadingBoldCut};
+  const CutMetrics* all[] = {&kTileCut,    &kButtonCut,           &kUiCut,          &kDisplayCut,    &kLargeCut,
+                             &kHugeCut,    &kSerifSmallCut,       &kSerifTileCut,   &kSerifTitleCut, &kReadingSmallCut,
+                             &kReadingCut, &kReadingBoldSmallCut, &kReadingBoldCut, &kReadingMidCut};
   for (const CutMetrics* cut : all) {
     if (cut->lineHeight == lineHeight) return cut;
   }

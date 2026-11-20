@@ -17,20 +17,29 @@ Started playAlbum(const char* ratingKey) {
   Config config;
   unpack(text, config);
   if (!config.signedIn() || !config.hasPlayer()) return Started::NotSetUp;
+  // The account may list several servers and only one holds this album, so
+  // each with an address is asked until one makes the queue.
   const Config::Server* server = nullptr;
-  for (const Config::Server& s : config.servers) {
-    if (!s.base.empty() && server == nullptr) server = &s;
-  }
-  if (server == nullptr) return Started::NoServer;
-
-  Entry album;
-  album.kind = Kind::Album;
-  album.key = ratingKey;
   std::string body;
   std::string queueId;
   std::string firstKey;
-  const int made = net::server(config, server->id, "POST", makeQueueUrl(server->base, server->id, album, false), body);
-  if (made != 200 || !parseMadeQueue(body.data(), body.size(), queueId, firstKey)) return Started::NoQueue;
+  bool anyAddress = false;
+  bool anyAnswered = false;
+  Entry album;
+  album.kind = Kind::Album;
+  album.key = ratingKey;
+  for (const Config::Server& s : config.servers) {
+    if (s.base.empty()) continue;
+    anyAddress = true;
+    const int made = net::server(config, s.id, "POST", makeQueueUrl(s.base, s.id, album, false), body);
+    anyAnswered = anyAnswered || made > 0;
+    if (made == 200 && parseMadeQueue(body.data(), body.size(), queueId, firstKey)) {
+      server = &s;
+      break;
+    }
+  }
+  if (!anyAddress) return Started::NoServer;
+  if (server == nullptr) return anyAnswered ? Started::NoQueue : Started::Unreachable;
   const std::string extra = playMediaExtra(server->base, server->id, config.tokenFor(server->id), queueId, firstKey);
   const uint32_t commandId = static_cast<uint32_t>(millis());
   const int status =

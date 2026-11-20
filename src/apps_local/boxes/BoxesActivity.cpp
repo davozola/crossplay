@@ -26,6 +26,9 @@ enum : fui::ActionId {
   ActionPlay = 20,
   ActionNewGame,
   ActionOptions,
+  ActionContinue,
+  ActionUndo,
+  ActionHint,
 };
 
 enum { OptOpponent, OptBoard, OptFirst };
@@ -44,6 +47,9 @@ constexpr Option kOptionTable[] = {
     {"WHO STARTS", kFirst, 2},
 };
 constexpr char kOptionsPath[] = "/.crosspoint/boxes.cfg";
+constexpr char kGamePath[] = "/.crosspoint/boxes-game.sav";
+constexpr char kStatsPath[] = "/.crosspoint/boxes-levels.cfg";
+constexpr int kTwoPlayers = 3;
 constexpr uint8_t kCleanAfterPaints = 16;
 // Long enough to see the line the device drew before it draws another.
 constexpr uint32_t kDeviceBeatMs = 500;
@@ -83,6 +89,8 @@ void BoxesActivity::onEnter() {
   toybox::ensureFonts(renderer);
   rng_.state = static_cast<uint32_t>(millis()) * 2654435761u + 1u;
   loadOptions();
+  sologame::loadStats("BOX", kStatsPath, stats_);
+  hasSaved_ = Storage.exists(kGamePath);
   view_ = View::Setup;
   requestUpdate();
 }
@@ -98,6 +106,64 @@ void BoxesActivity::newGame() {
   board_.turn = options_[OptFirst] == 0 ? 1 : 2;
   note_ = "";
   clean_ = true;
+  history_.clear();
+  hint_ = -1;
+  recorded_ = false;
+  sologame::drop(kGamePath);
+  hasSaved_ = false;
+}
+
+void BoxesActivity::saveGame() {
+  if (board_.over()) return;
+  hasSaved_ = sologame::save("BOX", kGamePath, board_, history_, options_[OptOpponent], options_[OptBoard]);
+}
+
+void BoxesActivity::continueGame() {
+  uint8_t opponent = options_[OptOpponent];
+  uint8_t boardChoice = options_[OptBoard];
+  if (!sologame::load("BOX", kGamePath, board_, history_, opponent, boardChoice) || board_.w < 3 || board_.w > 6 ||
+      board_.h != board_.w || board_.over()) {
+    newGame();
+    return;
+  }
+  // The game goes on against who it was begun against.
+  if (opponent < kOptionTable[OptOpponent].count) options_[OptOpponent] = opponent;
+  if (boardChoice < kOptionTable[OptBoard].count) options_[OptBoard] = boardChoice;
+  note_ = "";
+  hint_ = -1;
+  recorded_ = false;
+  clean_ = true;
+}
+
+// Back to before the player's last line, the device's answer undone with it.
+void BoxesActivity::takeBack() {
+  if (deviceToMove() || !history_.pop(board_)) return;
+  note_ = "";
+  hint_ = -1;
+  recorded_ = false;
+  clean_ = true;
+  saveGame();
+}
+
+// The line the hard level would draw for the side to move.
+void BoxesActivity::showHint() {
+  if (deviceToMove() || board_.over()) return;
+  hint_ = boxes::choose(board_, boxes::kLevels - 1, rng_);
+}
+
+// A finished game against the device is counted against the level it was
+// played at, once, and is no longer one to continue.
+void BoxesActivity::recordIfOver() {
+  if (recorded_ || !board_.over()) return;
+  recorded_ = true;
+  sologame::drop(kGamePath);
+  hasSaved_ = false;
+  history_.clear();
+  if (options_[OptOpponent] == kTwoPlayers) return;
+  const int me = board_.score[1];
+  const int them = board_.score[2];
+  stats_.count(options_[OptOpponent], me > them ? 0 : (me < them ? 1 : 2));
+  sologame::saveStats("BOX", kStatsPath, stats_);
 }
 
 bool BoxesActivity::deviceToMove() const { return options_[OptOpponent] != 3 && !board_.over() && board_.turn == 2; }
@@ -106,6 +172,9 @@ void BoxesActivity::deviceMoves() {
   const int line = boxes::choose(board_, options_[OptOpponent], rng_);
   if (line >= 0) boxes::draw(board_, line);
   note_ = "";
+  // Kept after every answer, so leaving at any point loses nothing.
+  saveGame();
+  recordIfOver();
 }
 
 void BoxesActivity::boardRect(int& x, int& y, int& cell) const {
@@ -170,11 +239,16 @@ void BoxesActivity::loop() {
   if (view_ == View::Play && !board_.over()) {
     const int line = lineAt(tapX, tapY);
     if (line >= 0) {
+      const boxes::Board before = board_;
       const int closed = boxes::draw(board_, line);
       if (closed < 0) {
         haptic_feedback::touchAction();
         return;
       }
+      history_.push(before);
+      hint_ = -1;
+      saveGame();
+      recordIfOver();
       note_ = closed > 0 && !board_.over() ? "A SQUARE! GO AGAIN" : "";
       requestUpdateAndWait();
       return;
@@ -189,6 +263,13 @@ void BoxesActivity::loop() {
   if (event.action == ActionPlay || event.action == ActionNewGame) {
     newGame();
     view_ = View::Play;
+  } else if (event.action == ActionContinue) {
+    continueGame();
+    view_ = View::Play;
+  } else if (event.action == ActionUndo && view_ == View::Play) {
+    takeBack();
+  } else if (event.action == ActionHint && view_ == View::Play) {
+    showHint();
   } else if (event.action == ActionOptions) {
     view_ = View::Setup;
     clean_ = true;
@@ -221,7 +302,21 @@ void BoxesActivity::buildSetup(toybox::Screen& screen) {
       "TAKE TURNS DRAWING ONE LINE BETWEEN TWO DOTS. DRAW THE FOURTH SIDE OF A SQUARE AND IT IS YOURS, AND YOU "
       "GO AGAIN. MOST SQUARES WINS.",
       5);
-  lab::button(screen, lab::rect(x, pageBottom() - 90, inner, 90), "PLAY", ActionPlay, 0, true, false);
+  // How it stands against the opponent chosen.
+  if (options_[OptOpponent] != kTwoPlayers) {
+    char record[64];
+    std::snprintf(record, sizeof(record), "AGAINST %s: %d WON, %d LOST, %d DRAWN", kOpponents[options_[OptOpponent]],
+                  stats_.won[options_[OptOpponent]] % 10000, stats_.lost[options_[OptOpponent]] % 10000,
+                  stats_.drawn[options_[OptOpponent]] % 10000);
+    lab::caption(screen, x, pageBottom() - 90 - toybox::kTileCut.inkHeight - 12, inner, record);
+  }
+  if (hasSaved_) {
+    const int half = (inner - 8) / 2;
+    lab::button(screen, lab::rect(x, pageBottom() - 90, half, 90), "CONTINUE", ActionContinue, 0, true, false);
+    lab::button(screen, lab::rect(x + half + 8, pageBottom() - 90, half, 90), "NEW GAME", ActionPlay, 0, false, false);
+  } else {
+    lab::button(screen, lab::rect(x, pageBottom() - 90, inner, 90), "PLAY", ActionPlay, 0, true, false);
+  }
 }
 
 void BoxesActivity::buildPlay(toybox::Screen& screen) {
@@ -276,6 +371,13 @@ void BoxesActivity::buildPlay(toybox::Screen& screen) {
       } else {
         renderer.fillRect(lx - weight / 2, ly, weight, cell, true);
       }
+    } else if (line == hint_) {
+      // The hinted line: drawn in grey, the weight of a real one.
+      if (acrossLine) {
+        renderer.fillRectDither(lx, ly - 4, cell, 8, Color::DarkGray);
+      } else {
+        renderer.fillRectDither(lx - 4, ly, 8, cell, Color::DarkGray);
+      }
     } else {
       // Where a line could go: a row of specks.
       for (int s = cell / 6; s < cell; s += cell / 6) {
@@ -308,10 +410,22 @@ void BoxesActivity::buildPlay(toybox::Screen& screen) {
   lab::label(screen, lab::rect(x, below, inner, toybox::kUiCut.inkHeight), status, toybox::kUiFont, toybox::kUiCut);
 
   const int buttonH = 60;
-  const int half2 = (inner - 8) / 2;
-  lab::button(screen, lab::rect(x, pageBottom() - buttonH, half2, buttonH), "NEW GAME", ActionNewGame, 0, over, false);
-  lab::button(screen, lab::rect(x + half2 + 8, pageBottom() - buttonH, half2, buttonH), "OPTIONS", ActionOptions, 0,
-              false, false);
+  if (options_[OptOpponent] != kTwoPlayers && !over) {
+    // Against the device: take a line back and ask for one, beside the two that were here.
+    const int quarter = (inner - 8 * 3) / 4;
+    const int by2 = pageBottom() - buttonH;
+    lab::button(screen, lab::rect(x, by2, quarter, buttonH), "UNDO", ActionUndo, 0, false);
+    lab::button(screen, lab::rect(x + (quarter + 8), by2, quarter, buttonH), "HINT", ActionHint, 0, false);
+    lab::button(screen, lab::rect(x + (quarter + 8) * 2, by2, quarter, buttonH), "NEW", ActionNewGame, 0, false);
+    lab::button(screen, lab::rect(x + (quarter + 8) * 3, by2, inner - (quarter + 8) * 3, buttonH), "OPTIONS",
+                ActionOptions, 0, false);
+  } else {
+    const int half2 = (inner - 8) / 2;
+    lab::button(screen, lab::rect(x, pageBottom() - buttonH, half2, buttonH), "NEW GAME", ActionNewGame, 0, over,
+                false);
+    lab::button(screen, lab::rect(x + half2 + 8, pageBottom() - buttonH, half2, buttonH), "OPTIONS", ActionOptions, 0,
+                false, false);
+  }
 }
 
 void BoxesActivity::render(RenderLock&&) {

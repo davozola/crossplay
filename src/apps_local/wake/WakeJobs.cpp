@@ -5,6 +5,7 @@
 
 #include "../../CrossPointSettings.h"
 #include "../casa/CasaStore.h"
+#include "../pomodoro/PomodoroBell.h"
 #include "WakePlan.h"
 
 #if !defined(SIMULATOR)
@@ -45,8 +46,8 @@ uint32_t frameEveryNow() {
 uint32_t armSeconds(const uint32_t liveSeconds, const bool attended) {
   const bool casaOn = casastore::sleepLogging();
   if (attended && casaOn) casastore::note();
-  const uint32_t seconds =
-      wakeplan::arm(state, frameEveryNow(), casaOn ? casastore::kSleepEverySeconds : 0, liveSeconds, attended);
+  const uint32_t seconds = wakeplan::arm(state, frameEveryNow(), casaOn ? casastore::kSleepEverySeconds : 0,
+                                         liveSeconds, attended, attended ? pomodorobell::secondsUntil() : 0);
   LOG_DBG("WAKE", "armed for %u s (live %u)", static_cast<unsigned>(seconds), static_cast<unsigned>(liveSeconds));
   return seconds;
 }
@@ -56,6 +57,7 @@ uint32_t rearmSeconds(const uint32_t liveSeconds) { return wakeplan::rearm(state
 bool onTimerWake() {
   const wakeplan::Due due = wakeplan::onTimer(state);
   if (due.casa) casastore::note();
+  if (due.bell) pomodorobell::ringFromSleep();
   if (due.frame) setFrameChanges(frameChanges() + 1);
   return due.frame;
 }

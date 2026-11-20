@@ -4,6 +4,7 @@
 
 #include "../../components/UITheme.h"  // Rect
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
 #include "SeaSaltBrain.h"
 #include "SeaSaltCore.h"
@@ -80,6 +81,10 @@ class SeaSaltActivity final : public linkplay::LinkActivity {
   void routeRoundOver();
   void routeTutorial();
   void activateStartRow(seasaltui::StartRow row);
+  void loadSkill();
+  void saveSkill();
+  // How hard the built-in opponent plays: the stronger of the two unless told.
+  seasalt::Skill skill = seasalt::Skill::Navigator;
   void handleCardTap(int tileIndex);
 
   // The hint line for the current selection, and the primary pill's label and
@@ -122,7 +127,8 @@ class SeaSaltActivity final : public linkplay::LinkActivity {
   uint32_t seed = 1;
   int played = 0;
   int won = 0;
-  bool statsCounted = false;  // this game already added to played/won
+  bool statsCounted = false;        // this game already added to played/won
+  sologame::LevelStats levelStats;  // won and lost against each level
 
   bool opponentPending = false;
 

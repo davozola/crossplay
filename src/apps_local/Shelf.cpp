@@ -55,6 +55,7 @@
 #include "murdle/MurdleActivity.h"
 #include "mystery/MysteryActivity.h"
 #include "naval/NavalActivity.h"
+#include "news/NewsActivity.h"
 #include "notes/NotesActivity.h"
 #include "paint/PaintActivity.h"
 #include "picross/PicrossActivity.h"
@@ -223,6 +224,9 @@ constexpr shelf::Item kGames[] = {
 constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create, 1, true, "La portada de Hacker News",
      "La portada en una letra de lectura; los artículos que abres se guardan en la tarjeta para leerlos sin red."},
+    {"NEWS", &icon_news_32, &NewsActivity::create, 1, true, "La edición del día de Kagi News",
+     "Elige tus secciones entre las de Kagi; hasta ocho noticias en cada una, con resumen, claves, contexto y "
+     "fuentes. La edición se guarda en la tarjeta y se lee sin red. Datos de Kagi News, CC BY-NC 4.0."},
     {"THE BATCH", &icon_batch_32, &BatchActivity::create, 1, true, "El boletín semanal de IA",
      "El boletín de DeepLearning.AI noticia a noticia, con archivo desde el primer número, favoritos y lectura sin red "
      "de lo ya abierto."},
@@ -244,8 +248,9 @@ constexpr shelf::Item kApps[] = {
     {"JUKEBOX", &icon_jukebox_32, &JukeboxActivity::create, 3, true, "Mando para Plexamp",
      "Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto y volumen desde "
      "aquí. Se enlaza a tu cuenta de Plex con un código."},
-    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create, 1, false, "50.000 artículos sin internet",
-     "Cincuenta mil artículos en la tarjeta, que se leen como un libro. En inglés."},
+    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create, 1, true, "Wikipedia en español",
+     "Busca y lee cualquier artículo de Wikipedia en español por wifi, como un libro. Los que abres se quedan en la "
+     "tarjeta para releerlos sin red."},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create, 3, false, "Calculadora de teclas grandes",
      "Con teclas del tamaño de un pulgar y el historial de las cuentas que ya has hecho."},
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while

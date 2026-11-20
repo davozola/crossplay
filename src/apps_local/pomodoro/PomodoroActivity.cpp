@@ -3,20 +3,14 @@
 #include <HalStorage.h>
 #include <Memory.h>
 
+#include <ctime>
+
 #include "../../HapticFeedback.h"
 #include "../../components/UITheme.h"
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
-
-// The Buzzer library is in the device builds' lib_deps; the browser build does
-// not have it, and a board without a buzzer links stubs whose begin() is false.
-#if __has_include(<Buzzer.h>)
-#include <Buzzer.h>
-#define POMODORO_HAS_BUZZER 1
-#else
-#define POMODORO_HAS_BUZZER 0
-#endif
+#include "PomodoroBell.h"
 
 namespace {
 
@@ -24,7 +18,8 @@ namespace pd = pomodoro;
 namespace fui = freeink::ui;
 
 constexpr char kSavePath[] = "/.crosspoint/pomodoro.sav";
-constexpr uint8_t kSaveVersion = 1;
+constexpr uint8_t kSaveVersion = 2;
+constexpr uint8_t kOldSaveVersion = 1;  // the same, without the clock
 
 struct SaveState {
   uint8_t focusMinutes;
@@ -33,6 +28,27 @@ struct SaveState {
   uint8_t doneInCycle;
   uint32_t totalDone;
 } __attribute__((packed));
+
+// The clock as it stood when the app was left, so it can go on counting while
+// something else is on the panel.
+struct SaveClock {
+  uint8_t state;       // pomodoro::State
+  uint32_t elapsedMs;  // into the phase, at `leftEpoch`
+  uint32_t leftEpoch;  // seconds since 1970, or 0 if the clock was not set
+} __attribute__((packed));
+
+// A clock that was never set reads as the seventies.
+constexpr uint32_t kClockIsSet = 1700000000u;
+
+uint32_t epochNow() {
+  const time_t now = time(nullptr);
+  return now >= static_cast<time_t>(kClockIsSet) ? static_cast<uint32_t>(now) : 0;
+}
+
+// With no wall clock, millis() still measures an absence as long as the
+// device has not slept: when the app was last left, by that count.
+bool leftMillisKnown = false;
+uint32_t leftMillis = 0;
 
 }  // namespace
 
@@ -44,6 +60,7 @@ void PomodoroActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadState();
+  pomodorobell::cancelPending();
   view = View::Timer;
   shownMinutes = -1;
   justFinished = false;
@@ -110,25 +127,13 @@ void PomodoroActivity::route(const fui::ActionEvent& event) {
 }
 
 void PomodoroActivity::ring() {
+  // The bell rang while something else was on the panel: once is enough.
+  const bool heard = pomodorobell::takeRang();
   flashOnNextPaint = true;
   justFinished = true;
+  if (heard) return;
   haptic_feedback::touchAction(true);
-#if POMODORO_HAS_BUZZER
-  Buzzer buzzer;
-  if (buzzer.begin()) {
-    // Three short rising beeps. tone() blocks, which is fine here: the whole
-    // thing is under a second and there is nothing else to do at the bell.
-    const uint32_t notes[] = {1760, 2093, 2637};
-    for (int round = 0; round < 2; ++round) {
-      for (const uint32_t f : notes) {
-        buzzer.tone(f, 120);
-        delay(60);
-      }
-      delay(250);
-    }
-    buzzer.end();
-  }
-#endif
+  pomodorobell::chime();
 }
 
 void PomodoroActivity::loop() {
@@ -242,7 +247,23 @@ void PomodoroActivity::saveState() {
   const uint8_t version = kSaveVersion;
   file.write(&version, 1);
   file.write(reinterpret_cast<const uint8_t*>(&s), sizeof(s));
+  const uint32_t now = static_cast<uint32_t>(millis());
+  SaveClock c{};
+  c.state = static_cast<uint8_t>(timer.state());
+  c.elapsedMs = timer.elapsedMs(now);
+  c.leftEpoch = epochNow();
+  file.write(reinterpret_cast<const uint8_t*>(&c), sizeof(c));
   file.flush();
+  leftMillisKnown = true;
+  leftMillis = now;
+  // Left running, it still rings at the end: from another app, or by waking
+  // the device. That needs the wall clock; without one the bell waits for the
+  // app to come back.
+  if (timer.state() == pd::State::Running && c.leftEpoch != 0) {
+    pomodorobell::set(c.leftEpoch + (timer.remainingMs(now) + 999u) / 1000u);
+  } else {
+    pomodorobell::clear();
+  }
 }
 
 void PomodoroActivity::loadState() {
@@ -251,7 +272,7 @@ void PomodoroActivity::loadState() {
   HalFile file;
   if (!Storage.openFileForRead("POMO", kSavePath, file)) return;
   uint8_t version = 0;
-  if (file.read(&version, 1) != 1 || version != kSaveVersion) return;
+  if (file.read(&version, 1) != 1 || (version != kSaveVersion && version != kOldSaveVersion)) return;
   SaveState s{};
   if (file.read(reinterpret_cast<uint8_t*>(&s), sizeof(s)) != sizeof(s)) return;
   // Through the pickers' own check, so an edited or old file cannot set a
@@ -260,4 +281,29 @@ void PomodoroActivity::loadState() {
   timer.setBreak(s.breakMinutes);
   timer.restore(static_cast<pd::Phase>(s.phase <= 2 ? s.phase : 0), s.doneInCycle);
   timer.setTotalDone(s.totalDone);
+
+  SaveClock c{};
+  if (version != kSaveVersion || file.read(reinterpret_cast<uint8_t*>(&c), sizeof(c)) != sizeof(c)) return;
+  const uint32_t now = static_cast<uint32_t>(millis());
+  if (c.state == static_cast<uint8_t>(pd::State::Paused)) {
+    timer.resume(false, c.elapsedMs, now);
+    return;
+  }
+  if (c.state != static_cast<uint8_t>(pd::State::Running)) return;
+  // How long it was away: by the wall clock if both ends have one, else by
+  // millis() if the device stayed awake. With neither, it waits where it was.
+  const uint32_t epoch = epochNow();
+  uint64_t awayMs = 0;
+  if (c.leftEpoch != 0 && epoch >= c.leftEpoch) {
+    awayMs = static_cast<uint64_t>(epoch - c.leftEpoch) * 1000u;
+  } else if (leftMillisKnown) {
+    awayMs = now - leftMillis;
+  } else {
+    timer.resume(false, c.elapsedMs, now);
+    return;
+  }
+  // Past the end is past the end: a day away must not wrap round to a fresh phase.
+  const uint64_t total = c.elapsedMs + awayMs;
+  const uint32_t length = timer.phaseLengthMs();
+  timer.resume(true, total > length ? length : static_cast<uint32_t>(total), now);
 }

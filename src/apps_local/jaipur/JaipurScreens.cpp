@@ -267,6 +267,8 @@ const char* startRowLabel(const StartRow row) {
       return "CONTINUE";
     case StartRow::NewGame:
       return "NEW GAME";
+    case StartRow::Level:
+      return "LEVEL";
     case StartRow::PlayNearby:
       // The same words chess and battleship use. "Tap where it says
       // multiplayer" only works if something says it, and NEARBY is what it is.
@@ -294,6 +296,7 @@ fui::Rect buildStartMenu(toybox::Screen& screen, const StartModel& model) {
     const StartRow row = startRowAt(model, i);
     rows[i].label = startRowLabel(row);
     if (row == StartRow::Continue) rows[i].value = model.continueDetail;
+    if (row == StartRow::Level) rows[i].value = model.levelName;
     rows[i].actionValue = static_cast<int16_t>(i);
   }
 

@@ -21,6 +21,7 @@ constexpr char kSavePath[] = "/.crosspoint/tak.sav";
 // Bumped whenever SaveState or tak::Game changes shape: an old file is
 // discarded rather than misread.
 constexpr uint8_t kSaveVersion = 1;
+constexpr char kLevelsPath[] = "/.crosspoint/tak-levels.cfg";
 
 struct SaveState {
   uint8_t inProgress;
@@ -61,6 +62,8 @@ void TakActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
   loadState();
+  sologame::loadStats("TAK", kLevelsPath, levelStats);
+  history.clear();
   screen = tk::Screen::Menu;
   hand = tk::Hand{};
   thinking = false;
@@ -84,6 +87,7 @@ bool TakActivity::computerToMove() const {
 }
 
 void TakActivity::newGame(const bool computer) {
+  history.clear();
   tk::reset(game, menuSize);
   vsComputer = computer;
   // Colours alternate against the computer, so the first move is not always
@@ -100,7 +104,21 @@ void TakActivity::newGame(const bool computer) {
   goTo(tk::Screen::Board);
 }
 
+// Back to before the player's last move; against the computer its answer goes too.
+void TakActivity::takeBack() {
+  if (thinking || computerToMove()) return;
+  if (!history.pop(game)) return;
+  hand = tk::Hand{};
+  tray = tk::defaultTray(game);
+  lastMove = 0;
+  lastPtn[0] = '\0';
+  inProgress = true;
+  saveState();
+  requestUpdate();
+}
+
 void TakActivity::playMove(const tk::Move& move) {
+  if (!vsComputer || game.turn == human) history.push(game);
   // Both read only the board's size and the move, so the position before the
   // move does not need copying.
   tk::toPtn(game, move, lastPtn, sizeof(lastPtn));
@@ -120,7 +138,10 @@ void TakActivity::finishIfOver() {
     resultRecorded = true;
     if (vsComputer) {
       ++played;
-      if (tk::winner(game.result) == human) ++won;
+      const uint8_t w = tk::winner(game.result);
+      if (w == human) ++won;
+      levelStats.count(static_cast<int>(level), w == human ? 0 : (w == 0xFF ? 2 : 1));
+      sologame::saveStats("TAK", kLevelsPath, levelStats);
     }
   }
   saveState();
@@ -277,6 +298,9 @@ void TakActivity::loop() {
       requestUpdate();
       return;
     }
+    case takui::ActionUndo:
+      takeBack();
+      return;
     case takui::ActionCancel:
       hand = tk::Hand{};
       requestUpdate();
@@ -313,6 +337,8 @@ void TakActivity::render(RenderLock&&) {
       model.level = level;
       model.played = played;
       model.won = won;
+      model.levelWon = levelStats.won[static_cast<int>(level) % sologame::kStatLevels];
+      model.levelLost = levelStats.lost[static_cast<int>(level) % sologame::kStatLevels];
       takui::buildMenu(surface, model);
       break;
     }
@@ -331,6 +357,7 @@ void TakActivity::render(RenderLock&&) {
       model.vsComputer = vsComputer;
       model.human = human;
       model.thinking = thinking;
+      model.canUndo = !thinking && !computerToMove() && history.count > 0;
       model.tray = tray;
       model.holding = hand.holding;
       model.from = hand.from;

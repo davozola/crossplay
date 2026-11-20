@@ -97,6 +97,9 @@ struct MenuModel {
   int gamesPlayed = 0;
   int gamesWon = 0;
   bool sharp = true;  // which opponent strength is selected
+  // At that table: games won and games not won.
+  int levelWon = 0;
+  int levelLost = 0;
   // NEW GAME has been tapped once and is asking before it discards the save.
   bool confirmingNew = false;
 };

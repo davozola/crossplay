@@ -100,7 +100,9 @@ struct CustomSlot {
   AssetInfo info = {"", "", "", "", false, false};
 };
 CustomSlot customs[kCustom];
-constexpr const char* kCustomFiles[kCustom] = {"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"};
+constexpr const char* kCustomFiles[kCustom] = {"c0",  "c1",  "c2",  "c3",  "c4",  "c5",  "c6",  "c7",
+                                               "c8",  "c9",  "c10", "c11", "c12", "c13", "c14", "c15",
+                                               "c16", "c17", "c18", "c19", "c20", "c21", "c22", "c23"};
 
 void refreshSlot(const int slot) {
   CustomSlot& c = customs[slot];
@@ -808,7 +810,8 @@ size_t packPortfolio(const Portfolio& portfolio, uint8_t* out, const size_t cap)
 
 bool unpackPortfolio(const uint8_t* in, const size_t size, Portfolio& portfolio) {
   portfolio.count = 0;
-  if (size != kPortfolioBytes || in[0] != 1 || in[1] > kMaxPositions) return false;
+  // A file from when a portfolio held fewer is shorter, and still good.
+  if (size < 2 || in[0] != 1 || in[1] > kMaxPositions || size < 2u + static_cast<size_t>(in[1]) * 9u) return false;
   Portfolio fresh;
   for (int i = 0; i < in[1]; ++i) {
     const uint8_t* o = in + 2 + i * 9;

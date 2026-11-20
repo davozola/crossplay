@@ -225,7 +225,7 @@ fui::Rect drawField(toybox::Screen& screen, const SearchModel& model, const bool
   const int16_t right = static_cast<int16_t>(clear ? 52 + 4 : 12);
   const fui::Rect text = field.inset(fui::Insets{0, right, 0, 12});
   if (empty) {
-    drawLabel(screen, text, "SEARCH WIKIPEDIA", toybox::kSmallFont, fui::TextAlign::Left, toybox::kButtonCut);
+    drawLabel(screen, text, "BUSCAR EN WIKIPEDIA", toybox::kSmallFont, fui::TextAlign::Left, toybox::kButtonCut);
   } else {
     drawLine(screen, text, model.query, toybox::kBodyFont);
   }
@@ -249,22 +249,19 @@ void drawResults(toybox::Screen& screen, const SearchModel& model, int16_t y, co
     drawProse(screen,
               fui::Rect{static_cast<int16_t>(body.x + kMargin), static_cast<int16_t>(y + 12),
                         static_cast<int16_t>(body.width - kMargin * 2), 60},
-              "No article with that name");
+              "Ningún artículo con ese nombre.");
   }
   // The list looks complete when it is not ("Where did Tokyo go?"): when
   // there are more matches than the panel holds, the last line says so,
   // and its room comes off the rows rather than the other way round.
-  const int16_t rows = static_cast<int16_t>(model.moreResults ? bottom - kCaptionHeight - 4 : bottom);
-  int drawn = 0;
+  const int16_t rows = static_cast<int16_t>(model.hint ? bottom - kCaptionHeight - 4 : bottom);
   for (int i = 0; i < model.resultCount && i < kMaxResults; ++i) {
     const int16_t h = drawTitleRow(screen, y, rows, model.results[i].title, ActionResult, i, true);
     if (h == 0) break;
     y = static_cast<int16_t>(y + h);
-    ++drawn;
   }
-  if ((model.moreResults || drawn < model.resultCount) && y + kCaptionHeight <= bottom) {
-    drawCaption(screen, fui::Rect{body.x, static_cast<int16_t>(y + 4), body.width, kCaptionHeight},
-                "KEEP TYPING FOR MORE");
+  if (model.hint && y + kCaptionHeight <= bottom) {
+    drawCaption(screen, fui::Rect{body.x, static_cast<int16_t>(y + 4), body.width, kCaptionHeight}, model.hint);
   }
 }
 
@@ -283,7 +280,7 @@ int16_t drawPartsRow(toybox::Screen& screen, const SearchModel& model, const int
 int16_t drawRecent(toybox::Screen& screen, const SearchModel& model, int16_t y, const int16_t bottom) {
   if (model.recentCount == 0 || y + kCaptionHeight + kRowMin > bottom) return y;
   const fui::Rect body = screen.body();
-  drawCaption(screen, fui::Rect{body.x, y, body.width, kCaptionHeight}, "RECENT");
+  drawCaption(screen, fui::Rect{body.x, y, body.width, kCaptionHeight}, "RECIENTES");
   y = static_cast<int16_t>(y + kCaptionHeight);
   for (int i = 0; i < model.recentCount && i < kMaxRecent; ++i) {
     const int16_t h = drawTitleRow(screen, y, bottom, model.recent[i].title, ActionRecent, i, true);
@@ -316,9 +313,9 @@ void drawCountLine(toybox::Screen& screen, const int16_t bottom, const char* tex
     drawLabel(screen,
               fui::Rect{static_cast<int16_t>(body.x + kMargin), static_cast<int16_t>(top + kCountLine - 4),
                         static_cast<int16_t>(body.width - kMargin * 2), static_cast<int16_t>(kDoorLine - 4)},
-              "TAP HERE FOR A NEWER PACK", toybox::kSmallFont, fui::TextAlign::Center, toybox::kButtonCut);
+              "TOCA PARA VER O BORRAR", toybox::kSmallFont, fui::TextAlign::Center, toybox::kButtonCut);
+    screen.frame().hit(row, ActionSaved);
   }
-  screen.frame().hit(row, ActionInstall);
 }
 
 int16_t footerHeight(toybox::Screen& screen) {
@@ -345,14 +342,14 @@ void buildSearch(toybox::Screen& screen, const SearchModel& model) {
     return;
   }
   // The count line is reserved first; the trail gets what is left.
-  const bool door = model.keyboardHeight == 0;
+  const bool door = model.manage && model.keyboardHeight == 0;
   const int16_t list = static_cast<int16_t>(bottom - kCountLine - (door ? kDoorLine : 0));
   y = drawPartsRow(screen, model, y);
   {
     // The card: filled, the loudest thing on the page, when there is an
     // article to go back to. Dimmed, not gone, when there is none yet, so the
     // page keeps its shape from the first open on.
-    const char* title = model.continueTitle ? model.continueTitle : "Open any article and it waits here.";
+    const char* title = model.continueTitle ? model.continueTitle : "Abre un artículo y te esperará aquí.";
     const TitleFit fit = fitTitle(screen, static_cast<int16_t>(inner - 28), title, toybox::kBodyFont);
     const int16_t textHeight = static_cast<int16_t>(fit.lines * screen.target().lineHeight(toybox::kBodyFont));
     const fui::Rect card{static_cast<int16_t>(body.x + kMargin), y, inner,
@@ -363,11 +360,11 @@ void buildSearch(toybox::Screen& screen, const SearchModel& model) {
       screen.target().fill(card,
                            live ? fui::Paint::solid(fui::Color::Black) : fui::Paint::dither(fui::Color::LightGray));
       drawLabel(screen, fui::Rect{static_cast<int16_t>(card.x + 14), static_cast<int16_t>(card.y + 12), 220, 24},
-                "CONTINUE", toybox::kSmallFont, fui::TextAlign::Left, toybox::kButtonCut, ink);
+                "CONTINUAR", toybox::kSmallFont, fui::TextAlign::Left, toybox::kButtonCut, ink);
       if (live && model.continuePage > 0) {
         // Where it lands, so the card says what it does before it is pressed.
         char page[24];
-        snprintf(page, sizeof(page), "PAGE %d", model.continuePage);
+        snprintf(page, sizeof(page), "PAG. %d", model.continuePage);
         drawLabel(screen,
                   fui::Rect{static_cast<int16_t>(card.right() - 14 - 160), static_cast<int16_t>(card.y + 12), 160, 24},
                   page, toybox::kSmallFont, fui::TextAlign::Right, toybox::kButtonCut, ink);
@@ -381,8 +378,15 @@ void buildSearch(toybox::Screen& screen, const SearchModel& model) {
     }
   }
   {
-    const fui::Rect box{static_cast<int16_t>(body.x + kMargin), y, inner, 52};
-    if (box.bottom() <= list) drawAction(screen, box, "RANDOM ARTICLE", ActionRandom, false);
+    // Two doors side by side: one article at random, and the lists.
+    const int16_t half = static_cast<int16_t>((inner - toybox::kGutter) / 2);
+    const fui::Rect box{static_cast<int16_t>(body.x + kMargin), y, half, 52};
+    const fui::Rect second{static_cast<int16_t>(box.right() + toybox::kGutter), y,
+                           static_cast<int16_t>(inner - half - toybox::kGutter), 52};
+    if (box.bottom() <= list) {
+      drawAction(screen, box, "AL AZAR", ActionRandom, false);
+      drawAction(screen, second, "DESCUBRIR", ActionDiscover, false);
+    }
     y = static_cast<int16_t>(box.bottom() + 20);
   }
   // The count line before the recent trail: the frame holds 24 targets and
@@ -427,7 +431,7 @@ void buildArticleFooter(toybox::Screen& screen, const ArticleFooterModel& model)
 }
 
 int buildContents(toybox::Screen& screen, const ContentsModel& model) {
-  chrome(screen, model.title, "CLOSE", ActionClose, false, true);
+  chrome(screen, model.title, "CERRAR", ActionClose, false, true);
   const fui::Rect body = screen.body();
   int16_t y = static_cast<int16_t>(body.y + 8);
   // Room for the window line under the rows.
@@ -464,11 +468,11 @@ int buildContents(toybox::Screen& screen, const ContentsModel& model) {
   // buttons or by tapping the line.
   if (model.first > 0 || model.first + shown < model.count) {
     char where[48];
-    snprintf(where, sizeof(where), "%d-%d of %d", model.first + 1, model.first + shown, model.count);
+    snprintf(where, sizeof(where), "%d-%d de %d", model.first + 1, model.first + shown, model.count);
     const fui::Rect line{static_cast<int16_t>(body.x + kMargin), static_cast<int16_t>(body.bottom() - 34),
                          static_cast<int16_t>(body.width - kMargin * 2), 30};
     drawLine(screen, line, where, toybox::kSmallFont);
-    drawLine(screen, line, model.first + shown < model.count ? "MORE >" : "< FIRST", toybox::kSmallFont,
+    drawLine(screen, line, model.first + shown < model.count ? "MAS >" : "< INICIO", toybox::kSmallFont,
              fui::TextAlign::Right);
     screen.frame().hit(line, ActionMore);
   }

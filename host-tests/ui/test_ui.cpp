@@ -1398,7 +1398,7 @@ void heartsMenuFillsItsPanel() {
   CHECK(menu.target.drew("HEARTS"));
   CHECK(menu.target.drew("TABLE WAITING"));
   CHECK(menu.target.drew("RESUME"));
-  CHECK(menu.target.drew("TABLE: SHARP"));
+  CHECK(menu.target.drew("SHARP  0-0"));
   // The door to the rules is on the menu, and it is a label that cannot
   // truncate: "HOW TO PLAY" did not fit its button and shipped as "HOW TO P...".
   CHECK(menu.target.drew("RULES"));
@@ -6481,7 +6481,7 @@ void testTheSettingsRowsSayWhatTheyAre() {
   buildGo<goui::SettingsModel, goui::buildSettings>(computer, model);
   CHECK(computer.target.drew("OPPONENT"));
   CHECK(computer.target.drew("COMPUTER"));
-  CHECK(computer.target.drew("MEDIUM"));
+  CHECK(computer.target.drew("MEDIUM  0-0"));
   CHECK(computer.target.drew("YOU PLAY"));
   // The handicap and the board are rows of their own. The handicap used to be a
   // property of the level, so EASY meant "weaker AND two free stones" and
@@ -6786,7 +6786,7 @@ void testTheHexSettingsRowsSayWhatTheyAre() {
   CHECK(computer.target.drew("OPPONENT"));
   CHECK(computer.target.drew("COMPUTER"));
   CHECK(computer.target.drew("LEVEL"));
-  CHECK(computer.target.drew("NORMAL"));
+  CHECK(computer.target.drew("MEDIUM  0-0"));
   CHECK(computer.target.drew("YOU PLAY"));
   CHECK(computer.target.drew("BLACK"));
 
@@ -6795,7 +6795,7 @@ void testTheHexSettingsRowsSayWhatTheyAre() {
   Rendered white;
   buildHex<hexui::SettingsModel, hexui::buildSettings>(white, model);
   CHECK(white.target.drew("WHITE"));
-  CHECK(white.target.drew("HARD"));
+  CHECK(white.target.drew("HARD  0-0"));
 
   // There is no BOARD row and there must not be one: eleven is the only size
   // this game is played at here. And there is no SWAP row either -- the pie
@@ -7042,8 +7042,8 @@ void testTheHexResultDoorsKeepClearOfTheBoard() {
 // "I don't like this text, looks bloated and hard to read." The settings screen
 // now draws its title and its rows and nothing else.
 void testTheHexSettingsSayOnlyTheirRows() {
-  const char* allowed[] = {"SETTINGS", "OPPONENT", "COMPUTER", "2 PLAYERS", "LEVEL", "EASY",
-                           "NORMAL",   "HARD",     "--",       "YOU PLAY",  "BLACK", "WHITE"};
+  const char* allowed[] = {"SETTINGS",    "OPPONENT",  "COMPUTER", "2 PLAYERS", "LEVEL", "EASY  0-0",
+                           "MEDIUM  0-0", "HARD  0-0", "--",       "YOU PLAY",  "BLACK", "WHITE"};
   for (const hex::Opponent opponent : {hex::Opponent::Computer, hex::Opponent::Human}) {
     for (const hex::Level level : {hex::Level::Easy, hex::Level::Normal, hex::Level::Hard}) {
       hexui::SettingsModel model;
@@ -7280,7 +7280,7 @@ void testKnucklebonesMenuOffersItsThreeRows() {
   // The doors anchor to the bottom now, so the first row is found from the
   // content's floor rather than the header -- the same arithmetic the builder
   // uses, exercised from the other end.
-  const int listHeight = 3 * toybox::kRowHeight + 2 * (toybox::kGutter / 2) + toybox::kGutter;
+  const int listHeight = 4 * toybox::kRowHeight + 3 * (toybox::kGutter / 2) + toybox::kGutter;
   const int firstRowY = 800 - toybox::kMargin - listHeight + toybox::kRowHeight / 2;
   const fui::ActionEvent first = menu.tap(240, firstRowY);
   CHECK(first.action == knuckleui::ActionMenuRow);
@@ -13931,7 +13931,7 @@ void testWikipediaSearchRowsCarryTheirIndex() {
     CHECK(out.target.drew("WIKIPEDIA"));
     CHECK(out.target.drew("new y"));
     CHECK(out.target.drew("New Yorker"));
-    CHECK(!out.target.drew("RANDOM ARTICLE"));
+    CHECK(!out.target.drew("AL AZAR"));
     for (int i = 0; i < wikiui::kMaxResults; ++i) {
       const FakeTarget::TextRun* row = out.target.find(kTitles[i]);
       CHECK(row != nullptr);
@@ -13957,15 +13957,15 @@ void testWikipediaSearchRowsCarryTheirIndex() {
   {
     Rendered out;
     buildWikiSearch(out, home);
-    CHECK(out.target.drew("SEARCH WIKIPEDIA"));
-    CHECK(out.target.drew("RANDOM ARTICLE"));
-    CHECK(out.target.drew("CONTINUE"));
-    CHECK(out.target.drew("RECENT"));
+    CHECK(out.target.drew("BUSCAR EN WIKIPEDIA"));
+    CHECK(out.target.drew("AL AZAR"));
+    CHECK(out.target.drew("CONTINUAR"));
+    CHECK(out.target.drew("RECIENTES"));
     CHECK(out.target.drew("7,238,251 ARTICLES, MAY 2026"));
     const FakeTarget::TextRun* count = out.target.find("7,238,251 ARTICLES, MAY 2026");
     CHECK(count != nullptr);
     if (count != nullptr) CHECK(count->rect.bottom() <= 800 - 252);
-    const FakeTarget::TextRun* random = out.target.find("RANDOM ARTICLE");
+    const FakeTarget::TextRun* random = out.target.find("AL AZAR");
     CHECK(random != nullptr && tapRun(out, random).action == wikiui::ActionRandom);
     const FakeTarget::TextRun* recent = out.target.find("Ray Charles");
     CHECK(recent != nullptr);
@@ -13975,17 +13975,18 @@ void testWikipediaSearchRowsCarryTheirIndex() {
     }
     const FakeTarget::TextRun* parts = out.target.find("3 OF 46 PARTS ON THE CARD");
     CHECK(parts != nullptr && tapRun(out, parts).action == wikiui::ActionInstall);
-    // The count line is the way to a newer pack too, complete or not.
+    // The count line is only a line: there is no pack to fetch any more.
     const FakeTarget::TextRun* countLine = out.target.find(home.footer);
-    CHECK(countLine != nullptr && tapRun(out, countLine).action == wikiui::ActionInstall);
+    CHECK(countLine != nullptr && tapRun(out, countLine).action != wikiui::ActionInstall);
   }
-  // More matches than the panel holds: the last line says so, above the keys.
+  // The line under the matches (what IR does, or that there is no Wi-Fi) sits
+  // above the keys.
   wikiui::SearchModel more = model;
-  more.moreResults = true;
+  more.hint = "PULSA IR PARA BUSCAR EN WIKIPEDIA";
   {
     Rendered out;
     buildWikiSearch(out, more);
-    const FakeTarget::TextRun* keep = out.target.find("KEEP TYPING FOR MORE");
+    const FakeTarget::TextRun* keep = out.target.find("PULSA IR PARA BUSCAR EN WIKIPEDIA");
     CHECK(keep != nullptr);
     if (keep != nullptr) CHECK(keep->rect.bottom() <= 800 - 252);
   }
@@ -14018,20 +14019,36 @@ void testWikipediaSearchRowsCarryTheirIndex() {
   {
     Rendered out;
     buildWikiSearch(out, fresh);
-    CHECK(out.target.drew("CONTINUE"));
-    CHECK(out.target.drew("Open any article and it waits here."));
-    const FakeTarget::TextRun* waits = out.target.find("Open any article and it waits here.");
+    CHECK(out.target.drew("CONTINUAR"));
+    CHECK(
+        out.target.drew("Abre un art\xC3\xAD"
+                        "culo y te esperar\xC3\xA1 aqu\xC3\xAD."));
+    const FakeTarget::TextRun* waits = out.target.find(
+        "Abre un art\xC3\xAD"
+        "culo y te esperar\xC3\xA1 aqu\xC3\xAD.");
     CHECK(waits != nullptr);
     if (waits != nullptr) CHECK(tapRun(out, waits).action != wikiui::ActionContinue);
-    CHECK(out.target.drew("RANDOM ARTICLE"));
+    CHECK(out.target.drew("AL AZAR"));
     CHECK(!out.target.drew("X"));
-    // A complete pack is no dead end: the count line opens the install screen,
-    // and says so on its own line (the count plus "GET NEWER" did not fit one).
+    // With articles on the card the count line opens their list, and says so.
+    wikiui::SearchModel kept = fresh;
+    kept.manage = true;
+    {
+      Rendered saved;
+      buildWikiSearch(saved, kept);
+      const FakeTarget::TextRun* line = saved.target.find(kept.footer);
+      CHECK(line != nullptr && tapRun(saved, line).action == wikiui::ActionSaved);
+      const FakeTarget::TextRun* how = saved.target.find("TOCA PARA VER O BORRAR");
+      CHECK(how != nullptr && tapRun(saved, how).action == wikiui::ActionSaved);
+      const FakeTarget::TextRun* lists = saved.target.find("DESCUBRIR");
+      CHECK(lists != nullptr && tapRun(saved, lists).action == wikiui::ActionDiscover);
+      const FakeTarget::TextRun* any = saved.target.find("AL AZAR");
+      CHECK(any != nullptr && tapRun(saved, any).action == wikiui::ActionRandom);
+    }
+    // The count line is there and is no door to anything.
     const FakeTarget::TextRun* door = out.target.find(fresh.footer);
-    CHECK(door != nullptr && tapRun(out, door).action == wikiui::ActionInstall);
-    const FakeTarget::TextRun* hint = out.target.find("TAP HERE FOR A NEWER PACK");
-    CHECK(hint != nullptr && tapRun(out, hint).action == wikiui::ActionInstall);
-    if (door != nullptr && hint != nullptr) CHECK(hint->rect.y > door->rect.y);
+    CHECK(door != nullptr && tapRun(out, door).action != wikiui::ActionInstall);
+    CHECK(!out.target.drew("TAP HERE FOR A NEWER PACK"));
   }
   // The keyboard up with nothing typed: the doors stay, and the boxed X at
   // the field's end is what puts the keyboard down.
@@ -14041,7 +14058,7 @@ void testWikipediaSearchRowsCarryTheirIndex() {
   {
     Rendered out;
     buildWikiSearch(out, raised);
-    CHECK(out.target.drew("RANDOM ARTICLE"));
+    CHECK(out.target.drew("AL AZAR"));
     const FakeTarget::TextRun* x = out.target.find("X");
     CHECK(x != nullptr);
     if (x != nullptr) CHECK(tapRun(out, x).action == wikiui::ActionClear);
@@ -14054,7 +14071,9 @@ void testWikipediaSearchRowsCarryTheirIndex() {
   {
     Rendered out;
     buildWikiSearch(out, miss);
-    CHECK(out.target.drew("No article with that name"));
+    CHECK(
+        out.target.drew("Ning\xC3\xBAn art\xC3\xAD"
+                        "culo con ese nombre."));
   }
 }
 
@@ -14130,14 +14149,14 @@ void testWikipediaContentsRowsCarryTheHeading() {
   // wait for the next window.
   const int shown = buildWikiContents(out, model);
   CHECK(shown >= 12 && shown < 20);
-  CHECK(out.target.drew("CLOSE"));
+  CHECK(out.target.drew("CERRAR"));
   CHECK(out.target.drew("Carbon fixation"));
   CHECK(out.target.drew(kHeadings[shown - 1]));
   CHECK(!out.target.drew(kHeadings[shown]));
   char where[32];
-  snprintf(where, sizeof(where), "1-%d of 20", shown);
+  snprintf(where, sizeof(where), "1-%d de 20", shown);
   CHECK(out.target.drew(where));
-  CHECK(out.target.drew("MORE >"));
+  CHECK(out.target.drew("MAS >"));
   const FakeTarget::TextRun* lastRow = out.target.find(kHeadings[shown - 1]);
   CHECK(lastRow != nullptr);
   if (lastRow != nullptr) CHECK(lastRow->rect.bottom() <= 800 - 40);
@@ -14156,7 +14175,7 @@ void testWikipediaContentsRowsCarryTheHeading() {
     CHECK(here->rect.x >= 32);
     CHECK(here->rect.x == other->rect.x);
   }
-  const FakeTarget::TextRun* more = out.target.find("MORE >");
+  const FakeTarget::TextRun* more = out.target.find("MAS >");
   CHECK(more != nullptr && tapRun(out, more).action == wikiui::ActionMore);
   const FakeTarget::TextRun* row = out.target.find("Carbon fixation");
   CHECK(row != nullptr);
@@ -14164,7 +14183,7 @@ void testWikipediaContentsRowsCarryTheHeading() {
     const fui::ActionEvent event = tapRun(out, row);
     CHECK(event.action == wikiui::ActionHeading && event.value == 3);
   }
-  const FakeTarget::TextRun* close = out.target.find("CLOSE");
+  const FakeTarget::TextRun* close = out.target.find("CERRAR");
   CHECK(close != nullptr && tapRun(out, close).action == wikiui::ActionClose);
 }
 

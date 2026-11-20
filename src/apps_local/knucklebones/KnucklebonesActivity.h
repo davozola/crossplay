@@ -17,7 +17,9 @@
 #include <memory>
 
 #include "../link/LinkActivity.h"
+#include "../ui/SoloGame.h"
 #include "../ui/ToyboxScreen.h"
+#include "KnucklebonesBrain.h"
 #include "KnucklebonesCore.h"
 #include "KnucklebonesFlow.h"
 
@@ -58,6 +60,17 @@ class KnucklebonesActivity final : public linkplay::LinkActivity {
   // Written when a match ends, read once on entry.
   void recordResult();
   void loadHistory();
+  void loadLevel();
+  void saveLevel();
+  // A match against the device, kept so it can be left and come back to. No
+  // taking back here: a move undone would be a die rolled again.
+  void saveSolo();
+  void continueSoloMatch();
+  sologame::History<knucklebones::Game, 1> history;
+  bool hasSavedGame = false;
+  sologame::LevelStats levelStats;
+  // How hard the built-in opponent plays.
+  knucklebones::Level level = knucklebones::Level::Normal;
 
   knucklebones::Screen screen = knucklebones::Screen::Menu;
   knucklebones::Game game{};

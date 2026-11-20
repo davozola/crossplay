@@ -30,6 +30,8 @@ struct Current {
   float feels = 0;
   float wind = 0;  // km/h
   int humidity = 0;
+  int windDir = -1;  // degrees it blows from, -1 when the answer has none
+  int cloud = -1;    // cover, percent, -1 when the answer has none
   int code = 0;
   bool isDay = true;
   char time[17] = "";  // "YYYY-MM-DDTHH:MM", the place's local time

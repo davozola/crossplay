@@ -27,9 +27,12 @@ constexpr const char* kTopicWords[kTopics] = {
 constexpr const char* kLanguageNames[kLanguages] = {"ANY LANGUAGE", "C",  "C++",        "RUST",
                                                     "PYTHON",       "GO", "TYPESCRIPT", "ZIG"};
 constexpr const char* kLanguageQuery[kLanguages] = {"", "c", "cpp", "rust", "python", "go", "typescript", "zig"};
-constexpr const char* kStarNames[kStarChoices] = {"10+ STARS", "50+ STARS", "200+ STARS", "1000+ STARS"};
-constexpr int kStarFloors[kStarChoices] = {10, 50, 200, 1000};
-constexpr const char* kAgeNames[kAges] = {"NEW THIS WEEK", "NEW THIS MONTH", "NEW THIS YEAR", "ANY AGE, ACTIVE"};
+constexpr const char* kStarNames[kStarChoices] = {"10+ STARS", "50+ STARS", "200+ STARS", "1000+ STARS", "ANY STARS"};
+constexpr int kStarFloors[kStarChoices] = {10, 50, 200, 1000, 0};
+constexpr Stars kStarOrder[kStarChoices] = {Stars::Any, Stars::Ten, Stars::Fifty, Stars::TwoHundred, Stars::Thousand};
+constexpr const char* kAgeNames[kAges] = {"NEW THIS WEEK",   "NEW THIS MONTH", "NEW THIS YEAR",
+                                          "ANY AGE, ACTIVE", "RISING NOW",     "ANY AGE"};
+constexpr Age kAgeOrder[kAges] = {Age::Rising, Age::Week, Age::Month, Age::Year, Age::AnyActive, Age::Ever};
 
 template <typename E>
 int clampIndex(const E value, const int count) {
@@ -62,21 +65,21 @@ int32_t unit(const char* p, const char* end) {
   return v;
 }
 
-// A JSON string with its escapes undone, \u pairs included, as UTF-8.
-void text(const Span& v, char* dest, const size_t destCap) {
-  dest[0] = 0;
+// A JSON string with its escapes undone, \u pairs included, as UTF-8, up to
+// `cap` bytes. Line ends stay when `lines` is set and are spaces otherwise.
+void decode(const Span& v, std::string& out, const size_t cap, const bool lines) {
+  out.clear();
   if (!v.ok() || *v.p != '"') return;
-  char out[512];
-  const size_t cap = sizeof(out);
-  size_t at = 0;
-  for (const char* p = v.p + 1; p < v.end && *p != '"' && at + 5 < cap; ++p) {
+  for (const char* p = v.p + 1; p < v.end && *p != '"' && out.size() + 5 < cap; ++p) {
     if (*p != '\\' || p + 1 >= v.end) {
-      out[at++] = *p;
+      out.push_back(*p);
       continue;
     }
     ++p;
-    if (*p == 'n' || *p == 'r' || *p == 't') {
-      out[at++] = ' ';
+    if (*p == 'n') {
+      out.push_back(lines ? '\n' : ' ');
+    } else if (*p == 'r' || *p == 't') {
+      if (!lines || *p == 't') out.push_back(' ');
     } else if (*p == 'u') {
       int32_t cp = unit(p + 1, v.end);
       if (cp < 0) continue;
@@ -89,31 +92,38 @@ void text(const Span& v, char* dest, const size_t destCap) {
         }
       }
       if (cp < 0x80) {
-        out[at++] = static_cast<char>(cp);
+        out.push_back(static_cast<char>(cp));
       } else if (cp < 0x800) {
-        out[at++] = static_cast<char>(0xC0 | (cp >> 6));
-        out[at++] = static_cast<char>(0x80 | (cp & 0x3F));
+        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
       } else if (cp < 0x10000) {
-        out[at++] = static_cast<char>(0xE0 | (cp >> 12));
-        out[at++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        out[at++] = static_cast<char>(0x80 | (cp & 0x3F));
+        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
       } else {
-        out[at++] = static_cast<char>(0xF0 | (cp >> 18));
-        out[at++] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-        out[at++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        out[at++] = static_cast<char>(0x80 | (cp & 0x3F));
+        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
       }
     } else {
-      out[at++] = *p;
+      out.push_back(*p);
     }
   }
-  out[at] = 0;
-  latinOnly(out);
+}
+
+// A short JSON string as what the reading face can set, cut to fit `dest`.
+void text(const Span& v, char* dest, const size_t destCap) {
+  dest[0] = 0;
+  std::string out;
+  out.reserve(512);
+  decode(v, out, 512, false);
+  latinOnly(out.data());
   // What fits, never ending inside a two-byte letter.
-  size_t n = std::strlen(out);
+  size_t n = std::strlen(out.c_str());
   if (n > destCap - 1) n = destCap - 1;
   if (n > 0 && (static_cast<unsigned char>(out[n - 1]) & 0xC0) == 0xC0) --n;
-  std::memcpy(dest, out, n);
+  std::memcpy(dest, out.c_str(), n);
   dest[n] = 0;
 }
 
@@ -130,26 +140,70 @@ void field(std::string& out, const char* value) {
 
 }  // namespace
 
-const char* topicName(const Topic topic) { return kTopicNames[clampIndex(topic, kTopics)]; }
+const char* topicName(const Topic topic) {
+  return topic == Topic::Own ? "YOUR WORDS" : kTopicNames[clampIndex(topic, kTopics)];
+}
 const char* languageName(const Language language) { return kLanguageNames[clampIndex(language, kLanguages)]; }
 const char* starsName(const Stars stars) { return kStarNames[clampIndex(stars, kStarChoices)]; }
 const char* ageName(const Age age) { return kAgeNames[clampIndex(age, kAges)]; }
 int starsFloor(const Stars stars) { return kStarFloors[clampIndex(stars, kStarChoices)]; }
 
-bool packFilter(const Filter& filter, uint8_t out[4]) {
-  out[0] = static_cast<uint8_t>(filter.topic);
-  out[1] = static_cast<uint8_t>(filter.language);
-  out[2] = static_cast<uint8_t>(filter.stars);
-  out[3] = static_cast<uint8_t>(filter.age);
-  return true;
+Stars starsAt(const int row) { return kStarOrder[row >= 0 && row < kStarChoices ? row : 0]; }
+Age ageAt(const int row) { return kAgeOrder[row >= 0 && row < kAges ? row : 0]; }
+
+bool skipsSeen(const Filter& filter) {
+  return filter.skipSeen && filter.age != Age::AnyActive && filter.age != Age::Ever;
 }
 
-bool unpackFilter(const uint8_t in[4], Filter& out) {
-  if (in[0] >= kTopics || in[1] >= kLanguages || in[2] >= kStarChoices || in[3] >= kAges) return false;
-  out.topic = static_cast<Topic>(in[0]);
-  out.language = static_cast<Language>(in[1]);
-  out.stars = static_cast<Stars>(in[2]);
-  out.age = static_cast<Age>(in[3]);
+void tidyQuery(const char* typed, char* out, const size_t cap) {
+  size_t at = 0;
+  bool space = true;
+  for (const char* c = typed; *c != 0 && at + 1 < cap; ++c) {
+    const unsigned char u = static_cast<unsigned char>(*c);
+    if (u <= ' ' || u >= 0x7F) {
+      if (!space) out[at++] = ' ';
+      space = true;
+      continue;
+    }
+    out[at++] = *c;
+    space = false;
+  }
+  while (at > 0 && out[at - 1] == ' ') --at;
+  out[at] = 0;
+}
+
+std::string packFilter(const Filter& filter) {
+  std::string out;
+  out.push_back(static_cast<char>(filter.topic));
+  out.push_back(static_cast<char>(filter.language));
+  out.push_back(static_cast<char>(filter.stars));
+  out.push_back(static_cast<char>(filter.age));
+  out.push_back(filter.skipSeen ? 1 : 0);
+  out += filter.query;
+  return out;
+}
+
+bool unpackFilter(const std::string_view in, Filter& out) {
+  if (in.size() < 4) return false;
+  const uint8_t topic = static_cast<uint8_t>(in[0]);
+  const uint8_t language = static_cast<uint8_t>(in[1]);
+  const uint8_t stars = static_cast<uint8_t>(in[2]);
+  const uint8_t age = static_cast<uint8_t>(in[3]);
+  if (topic > static_cast<uint8_t>(Topic::Own) || language >= kLanguages || stars >= kStarChoices || age >= kAges) {
+    return false;
+  }
+  Filter read;
+  read.topic = static_cast<Topic>(topic);
+  read.language = static_cast<Language>(language);
+  read.stars = static_cast<Stars>(stars);
+  read.age = static_cast<Age>(age);
+  if (in.size() >= 5) {
+    read.skipSeen = in[4] != 0;
+    tidyQuery(std::string(in.substr(5)).c_str(), read.query, sizeof(read.query));
+  }
+  // Words of the reader's own with no words is a search for everything.
+  if (read.topic == Topic::Own && read.query[0] == 0) read.topic = Topic::Everything;
+  out = read;
   return true;
 }
 
@@ -167,23 +221,65 @@ void civilOfDay(const int32_t days, int& year, int& month, int& day) {
   year = y + (month <= 2 ? 1 : 0);
 }
 
-void searchUrl(const Filter& filter, const int32_t today, char* out, const size_t cap) {
+int32_t dayOfDate(const char* iso) {
+  int y = 0, m = 0, d = 0;
+  if (std::sscanf(iso, "%4d-%2d-%2d", &y, &m, &d) != 3 || m < 1 || m > 12 || d < 1 || d > 31) return -1;
+  // Howard Hinnant's days_from_civil.
+  y -= m <= 2 ? 1 : 0;
+  const int32_t era = (y >= 0 ? y : y - 399) / 400;
+  const uint32_t yoe = static_cast<uint32_t>(y - era * 400);
+  const uint32_t doy = (153u * static_cast<uint32_t>(m > 2 ? m - 3 : m + 9) + 2) / 5 + static_cast<uint32_t>(d) - 1;
+  const uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + static_cast<int32_t>(doe) - 719468;
+}
+
+void searchUrl(const Filter& filter, const int32_t today, const int page, char* out, const size_t cap) {
   std::string query;
   auto add = [&](const std::string& term) {
     if (!query.empty()) query.push_back('+');
     query += term;
   };
-  const char* words = kTopicWords[clampIndex(filter.topic, kTopics)];
+  if (filter.topic == Topic::Own) {
+    // The reader's words, as an address can carry them.
+    std::string typed;
+    for (const char* c = filter.query; *c != 0; ++c) {
+      const bool plain = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') ||
+                         *c == '-' || *c == '_' || *c == '.';
+      if (plain) {
+        typed.push_back(*c);
+      } else if (*c == ' ') {
+        typed.push_back('+');
+      } else {
+        char hex[4];
+        std::snprintf(hex, sizeof(hex), "%%%02X", static_cast<unsigned>(static_cast<unsigned char>(*c)));
+        typed += hex;
+      }
+    }
+    if (!typed.empty()) add(typed);
+  }
+  const char* words = filter.topic == Topic::Own ? "" : kTopicWords[clampIndex(filter.topic, kTopics)];
   if (words[0] != 0) add(std::string(words) + "+in:name,description,topics");
   const char* language = kLanguageQuery[clampIndex(filter.language, kLanguages)];
   if (language[0] != 0) add(std::string("language:") + language);
   add("stars:%3E=" + std::to_string(starsFloor(filter.stars)));
-  static constexpr int kDaysBack[kAges] = {7, 30, 365, 30};
+  static constexpr int kDaysBack[kAges] = {7, 30, 365, 30, 60, 0};
   char since[16];
-  isoDate(today - kDaysBack[clampIndex(filter.age, kAges)], since, sizeof(since));
-  add(std::string(filter.age == Age::AnyActive ? "pushed:%3E=" : "created:%3E=") + since);
-  std::snprintf(out, cap, "https://api.github.com/search/repositories?q=%s&sort=stars&order=desc&per_page=%d",
-                query.c_str(), kPerPage);
+  if (filter.age != Age::Ever) {
+    isoDate(today - kDaysBack[clampIndex(filter.age, kAges)], since, sizeof(since));
+    add(std::string(filter.age == Age::AnyActive ? "pushed:%3E=" : "created:%3E=") + since);
+  }
+  if (filter.age == Age::Rising) {
+    isoDate(today - 7, since, sizeof(since));
+    add(std::string("pushed:%3E=") + since);
+  }
+  char pageTerm[16] = "";
+  if (page > 1) std::snprintf(pageTerm, sizeof(pageTerm), "&page=%d", page % 100);
+  std::snprintf(out, cap, "https://api.github.com/search/repositories?q=%s&sort=stars&order=desc&per_page=%d%s",
+                query.c_str(), kPerPage, pageTerm);
+}
+
+void pageUrl(const char* fullName, char* out, const size_t cap) {
+  std::snprintf(out, cap, "https://github.com/%s", fullName);
 }
 
 void readmeUrl(const char* fullName, char* out, const size_t cap) {
@@ -369,6 +465,284 @@ int toggleSaved(Repo* repos, int count, const Repo& repo) {
   }
   repos[count] = repo;
   return count + 1;
+}
+
+int32_t starsPerDay(const Repo& repo, const int32_t today) {
+  const int32_t made = dayOfDate(repo.created);
+  const int32_t days = made < 0 || today <= made ? 1 : today - made;
+  return repo.stars / days;
+}
+
+void rankByPace(Repo* repos, const int count, const int32_t today) {
+  // An insertion sort: thirty at most, and equal paces keep GitHub's order.
+  for (int i = 1; i < count; ++i) {
+    const Repo moving = repos[i];
+    const int32_t pace = starsPerDay(moving, today);
+    int at = i;
+    while (at > 0 && starsPerDay(repos[at - 1], today) < pace) {
+      repos[at] = repos[at - 1];
+      --at;
+    }
+    repos[at] = moving;
+  }
+}
+
+namespace {
+
+bool sameWords(const char* a, const char* b) {
+  for (;; ++a, ++b) {
+    const char x = *a >= 'A' && *a <= 'Z' ? static_cast<char>(*a + 32) : *a;
+    const char y = *b >= 'A' && *b <= 'Z' ? static_cast<char>(*b + 32) : *b;
+    if (x != y) return false;
+    if (x == 0) return true;
+  }
+}
+
+void copyText(char* dest, const size_t cap, const std::string_view value) {
+  const size_t n = value.size() < cap - 1 ? value.size() : cap - 1;
+  std::memcpy(dest, value.data(), n);
+  dest[n] = 0;
+}
+
+}  // namespace
+
+void rememberTerm(Terms& terms, const char* term) {
+  char tidy[kQueryCap];
+  tidyQuery(term, tidy, sizeof(tidy));
+  if (tidy[0] == 0) return;
+  int at = terms.count;
+  for (int i = 0; i < terms.count; ++i) {
+    if (sameWords(terms.items[i], tidy)) at = i;
+  }
+  if (at == terms.count && terms.count == kMaxTerms) at = kMaxTerms - 1;
+  if (at == terms.count) ++terms.count;
+  for (int i = at; i > 0; --i) std::memcpy(terms.items[i], terms.items[i - 1], kQueryCap);
+  std::memcpy(terms.items[0], tidy, kQueryCap);
+}
+
+void forgetTerm(Terms& terms, const int index) {
+  if (index < 0 || index >= terms.count) return;
+  for (int i = index + 1; i < terms.count; ++i) std::memcpy(terms.items[i - 1], terms.items[i], kQueryCap);
+  --terms.count;
+  terms.items[terms.count][0] = 0;
+}
+
+std::string packTerms(const Terms& terms) {
+  std::string out;
+  for (int i = 0; i < terms.count; ++i) {
+    out += terms.items[i];
+    out.push_back('\n');
+  }
+  return out;
+}
+
+void unpackTerms(const std::string_view text, Terms& out) {
+  out = Terms{};
+  size_t at = 0;
+  while (at < text.size() && out.count < kMaxTerms) {
+    size_t end = text.find('\n', at);
+    if (end == std::string_view::npos) end = text.size();
+    tidyQuery(std::string(text.substr(at, end - at)).c_str(), out.items[out.count], kQueryCap);
+    if (out.items[out.count][0] != 0) ++out.count;
+    at = end + 1;
+  }
+}
+
+uint32_t nameHash(const char* fullName) {
+  // FNV-1a over the name in lower case: GitHub's names do not tell case apart.
+  uint32_t h = 2166136261u;
+  for (const char* c = fullName; *c != 0; ++c) {
+    const char lower = *c >= 'A' && *c <= 'Z' ? static_cast<char>(*c + 32) : *c;
+    h = (h ^ static_cast<unsigned char>(lower)) * 16777619u;
+  }
+  return h;
+}
+
+bool hasSeen(const Seen& seen, const char* fullName) {
+  const uint32_t h = nameHash(fullName);
+  for (int i = 0; i < seen.count; ++i) {
+    if (seen.names[i] == h) return true;
+  }
+  return false;
+}
+
+bool markSeen(Seen& seen, const char* fullName) {
+  if (hasSeen(seen, fullName)) return false;
+  if (seen.count == kMaxSeen) {
+    std::memmove(seen.names, seen.names + 1, sizeof(uint32_t) * (kMaxSeen - 1));
+    --seen.count;
+  }
+  seen.names[seen.count++] = nameHash(fullName);
+  return true;
+}
+
+int dropSeen(Repo* repos, const int count, const Seen& seen) {
+  int kept = 0;
+  for (int i = 0; i < count; ++i) {
+    if (hasSeen(seen, repos[i].fullName)) continue;
+    if (kept != i) repos[kept] = repos[i];
+    ++kept;
+  }
+  return kept;
+}
+
+bool isNew(const Watched& watched) {
+  return watched.tag[0] != 0 && watched.seenTag[0] != 0 && std::strcmp(watched.tag, watched.seenTag) != 0;
+}
+
+bool tidyFullName(const char* typed, char* out, const size_t cap) {
+  out[0] = 0;
+  std::string text;
+  for (const char* c = typed; *c != 0; ++c) {
+    if (static_cast<unsigned char>(*c) > ' ') text.push_back(*c);
+  }
+  const size_t host = text.find("github.com/");
+  if (host != std::string::npos) text.erase(0, host + 11);
+  while (!text.empty() && text.back() == '/') text.pop_back();
+  if (text.size() > 4 && text.compare(text.size() - 4, 4, ".git") == 0) text.erase(text.size() - 4);
+  const size_t slash = text.find('/');
+  if (slash == std::string::npos || slash == 0 || slash + 1 >= text.size()) return false;
+  // A longer address names something inside the repository; the first two parts are it.
+  const size_t second = text.find('/', slash + 1);
+  if (second != std::string::npos) text.erase(second);
+  for (const char c : text) {
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
+                    c == '_' || c == '.' || c == '/';
+    if (!ok) return false;
+  }
+  if (text.size() + 1 > cap) return false;
+  std::memcpy(out, text.c_str(), text.size() + 1);
+  return true;
+}
+
+void releaseUrl(const char* fullName, char* out, const size_t cap) {
+  std::snprintf(out, cap, "https://api.github.com/repos/%s/releases/latest", fullName);
+}
+
+void tagsUrl(const char* fullName, char* out, const size_t cap) {
+  std::snprintf(out, cap, "https://api.github.com/repos/%s/tags?per_page=1", fullName);
+}
+
+void releasePageUrl(const Watched& watched, char* out, const size_t cap) {
+  // A version with no day came from the tags, and has no release page.
+  if (watched.tag[0] != 0 && watched.published[0] != 0) {
+    std::snprintf(out, cap, "https://github.com/%s/releases/tag/%s", watched.fullName, watched.tag);
+  } else {
+    std::snprintf(out, cap, "https://github.com/%s/%s", watched.fullName, watched.tag[0] != 0 ? "tags" : "releases");
+  }
+}
+
+bool parseRelease(const char* json, const size_t len, Watched& out, std::string& notes) {
+  notes.clear();
+  const Span root = flatjson::root(json, len);
+  if (!root.ok()) return false;
+  Watched read;
+  text(member(root, "tag_name"), read.tag, sizeof(read.tag));
+  if (read.tag[0] == 0) return false;
+  text(member(root, "name"), read.title, sizeof(read.title));
+  if (std::strcmp(read.title, read.tag) == 0) read.title[0] = 0;
+  text(member(root, "published_at"), read.published, sizeof(read.published));
+  decode(member(root, "body"), notes, 24u * 1024u, true);
+  std::memcpy(out.tag, read.tag, sizeof(out.tag));
+  std::memcpy(out.title, read.title, sizeof(out.title));
+  std::memcpy(out.published, read.published, sizeof(out.published));
+  return true;
+}
+
+bool parseTags(const char* json, const size_t len, Watched& out) {
+  Span list;
+  list.p = flatjson::skipSpace(json, json + len);
+  list.end = json + len;
+  if (list.p >= list.end || *list.p != '[') return false;
+  char tag[sizeof(out.tag)] = "";
+  text(member(flatjson::element(list, 0), "name"), tag, sizeof(tag));
+  if (tag[0] == 0) return false;
+  std::memcpy(out.tag, tag, sizeof(out.tag));
+  out.title[0] = 0;
+  out.published[0] = 0;
+  return true;
+}
+
+void noteRelease(Watched& watched, const Watched& fetched, const char* today) {
+  std::memcpy(watched.tag, fetched.tag, sizeof(watched.tag));
+  std::memcpy(watched.title, fetched.title, sizeof(watched.title));
+  std::memcpy(watched.published, fetched.published, sizeof(watched.published));
+  if (watched.seenTag[0] == 0) std::memcpy(watched.seenTag, fetched.tag, sizeof(watched.seenTag));
+  copyText(watched.checked, sizeof(watched.checked), today);
+}
+
+int findWatched(const Watched* list, const int count, const char* fullName) {
+  for (int i = 0; i < count; ++i) {
+    if (sameWords(list[i].fullName, fullName)) return i;
+  }
+  return -1;
+}
+
+int toggleWatched(Watched* list, int count, const char* fullName) {
+  const int at = findWatched(list, count, fullName);
+  if (at >= 0) {
+    for (int i = at + 1; i < count; ++i) list[i - 1] = list[i];
+    return count - 1;
+  }
+  if (count >= kMaxWatched) return count;
+  list[count] = Watched{};
+  copyText(list[count].fullName, sizeof(list[count].fullName), fullName);
+  return count + 1;
+}
+
+void sortWatched(Watched* list, const int count) {
+  auto before = [](const Watched& a, const Watched& b) {
+    if (isNew(a) != isNew(b)) return isNew(a);
+    return std::strcmp(a.published, b.published) > 0;
+  };
+  for (int i = 1; i < count; ++i) {
+    const Watched moving = list[i];
+    int at = i;
+    while (at > 0 && before(moving, list[at - 1])) {
+      list[at] = list[at - 1];
+      --at;
+    }
+    list[at] = moving;
+  }
+}
+
+std::string packWatched(const Watched* list, const int count) {
+  std::string out;
+  for (int i = 0; i < count; ++i) {
+    const Watched& w = list[i];
+    field(out, w.fullName);
+    field(out, w.tag);
+    field(out, w.seenTag);
+    field(out, w.title);
+    field(out, w.published);
+    out += w.checked;
+    out.push_back('\n');
+  }
+  return out;
+}
+
+int unpackWatched(const std::string_view all, Watched* out, const int cap) {
+  int count = 0;
+  size_t at = 0;
+  while (at < all.size() && count < cap) {
+    size_t end = all.find('\n', at);
+    if (end == std::string_view::npos) end = all.size();
+    std::string_view line = all.substr(at, end - at);
+    at = end + 1;
+    Watched w;
+    char* const texts[6] = {w.fullName, w.tag, w.seenTag, w.title, w.published, w.checked};
+    const size_t caps[6] = {sizeof(w.fullName), sizeof(w.tag),       sizeof(w.seenTag),
+                            sizeof(w.title),    sizeof(w.published), sizeof(w.checked)};
+    for (int f = 0; f < 6; ++f) {
+      size_t tab = line.find('\t');
+      if (tab == std::string_view::npos) tab = line.size();
+      copyText(texts[f], caps[f], line.substr(0, tab));
+      line.remove_prefix(tab < line.size() ? tab + 1 : line.size());
+    }
+    char tidy[sizeof(w.fullName)];
+    if (tidyFullName(w.fullName, tidy, sizeof(tidy)) && findWatched(out, count, tidy) < 0) out[count++] = w;
+  }
+  return count;
 }
 
 }  // namespace discover

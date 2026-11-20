@@ -204,6 +204,8 @@ void JaipurActivity::onEnter() {
   seed = toybox::seed();
 
   loadStats();
+  loadSkill();
+  sologame::loadStats("JAIPUR", "/.crosspoint/jaipur-levels.cfg", levelStats);
   hasSavedGame = loadGame();
   goToMenu();
 }
@@ -510,7 +512,7 @@ void JaipurActivity::playOpponentTurn() {
   // The brain is handed an Observation, never the Game, so it cannot see your
   // hand. That is a property of the type, not of this call site.
   const jaipur::Observation obs = jaipur::observe(game, them);
-  const jaipur::Move move = jaipur::chooseMove(obs, jaipur::Skill::Maharaja, seed);
+  const jaipur::Move move = jaipur::chooseMove(obs, skill, seed);
 
   if (!game.apply(move)) {
     // chooseMove only ever returns something legalMoves produced, and that is
@@ -1105,11 +1107,33 @@ void JaipurActivity::refreshContinueDetail() {
 
 // --- models -----------------------------------------------------------------
 
+void JaipurActivity::loadSkill() {
+  skill = jaipur::Skill::Maharaja;
+  constexpr char kSkillPath[] = "/.crosspoint/jaipur-level.cfg";
+  if (!Storage.exists(kSkillPath)) return;
+  HalFile file;
+  uint8_t saved = 1;
+  if (!Storage.openFileForRead("JAIP", kSkillPath, file) || file.read(&saved, 1) != 1) return;
+  if (saved == 0) skill = jaipur::Skill::Merchant;
+}
+
+void JaipurActivity::saveSkill() {
+  constexpr char kSkillPath[] = "/.crosspoint/jaipur-level.cfg";
+  HalFile file;
+  if (!Storage.openFileForWrite("JAIP", kSkillPath, file)) return;
+  const uint8_t saved = skill == jaipur::Skill::Maharaja ? 1 : 0;
+  file.write(&saved, 1);
+  file.flush();
+}
+
 jaipurui::StartModel JaipurActivity::startModel() const {
   jaipurui::StartModel model;
   model.hasSavedGame = hasSavedGame;
   model.continueDetail = continueDetail;
   model.selected = menuSelected;
+  const int at = skill == jaipur::Skill::Maharaja ? 1 : 0;
+  std::snprintf(model.levelName, sizeof(model.levelName), "%s  %d-%d", at == 1 ? "HARD" : "EASY",
+                levelStats.won[at] % 10000, levelStats.lost[at] % 10000);
   model.played = played;
   model.won = won;
   return model;
@@ -1122,6 +1146,10 @@ void JaipurActivity::recordResult() {
   // matchWinner() is -1 until a seat holds two seals, and exactly one does at
   // GameOver, so this is "did the human win the match".
   if (game.matchWinner() == seat) ++won;
+  if (!inMatch()) {
+    levelStats.count(skill == jaipur::Skill::Maharaja ? 1 : 0, game.matchWinner() == seat ? 0 : 1);
+    sologame::saveStats("JAIPUR", "/.crosspoint/jaipur-levels.cfg", levelStats);
+  }
   // Straight to the card, at the finish: a wake is a chip reset, so anything
   // not written before the player looks away can be lost.
   saveStats();
@@ -1323,6 +1351,12 @@ void JaipurActivity::activateStartRow(const jaipurui::StartRow row) {
       break;
     case jaipurui::StartRow::NewGame:
       startNewGame();
+      break;
+    case jaipurui::StartRow::Level:
+      // A tap is the other one.
+      skill = skill == jaipur::Skill::Maharaja ? jaipur::Skill::Merchant : jaipur::Skill::Maharaja;
+      saveSkill();
+      requestUpdate();
       break;
     case jaipurui::StartRow::PlayNearby:
       enterLink(linkplay::GameId::Jaipur);

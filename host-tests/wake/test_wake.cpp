@@ -96,5 +96,28 @@ int main() {
     CHECK(!onTimer(s).frame);
   }
   if (failures == 0) std::printf("wake: all tests passed\n");
+  {  // a bell: armed for when it is due, rung once, and gone
+    State s = {};
+    CHECK(arm(s, 0, 0, 0, true, 1500) == 1500);
+    Due d = onTimer(s);
+    CHECK(d.bell && !d.frame && !d.casa);
+    CHECK(rearm(s, 0) == 0);
+    CHECK(!onTimer(s).bell);
+  }
+  {  // a bell behind a sooner job keeps the rest of its wait across the wake
+    State s = {};
+    CHECK(arm(s, 0, 1800, 0, true, 2500) == 1800);
+    Due d = onTimer(s);
+    CHECK(d.casa && !d.bell);
+    // The unattended re-arm does not replace the bell it is already counting.
+    CHECK(arm(s, 0, 1800, 0, false, 0) == 700);
+    d = onTimer(s);
+    CHECK(d.bell && !d.casa);
+  }
+  {  // an attended sleep with no bell clears one left over
+    State s = {};
+    arm(s, 0, 0, 0, true, 900);
+    CHECK(arm(s, 0, 0, 0, true, 0) == 0);
+  }
   return failures == 0 ? 0 : 1;
 }

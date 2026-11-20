@@ -21,6 +21,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
 #include "WeatherSave.h"
+#include "WeatherWide.h"
 
 namespace wx = weather;
 namespace fui = freeink::ui;
@@ -58,7 +59,8 @@ void WeatherActivity::onEnter() {
   quiet_.touched();
   requestUpdate();
   // Left on auto, it comes back on auto, with a fetch straight away.
-  if (autoMinutes_ > 0 && placeCount_ > 0) startJob(view_ == View::Board ? Job::Board : Job::Forecast);
+  if (autoMinutes_ > 0 && placeCount_ > 0)
+    startJob(view_ == View::Board && !(wide_ && haveForecast_) ? Job::Board : Job::Forecast);
 }
 
 void WeatherActivity::requestUpdate(const bool immediate) {
@@ -67,6 +69,7 @@ void WeatherActivity::requestUpdate(const bool immediate) {
 }
 
 void WeatherActivity::onExit() {
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
     // The teardown every Wi-Fi user in this firmware performs.
@@ -103,21 +106,26 @@ void WeatherActivity::loadState() {
 void WeatherActivity::loadAuto() {
   autoMinutes_ = 0;
   layout_ = 0;
+  wide_ = false;
+  wideLayout_ = 0;
   if (!Storage.exists(kAutoPath)) return;
   HalFile file;
-  uint8_t saved[2] = {0, 0};
-  if (!Storage.openFileForRead("WTHR", kAutoPath, file) || file.read(saved, 2) < 1) return;
+  uint8_t saved[4] = {0, 0, 0, 0};
+  if (!Storage.openFileForRead("WTHR", kAutoPath, file) || file.read(saved, 4) < 1) return;
   for (const int choice : weatherui::kAutoChoices) {
     if (choice == saved[0]) autoMinutes_ = choice;
   }
   layout_ = saved[1] <= 2 ? saved[1] : 0;
+  wide_ = saved[2] == 1;
+  wideLayout_ = saved[3] < weatherwide::kFaces ? saved[3] : 0;
 }
 
 void WeatherActivity::saveAuto() {
   HalFile file;
   if (!Storage.openFileForWrite("WTHR", kAutoPath, file)) return;
-  const uint8_t saved[2] = {static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(layout_)};
-  file.write(saved, 2);
+  const uint8_t saved[4] = {static_cast<uint8_t>(autoMinutes_), static_cast<uint8_t>(layout_),
+                            static_cast<uint8_t>(wide_ ? 1 : 0), static_cast<uint8_t>(wideLayout_)};
+  file.write(saved, 4);
   file.flush();
 }
 
@@ -162,7 +170,22 @@ void WeatherActivity::loadBoard() {
   }
 }
 
+bool WeatherActivity::onItsSide() const {
+  if (!wide_ || step_ != Step::Idle) return false;
+  // One city either way: on its side the board gives way to the chosen city.
+  return (view_ == View::Board || view_ == View::Forecast) && haveForecast_ && placeCount_ > 0;
+}
+
 void WeatherActivity::setLayout(const int layout) {
+  if (onItsSide()) {
+    // On its side the same swipe goes round its own three pages.
+    // One on from the last of the upright three is one back.
+    const int by = (layout - layout_) == 1 ? 1 : weatherwide::kFaces - 1;
+    wideLayout_ = (wideLayout_ + by) % weatherwide::kFaces;
+    saveAuto();
+    requestUpdate();
+    return;
+  }
   layout_ = ((layout % 3) + 3) % 3;
   saveAuto();
   if (layout_ == 0) {
@@ -246,6 +269,16 @@ bool WeatherActivity::saveCacheFor(const wx::Place& place, const char* body, con
 // --- network -------------------------------------------------------------------
 
 void WeatherActivity::startJob(const Job job) {
+  // With a forecast already showing and a network to join alone, the page
+  // stays: the fetch happens behind it.
+  const bool showing = view_ == View::Board || ((view_ == View::Forecast || view_ == View::Day) && haveForecast_);
+  if (job != Job::Search && showing && step_ == Step::Idle &&
+      (WiFi.status() == WL_CONNECTED || autorefresh::canJoinAlone())) {
+    quietDue_ = true;
+    quietPainted_ = false;
+    requestUpdate();
+    return;
+  }
   job_ = job;
   step_ = Step::Joining;
   showStatus("JOINING WI-FI", "", false, view_ == View::Status ? statusBack_ : view_);
@@ -256,17 +289,24 @@ void WeatherActivity::startJob(const Job job) {
     step_ = Step::Ready;
     return;
   }
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          step_ = Step::Idle;
-          job_ = Job::None;
-          showStatus("NO WI-FI", "THE FORECAST NEEDS A NETWORK. THE LAST ONE FETCHED STAYS HERE.", true, statusBack_);
-        } else {
-          step_ = Step::Ready;
-        }
-        requestUpdate();
-      });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) {
+      if (result.isCancelled) {
+        step_ = Step::Idle;
+        job_ = Job::None;
+        showStatus("NO WI-FI", "THE FORECAST NEEDS A NETWORK. THE LAST ONE FETCHED STAYS HERE.", true, statusBack_);
+      } else {
+        step_ = Step::Ready;
+      }
+      requestUpdate();
+    };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void WeatherActivity::runJob() {
@@ -393,6 +433,35 @@ void WeatherActivity::loop() {
     return;
   }
 
+  if (quietDue_ && step_ == Step::Idle) {
+    if (!quietPainted_) {
+      // The tag has to be on the panel before the radio blocks.
+      quietPainted_ = true;
+      requestUpdateAndWait();
+      return;
+    }
+    wifiActivated_ = true;
+    {
+      autorefresh::Radio radio;
+      if (radio.online()) {
+        if (view_ == View::Board && !onItsSide()) {
+          const int shown = placeCount_ < boardSize() ? placeCount_ : boardSize();
+          bool any = false;
+          for (int i = 0; i < shown; ++i) any = fetchQuietly(i) || any;
+          if (any) loadBoard();
+        } else {
+          fetchQuietly(selected_);
+        }
+      }
+    }
+    quietDue_ = false;
+    quietPainted_ = false;
+    lastFetchMs_ = static_cast<uint32_t>(millis());
+    quiet_.touched();
+    requestUpdate();
+    return;
+  }
+
   // Auto-refresh: quietly, with no status page. The radio comes up for the
   // round and goes down after it; in between the page naps.
   quiet_.noteInput(mappedInput);
@@ -428,6 +497,13 @@ void WeatherActivity::loop() {
   if (mappedInput.wasScreenTouchPressed(pressX, pressY)) pressX_ = pressX;
   if (step_ == Step::Idle && placeCount_ > 0 && (view_ == View::Forecast || view_ == View::Board)) {
     const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
+    // Up or down turns the page on its side and back.
+    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+      wide_ = !wide_;
+      saveAuto();
+      requestUpdate();
+      return;
+    }
     if (swipe == MappedInputManager::SwipeDir::Left) {
       setLayout(layout_ + 1);
       return;
@@ -503,7 +579,7 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
       break;
     case ui::ActionRefresh:
       if (placeCount_ == 0) return;
-      startJob(view_ == View::Board ? Job::Board : Job::Forecast);
+      startJob(view_ == View::Board && !(wide_ && haveForecast_) ? Job::Board : Job::Forecast);
       break;
     case ui::ActionBoardOpen:
       if (event.value < 0 || event.value >= placeCount_) return;
@@ -529,7 +605,7 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
       // Turning it on fetches straight away, which is also what joins the
       // network the timer will need.
       if (autoMinutes_ > 0 && !wifiActivated_ && placeCount_ > 0) {
-        startJob(view_ == View::Board ? Job::Board : Job::Forecast);
+        startJob(view_ == View::Board && !(wide_ && haveForecast_) ? Job::Board : Job::Forecast);
         return;
       }
       break;
@@ -614,6 +690,10 @@ void WeatherActivity::route(const fui::ActionEvent& event) {
 }
 
 void WeatherActivity::render(RenderLock&&) {
+  const bool side = onItsSide();
+  renderer.setOrientation(side ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                               : GfxRenderer::Orientation::Portrait);
+  renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
   const fui::DeviceContext device = target.deviceContext();
@@ -622,18 +702,40 @@ void WeatherActivity::render(RenderLock&&) {
   toybox::Frame frame(target, device, noInput, interactions_);
   toybox::Screen surface(frame);
 
+  const auto bindTitle = [](void* ctx, const bool huge) {
+    static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
+                                                       huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
+  };
+  const auto wideForecast = [&] {
+    weatherui::ForecastModel m;
+    m.place = &places_[selected_];
+    m.forecast = &forecast_;
+    m.fahrenheit = fahrenheit_;
+    m.autoMinutes = autoMinutes_;
+    weatherwide::draw(renderer, m, wideLayout_);
+    // The foot of every face: cities, auto, refresh.
+    const int16_t top = static_cast<int16_t>(device.height - weatherwide::kFootHeight);
+    const int16_t sideW = weatherwide::kFootSide;
+    frame.hit(fui::makeRect(0, top, sideW, weatherwide::kFootHeight), weatherui::ActionCities);
+    frame.hit(fui::makeRect(sideW, top, static_cast<int16_t>(device.width - sideW * 2), weatherwide::kFootHeight),
+              weatherui::ActionAuto);
+    frame.hit(fui::makeRect(static_cast<int16_t>(device.width - sideW), top, sideW, weatherwide::kFootHeight),
+              weatherui::ActionRefresh);
+  };
+
   switch (view_) {
     case View::Forecast: {
+      if (side) {
+        wideForecast();
+        break;
+      }
       weatherui::ForecastModel m;
       m.place = placeCount_ ? &places_[selected_] : nullptr;
       m.forecast = haveForecast_ ? &forecast_ : nullptr;
       m.fahrenheit = fahrenheit_;
       m.autoMinutes = autoMinutes_;
       m.faces.ctx = &target;
-      m.faces.bindTitle = [](void* ctx, const bool huge) {
-        static_cast<fui::GfxRendererTarget*>(ctx)->setFont(fui::GfxRendererTarget::FONT_TITLE,
-                                                           huge ? toybox::kHugeFontId : toybox::kDisplayFontId);
-      };
+      m.faces.bindTitle = bindTitle;
       weatherui::buildForecast(surface, m);
       break;
     }
@@ -641,6 +743,10 @@ void WeatherActivity::render(RenderLock&&) {
       weatherui::buildAutoPicker(surface, autoMinutes_);
       break;
     case View::Board: {
+      if (side) {
+        wideForecast();
+        break;
+      }
       weatherui::BoardModel m;
       m.places = places_;
       m.cards = cards_;
@@ -701,8 +807,11 @@ void WeatherActivity::render(RenderLock&&) {
 
   interactionsReady_ = true;
   toybox::reportOverflow(interactions_, "Weather");
-  const auto labels = mappedInput.mapLabels("Back", "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (!side) {
+    const auto labels = mappedInput.mapLabels("Back", "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  }
+  if (quietDue_) autorefresh::drawUpdatingMark(renderer);
   renderer.displayBuffer();
   quiet_.paintPending = false;
 }

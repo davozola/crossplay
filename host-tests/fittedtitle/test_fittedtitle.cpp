@@ -611,7 +611,7 @@ void heartsScoreAndMenu() {
     heartsui::buildMenu(screen, model);
     expectAtCut(sheet, paint.target, "HEARTS", toybox::kDisplayFont);
     expectAtCut(sheet, paint.target, "RULES", toybox::kUiFont);
-    expectAtCut(sheet, paint.target, model.sharp ? "TABLE: SHARP" : "TABLE: ROOKIE", toybox::kUiFont);
+    expectAtCut(sheet, paint.target, model.sharp ? "SHARP  0-0" : "ROOKIE  0-0", toybox::kUiFont);
     expectAtCut(sheet, paint.target, model.hasSave ? "TABLE WAITING" : "FOUR SEATS", toybox::kDisplayFont);
     if (model.hasSave)
       expectAtCut(sheet, paint.target, model.confirmingNew ? "DISCARD IT?" : "NEW GAME", toybox::kUiFont);

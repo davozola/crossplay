@@ -17,6 +17,7 @@
 #include "../../components/UITheme.h"
 #include "../../util/QrUtils.h"
 #include "../Shelf.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/Toybox.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxFormat.h"
@@ -1899,8 +1900,15 @@ void StudyActivity::beginSync() {
     onSyncWifi(true);
     return;
   }
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) { onSyncWifi(!result.isCancelled); });
+  {
+    // The saved network is joined behind the page; the picker is for when there is none.
+    ActivityResultHandler afterWifi = [this](const ActivityResult& result) { onSyncWifi(!result.isCancelled); };
+    if (autorefresh::joinSaved()) {
+      afterWifi(ActivityResult{});
+    } else {
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput), std::move(afterWifi));
+    }
+  }
 }
 
 void StudyActivity::onSyncWifi(const bool connected) {

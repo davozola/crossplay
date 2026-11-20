@@ -664,6 +664,53 @@ void testCaptureEndsTheRepetitionWindow() {
   CHECK(chess::repetitionCount(keys, count, position.halfmoveClock) == 1);
 }
 
+// think() against the search it replaces as the strong level, both colours,
+// from the opening and counting material when the moves run out.
+int playThinkAgainstSearch(const bool thinkIsWhite) {
+  chess::Position position;
+  chess::parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", position);
+  static chess::SearchBuffers buffers;
+  for (int ply = 0; ply < 120; ++ply) {
+    const bool thinks = position.whiteToMove == thinkIsWhite;
+    chess::Position scratch = position;
+    const chess::SearchResult r =
+        thinks ? chess::think(scratch, chess::kThinkDepth, buffers, 110000) : chess::search(scratch, 4, buffers, 60000);
+    if (!r.hasMove) {
+      chess::MoveList none;
+      chess::generateLegalMoves(position, none);
+      // Mated: the side to move lost. Stalemate is level.
+      if (!chess::isInCheck(position)) return 0;
+      return thinks ? -10000 : 10000;
+    }
+    chess::Undo undo;
+    chess::makeMove(position, r.best, undo);
+  }
+  const int forMover = chess::evaluate(position);
+  const int forWhite = position.whiteToMove ? forMover : -forMover;
+  return thinkIsWhite ? forWhite : -forWhite;
+}
+
+void testThinkIsStronger() {
+  const int asWhite = playThinkAgainstSearch(true);
+  const int asBlack = playThinkAgainstSearch(false);
+  std::printf("think v search(4): as white %+d, as black %+d centipawns\n", asWhite, asBlack);
+  CHECK(asWhite + asBlack > 200);
+
+  // The horizon: the queen can take a pawn a pawn defends. One ply sees a pawn
+  // won; following the capture sees the queen lost.
+  chess::Position position;
+  CHECK(chess::parseFen("4k3/8/2p5/3p4/8/8/3Q4/4K3 w - - 0 1", position));
+  int depth = 0;
+  const chess::SearchResult r = chess::think(position, 1, searchBuffers, 50000, &depth);
+  char text[8];
+  chess::moveToString(r.best, text);
+  CHECK(r.hasMove && std::strcmp(text, "d2d5") != 0);
+  CHECK(depth == 1);
+  // A budget too small to finish a depth still answers with a legal move.
+  const chess::SearchResult tiny = chess::think(position, chess::kThinkDepth, searchBuffers, 5);
+  CHECK(tiny.hasMove);
+}
+
 }  // namespace
 
 int main() {
@@ -684,6 +731,7 @@ int main() {
   testSearchLeavesPositionUntouched();
   testNodeBudgetStopsSearch();
   testDeeperSearchIsNotWorse();
+  testThinkIsStronger();
 
   testPositionKeyDistinguishes();
   testRepetitionCountWindow();

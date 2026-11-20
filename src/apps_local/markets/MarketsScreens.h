@@ -26,9 +26,11 @@ enum : fui::ActionId {
   ActionKey,  // value: the character on the key
   ActionSaveAmount,
   ActionRemovePosition,
-  ActionPeriod,  // value: markets::Period, for the portfolio's change
-  ActionSearch,  // type a ticker or a name
-  ActionFound,   // value: a search result, or -1 for what was typed as it stands
+  ActionPeriod,         // value: markets::Period, for the portfolio's change
+  ActionSearch,         // type a ticker or a name
+  ActionFound,          // value: a search result, or -1 for what was typed as it stands
+  ActionPortfolioPage,  // the next page of holdings
+  ActionCurrency,       // value: 0 dollars, 1 euros, for what the portfolio is counted in
 };
 
 // The slice of history the detail chart shows.
@@ -53,6 +55,12 @@ struct DashboardModel {
   // When the quotes were last fetched, by this reader's clock; -1 when not yet.
   int fetchedHour = -1;
   int fetchedMinute = 0;
+  // The portfolio's line on the page on its side; null leaves it out.
+  const markets::Portfolio* portfolio = nullptr;
+  const markets::Priced* priced = nullptr;
+  markets::Period period = markets::Period::Day;
+  double euro = 0;      // a euro in dollars; 0 when unknown
+  bool inEuro = false;  // the portfolio counted in euros
   FaceSwap faces;
 };
 
@@ -74,6 +82,8 @@ struct PortfolioModel {
   const markets::Priced* priced = nullptr;  // one for each holding
   double euro = 0;                          // a euro in dollars; 0 when unknown
   markets::Period period = markets::Period::Day;
+  int page = 0;         // of the holdings, when there are more than fit
+  bool inEuro = false;  // counted in euros, when the rate is known
   FaceSwap faces;
 };
 
