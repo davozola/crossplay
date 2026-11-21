@@ -13,9 +13,14 @@ on:
       - 'tools_local/wallpapers/**'
       - '.github/workflows/crossplay-fondos-looks.yml'
   workflow_dispatch:
+  # BUILD BRANCH ONLY: on build/* the results are kept as a draft release,
+  # which downloads through the API where the artifact store cannot be reached.
+  push:
+    branches:
+      - 'build/**'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: fondos-looks-${{ github.ref }}
@@ -55,3 +60,11 @@ jobs:
             sheet-scurve-stucki.png
             fondos-scurve-stucki.pack
           retention-days: 14
+      - name: Keep them as a draft release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "fondos-looks-${{ github.run_id }}" looks/*.png sheet-scurve-stucki.png fondos-scurve-stucki.pack \
+            --draft --target "${{ github.sha }}" --title "Fondos looks ${{ github.run_id }}" \
+            --notes "Built from ${{ github.ref_name }} at ${{ github.sha }}. Draft: a comparison, not an update."
