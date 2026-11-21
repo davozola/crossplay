@@ -7,7 +7,7 @@ so nothing is taken that the rest of the device does not already carry:
 
 | Header | From | Size | Characters |
 | --- | --- | --- | --- |
-| `deck_numeral_52.h` | `instrumentserif.woff2` | 52 | 0-9 and `|` |
+| `deck_numeral_52.h` | `instrumentserif.woff2` | 52 | 0-9, `:` and `|` |
 | `deck_italic_24.h` | `instrumentserif-italic.woff2` | 24 | A-Z a-z 0-9, space, ÁÉÍÓÚÑ áéíóúñ, `|` |
 | `deck_italic_16.h` | `instrumentserif-italic.woff2` | 16 | the same |
 

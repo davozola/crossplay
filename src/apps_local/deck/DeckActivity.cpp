@@ -1,8 +1,6 @@
 #include "DeckActivity.h"
 
 #include <BatteryMonitor.h>
-#include <EpdFont.h>
-#include <EpdFontFamily.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <Memory.h>
@@ -15,9 +13,7 @@
 #include "../presenter/PresenterLink.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTokens.h"
-#include "fonts/deck_italic_16.h"
-#include "fonts/deck_italic_24.h"
-#include "fonts/deck_numeral_52.h"
+#include "DeckFonts.h"
 
 namespace radio = presenter::link;
 
@@ -25,26 +21,14 @@ namespace {
 
 // The page is set like a printed table: Instrument Serif, the italic for the
 // template's name and the roman for each button, with the chords in Jersey,
-// which is the device's own voice. See fonts/README.md for the three cuts
-// baked for this app.
-constexpr int kNumeralFontId = 0x70B0'0D01;
-constexpr int kItalicFontId = 0x70B0'0D02;
-constexpr int kItalicSmallFontId = 0x70B0'0D03;
-EpdFont numeral52(&deck_numeral_52);
-EpdFont italic24(&deck_italic_24);
-EpdFont italic16(&deck_italic_16);
-EpdFontFamily numeralFamily(&numeral52);
-EpdFontFamily italicFamily(&italic24);
-EpdFontFamily italicSmallFamily(&italic16);
-
-// Ascender and the height of a capital (or a numeral), from the headers.
-struct Cut {
-  int ascender;
-  int cap;
-};
-constexpr Cut kNumeralCut{108, 79};
-constexpr Cut kItalicCut{50, 37};
-constexpr Cut kItalicSmallCut{33, 24};
+// which is the device's own voice.
+using deckfonts::Cut;
+using deckfonts::kItalicCut;
+using deckfonts::kItalicFontId;
+using deckfonts::kItalicSmallCut;
+using deckfonts::kItalicSmallFontId;
+using deckfonts::kNumeralCut;
+using deckfonts::kNumeralFontId;
 constexpr Cut kLabelCut{toybox::kSerifTileCut.ascender, toybox::kSerifTileCut.inkHeight};
 constexpr Cut kLabelSmallCut{toybox::kSerifSmallCut.ascender, toybox::kSerifSmallCut.inkHeight};
 constexpr Cut kSmallCut{toybox::kTileCut.ascender, toybox::kTileCut.inkHeight};
@@ -153,9 +137,7 @@ std::unique_ptr<Activity> DeckActivity::create(GfxRenderer& renderer, MappedInpu
 void DeckActivity::onEnter() {
   Activity::onEnter();
   toybox::ensureFonts(renderer);
-  renderer.insertFont(kNumeralFontId, numeralFamily);
-  renderer.insertFont(kItalicFontId, italicFamily);
-  renderer.insertFont(kItalicSmallFontId, italicSmallFamily);
+  deckfonts::ensure(renderer);
   renderer.setOrientation(GfxRenderer::Orientation::LandscapeCounterClockwise);
   view_ = loadState() ? View::Keys : View::Ask;
   radioUsed_ = radio::begin(kDeviceName, batteryPercent());

@@ -151,13 +151,26 @@ inline constexpr Template kTemplates[] = {
       {"DESDE AQUÍ", {kGui, kEnter}, {kShift, fkey(5)}},
       same("PANTALLA NEGRA", 0, letter('B')),
       same("TERMINAR", 0, kEscape)}},
-    // ON1 Photo RAW answers to single letters, the same on both systems.
+    // ON1 Photo RAW answers to single letters, the same on both systems; only
+    // its two zooms take the system's modifier.
     {"ON1 PHOTO RAW",
-     {same("EXPLORAR", 0, letter('G')), same("REVELAR", 0, letter('D')), same("EFECTOS", 0, letter('S')),
-      same("AJUSTE LOCAL", 0, letter('A')), same("VER FOTO", 0, letter('E')), same("TIRA", 0, letter('F')),
-      same("COMPARAR", 0, letter('C')), same("VER MÁSCARA", 0, letter('O')), same("OCULTAR PANELES", 0, kTab),
-      same("ME GUSTA", 0, letter('P')), same("DESCARTAR", 0, letter('X')), same("TRES ESTRELLAS", 0, digit(3)),
-      same("CINCO ESTRELLAS", 0, digit(5)), same("ANTERIOR", 0, kLeft), same("SIGUIENTE", 0, kRight)}},
+     {same("EXPLORAR", 0, letter('G')),
+      same("REVELAR", 0, letter('D')),
+      same("EFECTOS", 0, letter('S')),
+      same("AJUSTE LOCAL", 0, letter('A')),
+      same("VER FOTO", 0, letter('E')),
+      same("TIRA", 0, letter('F')),
+      same("COMPARAR", 0, letter('C')),
+      same("VER MÁSCARA", 0, letter('O')),
+      same("OCULTAR PANELES", 0, kTab),
+      same("ME GUSTA", 0, letter('P')),
+      same("DESCARTAR", 0, letter('X')),
+      same("TRES ESTRELLAS", 0, digit(3)),
+      same("CINCO ESTRELLAS", 0, digit(5)),
+      // Fit and 100% are the zooms with keys of their own; the stepped zoom is
+      // on + and -, which move between a Spanish and an English keyboard.
+      {"AJUSTAR", {kGui, digit(0)}, {kCtrl, digit(0)}},
+      {"ZOOM 100%", {kGui | kAlt, digit(0)}, {kCtrl | kAlt, digit(0)}}}},
 };
 constexpr int kTemplateCount = sizeof(kTemplates) / sizeof(kTemplates[0]);
 static_assert(sizeof(kTitles) / sizeof(kTitles[0]) == kTemplateCount, "every template has a title");
