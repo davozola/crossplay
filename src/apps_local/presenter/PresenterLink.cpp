@@ -114,13 +114,30 @@ State state() {
   return linked ? State::Linked : State::Waiting;
 }
 
-bool tap(const uint8_t usage) {
+bool tap(const uint8_t usage) { return chord(0, usage); }
+
+bool chord(const uint8_t modifiers, const uint8_t usage) {
   if (!started || !linked || !input) return false;
   uint8_t report[kReportBytes];
-  fillReport(report, usage);
+  // Modifiers go down first and come up last: some hosts read a modifier that
+  // arrives in the same report as its key as a plain key press.
+  fillReport(report, 0);
+  report[0] = modifiers;
+  if (modifiers) {
+    input->setValue(report, sizeof(report));
+    input->notify();
+    delay(8);
+  }
+  report[2] = usage;
   input->setValue(report, sizeof(report));
   input->notify();
   delay(12);
+  report[2] = 0;
+  if (modifiers) {
+    input->setValue(report, sizeof(report));
+    input->notify();
+    delay(8);
+  }
   fillReport(report, 0);
   input->setValue(report, sizeof(report));
   input->notify();
@@ -158,10 +175,15 @@ bool tap(const uint8_t usage) {
   LOG_DBG("PRS", "pretend key %02x", usage);
   return started;
 }
+bool chord(const uint8_t modifiers, const uint8_t usage) {
+  LOG_DBG("PRS", "pretend chord %02x+%02x", modifiers, usage);
+  return started;
+}
 #else
 bool begin(const char*, uint8_t) { return false; }
 State state() { return State::Failed; }
 bool tap(uint8_t) { return false; }
+bool chord(uint8_t, uint8_t) { return false; }
 #endif
 
 void end() { started = false; }

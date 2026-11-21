@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
+Sticky**. Conserva todo lo del original y añade treinta y ocho cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -30,6 +30,7 @@ Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
 | **Dots and Boxes** | Puntos y cajas: una raya por turno, y quien cierra un cuadrado se lo queda y repite. Contra el dispositivo o a dos, de 3×3 a 6×6. |
 | **Jukebox** | Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto, volumen, aleatorio y repetición desde la Sticky. Se enlaza a tu cuenta de Plex con un código en plex.tv/link y no instala nada en el reproductor. Ver [docs/jukebox.md](docs/jukebox.md). |
 | **Presenter** | Mando de diapositivas por Bluetooth: la Sticky se empareja como un teclado y pasa las de PowerPoint, Keynote o Google Slides en Mac y PC sin instalar nada. Botones grandes para avanzar y retroceder, pantalla en negro, y un reloj de la charla que arranca con la primera diapositiva y avisa a cinco y a dos minutos del final. Ver [docs/presenter.md](docs/presenter.md). |
+| **Deck** | Quince atajos por programa enviados por Bluetooth como un teclado: sistema, Chrome, Excel, Word, PowerPoint y ON1 Photo RAW, para Mac o Windows, que pregunta la primera vez. Sin instalar nada en el ordenador. |
 | **Liner Notes** | Notas de los discos de tu propia colección: por qué importa cada uno, su contexto, cómo suena, qué escuchar y con qué otros discos tuyos se relaciona, en español o en inglés. El contenido no va en el firmware: es un paquete que haces tú en el ordenador y copias a la tarjeta, y la app lo lee disco a disco. Marcas propias, álbum del día, búsqueda por letra y un botón que pone el disco en Plexamp a través del Jukebox. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
@@ -201,6 +202,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Casa**        | The room's temperature and humidity, and the last day of each as a line. |
 | **Reloj**       | A desk clock, upright or on its side, in eleven faces: ten set in ten typefaces and one written by hand.  |
 | **Presenter**   | A Bluetooth slide clicker with a talk clock that warns at five and two minutes. |
+| **Deck**        | Fifteen shortcuts per program over Bluetooth, for a Mac or Windows.     |
 | **Liner Notes** | Notes on the records in your own library, read from a pack you build and copy to the card. |
 | **Pomodoro**    | A focus timer that redraws once a minute and beeps when the session ends. |
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |

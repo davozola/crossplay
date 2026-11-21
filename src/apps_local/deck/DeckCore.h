@@ -53,9 +53,12 @@ struct Button {
 constexpr int kButtons = 15;  // five by three on its side, three by five upright
 
 struct Template {
-  const char* name;
+  const char* name;  // capitals, for lists
   Button buttons[kButtons];
 };
+
+// How each template is titled on its own page, in the order of kTemplates.
+inline constexpr const char* kTitles[] = {"Sistema", "Chrome", "Excel", "Word", "PowerPoint", "ON1 Photo RAW"};
 
 // The same letter under Command on a Mac and under Control on Windows, which
 // is most of what the two have in common.
@@ -129,7 +132,7 @@ inline constexpr Template kTemplates[] = {
       both("VIÑETAS", 'L', kShift),
       both("CENTRAR", 'E'),
       both("BUSCAR", 'F'),
-      {"COMENTARIO", {kGui | kAlt, letter('A')}, {kCtrl | kAlt, letter('M')}},
+      {"COMENTAR", {kGui | kAlt, letter('A')}, {kCtrl | kAlt, letter('M')}},
       both("CONTROL CAMBIOS", 'E', kShift),
       {"SALTO PÁGINA", {kGui, kEnter}, {kCtrl, kEnter}}}},
     {"POWERPOINT",
@@ -139,7 +142,7 @@ inline constexpr Template kTemplates[] = {
       both("DESHACER", 'Z'),
       both("REHACER", 'Y'),
       {"AGRUPAR", {kGui | kAlt, letter('G')}, {kCtrl, letter('G')}},
-      {"DESAGRUPAR", {kGui | kAlt | kShift, letter('G')}, {kCtrl | kShift, letter('G')}},
+      {"QUITAR GRUPO", {kGui | kAlt | kShift, letter('G')}, {kCtrl | kShift, letter('G')}},
       both("COPIAR FORMATO", 'C', kShift),
       both("PEGAR FORMATO", 'V', kShift),
       both("CENTRAR", 'E'),
@@ -150,23 +153,14 @@ inline constexpr Template kTemplates[] = {
       same("TERMINAR", 0, kEscape)}},
     // ON1 Photo RAW answers to single letters, the same on both systems.
     {"ON1 PHOTO RAW",
-     {same("EXPLORAR", 0, letter('G')),
-      same("REVELAR", 0, letter('D')),
-      same("EFECTOS", 0, letter('S')),
-      same("AJUSTE LOCAL", 0, letter('A')),
-      same("VER FOTO", 0, letter('E')),
-      same("TIRA", 0, letter('F')),
-      same("COMPARAR", 0, letter('C')),
-      same("VER MÁSCARA", 0, letter('O')),
-      same("OCULTAR PANELES", 0, kTab),
-      same("ME GUSTA", 0, letter('P')),
-      same("DESCARTAR", 0, letter('X')),
-      same("TRES ESTRELLAS", 0, digit(3)),
-      same("CINCO ESTRELLAS", 0, digit(5)),
-      same("ANTERIOR", 0, kLeft),
-      same("SIGUIENTE", 0, kRight)}},
+     {same("EXPLORAR", 0, letter('G')), same("REVELAR", 0, letter('D')), same("EFECTOS", 0, letter('S')),
+      same("AJUSTE LOCAL", 0, letter('A')), same("VER FOTO", 0, letter('E')), same("TIRA", 0, letter('F')),
+      same("COMPARAR", 0, letter('C')), same("VER MÁSCARA", 0, letter('O')), same("OCULTAR PANELES", 0, kTab),
+      same("ME GUSTA", 0, letter('P')), same("DESCARTAR", 0, letter('X')), same("TRES ESTRELLAS", 0, digit(3)),
+      same("CINCO ESTRELLAS", 0, digit(5)), same("ANTERIOR", 0, kLeft), same("SIGUIENTE", 0, kRight)}},
 };
 constexpr int kTemplateCount = sizeof(kTemplates) / sizeof(kTemplates[0]);
+static_assert(sizeof(kTitles) / sizeof(kTitles[0]) == kTemplateCount, "every template has a title");
 
 // The keyboard report for a chord: modifiers, reserved, six keys.
 constexpr int kReportBytes = 8;
@@ -213,17 +207,38 @@ inline int describe(const Chord chord, const Os os, char* out, const int cap) {
   }
   const char* name = key;
   switch (u) {
-    case kEnter: name = "INTRO"; break;
-    case kEscape: name = "ESC"; break;
-    case kTab: name = "TAB"; break;
-    case kSpace: name = "ESPACIO"; break;
-    case kRight: name = "DCHA"; break;
-    case kLeft: name = "IZDA"; break;
-    case kUp: name = "ARRIBA"; break;
-    case kDown: name = "ABAJO"; break;
-    case kPageUp: name = "RE PAG"; break;
-    case kPageDown: name = "AV PAG"; break;
-    default: break;
+    case kEnter:
+      name = "INTRO";
+      break;
+    case kEscape:
+      name = "ESC";
+      break;
+    case kTab:
+      name = "TAB";
+      break;
+    case kSpace:
+      name = "ESPACIO";
+      break;
+    case kRight:
+      name = "DCHA";
+      break;
+    case kLeft:
+      name = "IZDA";
+      break;
+    case kUp:
+      name = "ARRIBA";
+      break;
+    case kDown:
+      name = "ABAJO";
+      break;
+    case kPageUp:
+      name = "RE PAG";
+      break;
+    case kPageDown:
+      name = "AV PAG";
+      break;
+    default:
+      break;
   }
   put(name);
   out[n < cap ? n : cap - 1] = 0;

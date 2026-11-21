@@ -25,6 +25,7 @@
 #include "clock/ClockActivity.h"
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
+#include "deck/DeckActivity.h"
 #include "discover/DiscoverActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "fmguide/FmGuideActivity.h"
@@ -263,13 +264,16 @@ constexpr shelf::Item kApps[] = {
      "Con el sensor de la propia Sticky, leído cada tres segundos, y las últimas 24 horas en una gráfica."},
     {"RELOJ", &icon_clock_32, &ClockActivity::create, 0, false, "Reloj de mesa, once esferas",
      "En vertical u horizontal, en claro u oscuro: editorial, puntos, póster, grotesca, noir, terminal, cápsula, "
-     "píxel, palabras y analógico."},
+     "píxel, palabras, analógico y una escrita a mano."},
     {"LINER NOTES", &icon_linernotes_32, &LinerNotesActivity::create, 3, false, "Notas de tus discos",
      "Lo que conviene saber de los discos de tu propia colección, en español o inglés, leído de un paquete en la "
      "tarjeta que haces tú. Abre el disco en Plexamp a través del Jukebox."},
     {"PRESENTER", &icon_presenter_32, &PresenterActivity::create, 3, false, "Mando para diapositivas",
      "La Sticky se empareja por Bluetooth como un teclado y pasa las diapositivas de PowerPoint, Keynote o Google "
      "Slides, sin instalar nada. Con reloj de la charla y avisos a cinco y a dos minutos del final."},
+    {"DECK", &icon_deck_32, &DeckActivity::create, 3, false, "Atajos de teclado por Bluetooth",
+     "Quince atajos por programa (sistema, Chrome, Excel, Word, PowerPoint y ON1 Photo RAW), para Mac o Windows, "
+     "enviados como un teclado Bluetooth, sin instalar nada."},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create, 3, false, "Temporizador de concentración",
      "Sesiones de trabajo y descanso; pita al acabar cada una."},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create, 3, false, "Reloj de ajedrez",
