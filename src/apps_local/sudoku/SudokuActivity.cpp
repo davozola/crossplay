@@ -25,11 +25,13 @@ constexpr int kStateVersion = 1;
 constexpr int kStateBytes = 768;
 #endif
 
-// How long a finger rests on a cell before it pencils. The same 400ms
-// Minesweeper uses to plant a flag, deliberately: this is the device's one
-// two-gesture idiom and two apps disagreeing about its timing would make it
-// feel broken in whichever one the player met second.
-constexpr unsigned long kPencilHoldMs = 400;
+// How long a finger rests on a cell before it pencils. The same as
+// Minesweeper's flag hold, deliberately: this is the device's one two-gesture
+// idiom and two apps disagreeing about its timing would make it feel broken in
+// whichever one the player met second. 500ms, the system long press: at 400ms
+// a firm, deliberate tap -- the natural press on a panel with no instant
+// feedback -- pencilled a mark instead of writing the digit.
+constexpr unsigned long kPencilHoldMs = 500;
 
 sk::Level nextLevel(const sk::Level level) {
   return static_cast<sk::Level>((static_cast<int>(level) + 1) % sk::kLevelCount);
@@ -404,7 +406,10 @@ void SudokuActivity::loop() {
         holdCell = cell;
         holdSinceMs = millis();
         holdFired = false;
-        requestUpdate();
+        // No repaint here. Shading the cell on touch-down cost a panel refresh
+        // on EVERY tap, plus another to unshade it, and a tap landing while
+        // those were still on the glass read as a tap that did nothing. The
+        // pencil mark appearing is the feedback a hold needs.
       } else if (!holdFired && millis() - holdSinceMs >= kPencilHoldMs) {
         holdFired = true;
         notice = nullptr;
@@ -414,10 +419,7 @@ void SudokuActivity::loop() {
       }
       return;
     }
-    if (holdCell != sk::kNoCell) {
-      holdCell = sk::kNoCell;
-      requestUpdate();
-    }
+    holdCell = sk::kNoCell;
   }
 
   fui::InputSnapshot input;
@@ -428,8 +430,12 @@ void SudokuActivity::loop() {
     input.touchX = static_cast<int16_t>(tapX);
     input.touchY = static_cast<int16_t>(tapY);
   }
-  if (!input.touchReleased || !interactionsReady) return;
+  if (!input.touchReleased) return;
 
+  // The grid and the pad are hit-tested against geometry, not the interaction
+  // table, so they do not wait for interactionsReady: that flag is down for
+  // the whole of every rebuild, and a digit tapped in that window used to be
+  // dropped. surfaceRevealed() is their gate.
   if (screen == sk::Screen::Board) {
     const fui::DeviceContext device = toybox::makeTarget(renderer).deviceContext();
     int cell = 0;
@@ -451,6 +457,7 @@ void SudokuActivity::loop() {
       return;
     }
   }
+  if (!interactionsReady) return;
 
   const fui::ActionEvent event = interactions.route(input);
   switch (event.action) {
@@ -554,7 +561,6 @@ void SudokuActivity::render(RenderLock&&) {
     case sk::Screen::Board: {
       sudokuui::BoardModel model;
       model.game = game;
-      model.holdCell = holdCell;
       model.generating = generating;
       model.notice = notice;
       sudokuui::buildBoard(surface, model);
