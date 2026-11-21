@@ -13,9 +13,9 @@ namespace {
 EpdFont numeral52(&deck_numeral_52);
 EpdFont italic24(&deck_italic_24);
 EpdFont italic16(&deck_italic_16);
-EpdFontFamily numeralFamily(&numeral52);
-EpdFontFamily italicFamily(&italic24);
-EpdFontFamily italicSmallFamily(&italic16);
+EpdFontFamily numeralFamily(52, &numeral52);
+EpdFontFamily italicFamily(24, &italic24);
+EpdFontFamily italicSmallFamily(16, &italic16);
 
 }  // namespace
 
