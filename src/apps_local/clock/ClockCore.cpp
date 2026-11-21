@@ -33,8 +33,8 @@ int clampDigit(const int d) { return d < 0 ? 0 : (d > 9 ? 9 : d); }
 }  // namespace
 
 const char* faceName(const int face) {
-  static const char* const kNames[kFaces] = {"EDITORIAL", "PUNTOS",  "POSTER", "GROTESCA", "NOIR",
-                                             "TERMINAL",  "CAPSULA", "PIXEL",  "PALABRAS", "ANALOGICO"};
+  static const char* const kNames[kFaces] = {"EDITORIAL", "PUNTOS", "POSTER",   "GROTESCA",  "NOIR",  "TERMINAL",
+                                             "CAPSULA",   "PIXEL",  "PALABRAS", "ANALOGICO", "SLOPPY"};
   return kNames[face < 0 ? 0 : (face >= kFaces ? kFaces - 1 : face)];
 }
 

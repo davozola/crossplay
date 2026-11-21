@@ -1,0 +1,57 @@
+# FORK FILE. Rebuilds the wallpaper pack from the museum's originals and shows
+# each look beside the others, because that cannot be done where the pictures
+# cannot be fetched and should not be judged from a description.
+#
+# Runs when a pull request touches the wallpaper tools, or by hand. It commits
+# nothing: the comparison sheets and the candidate pack are artifacts, and a
+# person decides whether the pack in the tree changes.
+name: CrossPlay wallpaper looks
+
+on:
+  pull_request:
+    paths:
+      - 'tools_local/wallpapers/**'
+      - '.github/workflows/crossplay-fondos-looks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fondos-looks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  looks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pillow numpy
+      - name: Fetch the originals from the Art Institute of Chicago
+        run: python3 tools_local/wallpapers/fetch_originals.py originals
+      - name: The same pictures in each look
+        # Ten of the sixty-six, two from each part of the pack: prints with
+        # flat colour, fine engraving, and soft etched skies.
+        run: >
+          python3 tools_local/wallpapers/compare_looks.py originals looks
+          2941 13255 26577 18876 11039 28260 44743 7358 79461 22753
+      - name: The candidate pack (S-curve, Stucki)
+        run: >
+          python3 tools_local/wallpapers/make_pack.py originals
+          --tone scurve --dither stucki --out fondos-scurve-stucki.pack --sheet sheet-scurve-stucki.png
+      - name: The pack as the tree builds it, to prove the originals are the same
+        run: |
+          python3 tools_local/wallpapers/make_pack.py originals --out fondos-classic.pack
+          cmp fondos-classic.pack src/apps_local/fondos/fondos.pack && echo "classic pack reproduces the tree's" || echo "::warning::classic pack differs from the tree's (the museum's files or Pillow have moved)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fondos-looks
+          path: |
+            looks/
+            sheet-scurve-stucki.png
+            fondos-scurve-stucki.pack
+          retention-days: 14

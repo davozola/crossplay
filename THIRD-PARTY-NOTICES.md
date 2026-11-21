@@ -25,6 +25,17 @@ notice and permission notice in all copies, and the icons are rasterised into
 bitmaps at build time, so this entry is how that notice reaches a flashed
 device.
 
+**SloppyDigits**, MIT (copyright notices in that repository's `LICENSE`), from
+[0x1abin/crossmux](https://github.com/0x1abin/crossmux) `lib/SloppyDigits`.
+The hand-drawn numerals of Reloj's SLOPPY face, carried unchanged in
+`src/apps_local/clock/sloppy/`.
+
+**epaper-image-convert**, MIT, Copyright (c) 2026 Wei-Ning Huang, from
+[aitjcize/epaper-image-convert](https://github.com/aitjcize/epaper-image-convert),
+the converter behind esp32-photoframe. Its S-curve and its Stucki, Burkes and
+Sierra diffusion kernels are rewritten in `tools_local/wallpapers/tone.py`,
+which runs when the wallpaper pack is built and is not itself on the device.
+
 **Noto Sans Symbols 2**, SIL Open Font License 1.1. The Solitaire suit glyphs
 are drawn from it. Full text at `src/apps_local/solitaire/art/OFL.txt`, with the
 derivation documented in `src/apps_local/solitaire/art/README.md`.
