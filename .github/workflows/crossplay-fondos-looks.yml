@@ -13,9 +13,14 @@ on:
       - 'tools_local/wallpapers/**'
       - '.github/workflows/crossplay-fondos-looks.yml'
   workflow_dispatch:
+  # BUILD BRANCH ONLY: on build/* the results are kept as a draft release,
+  # which downloads through the API where the artifact store cannot be reached.
+  push:
+    branches:
+      - 'build/**'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: fondos-looks-${{ github.ref }}
@@ -37,12 +42,11 @@ jobs:
         # Ten of the sixty-six, two from each part of the pack: prints with
         # flat colour, fine engraving, and soft etched skies.
         run: >
-          python3 tools_local/wallpapers/compare_looks.py originals looks
-          2941 13255 26577 18876 11039 28260 44743 7358 79461 22753
-      - name: The candidate pack (S-curve, Stucki)
+          python3 tools_local/wallpapers/compare_looks.py originals looks 2941
+      - name: The candidate pack (Stucki)
         run: >
           python3 tools_local/wallpapers/make_pack.py originals
-          --tone scurve --dither stucki --out fondos-scurve-stucki.pack --sheet sheet-scurve-stucki.png
+          --dither stucki --out fondos-stucki.pack --sheet sheet-stucki.png
       - name: The pack as the tree builds it, to prove the originals are the same
         run: |
           python3 tools_local/wallpapers/make_pack.py originals --out fondos-classic.pack
@@ -52,6 +56,14 @@ jobs:
           name: fondos-looks
           path: |
             looks/
-            sheet-scurve-stucki.png
-            fondos-scurve-stucki.pack
+            sheet-stucki.png
+            fondos-stucki.pack
           retention-days: 14
+      - name: Keep them as a draft release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "fondos-looks-${{ github.run_id }}" sheet-stucki.png fondos-stucki.pack \
+            --draft --target "${{ github.sha }}" --title "Fondos looks ${{ github.run_id }}" \
+            --notes "Built from ${{ github.ref_name }} at ${{ github.sha }}. Draft: a comparison, not an update."
