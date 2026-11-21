@@ -25,6 +25,11 @@ notice and permission notice in all copies, and the icons are rasterised into
 bitmaps at build time, so this entry is how that notice reaches a flashed
 device.
 
+**SloppyDigits**, MIT (copyright notices in that repository's `LICENSE`), from
+[0x1abin/crossmux](https://github.com/0x1abin/crossmux) `lib/SloppyDigits`.
+The hand-drawn numerals of Reloj's SLOPPY face, carried unchanged in
+`src/apps_local/clock/sloppy/`.
+
 **Noto Sans Symbols 2**, SIL Open Font License 1.1. The Solitaire suit glyphs
 are drawn from it. Full text at `src/apps_local/solitaire/art/OFL.txt`, with the
 derivation documented in `src/apps_local/solitaire/art/README.md`.

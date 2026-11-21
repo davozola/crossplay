@@ -6,6 +6,11 @@ full range of greys, and dithered to black and white; the pack is those as
 one-bit BMP files, one after another, behind a list of what they are.
 
     python3 tools_local/wallpapers/make_pack.py <folder with NNN.jpg and elegidos.json> [--sheet out.png] [--out file]
+        [--tone none|scurve] [--dither pillow|floyd|stucki|burkes|sierra]
+
+--tone and --dither choose the look (tone.py, after esp32-photoframe). Left
+out, the pack is built the way the one in the tree was: no curve, Pillow's own
+Floyd-Steinberg. fetch_originals.py fills the folder from the museum.
 
 Needs Pillow. Writes src/apps_local/fondos/fondos.pack.
 
@@ -20,6 +25,9 @@ import sys
 import unicodedata
 
 from PIL import Image, ImageFilter, ImageOps
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tone import KERNELS, diffuse, scurve  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "src", "apps_local", "fondos", "fondos.pack")
@@ -69,7 +77,7 @@ def trimmed(im):
     return im.crop((max(0, l - pad), max(0, t - pad), min(im.width, r + pad), min(im.height, b + pad)))
 
 
-def picture(path, focus, trim=True):
+def picture(path, focus, trim=True, tone="none", dither="pillow"):
     im = ImageOps.exif_transpose(Image.open(path)).convert("L")
     if trim:
         im = trimmed(im)
@@ -80,7 +88,11 @@ def picture(path, focus, trim=True):
     top = round((im.height - H) * focus)
     im = im.crop((left, top, left + W, top + H))
     im = ImageOps.autocontrast(im, cutoff=1)
-    return im.convert("1", dither=Image.FLOYDSTEINBERG)
+    if tone == "scurve":
+        im = scurve(im)
+    if dither == "pillow":
+        return im.convert("1", dither=Image.FLOYDSTEINBERG)
+    return diffuse(im, dither)
 
 
 def bmp(im):
@@ -96,6 +108,10 @@ def bmp(im):
 def main():
     folder = sys.argv[1]
     out_path = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else OUT
+    tone = sys.argv[sys.argv.index("--tone") + 1] if "--tone" in sys.argv else "none"
+    dither = sys.argv[sys.argv.index("--dither") + 1] if "--dither" in sys.argv else "pillow"
+    if tone not in ("none", "scurve") or (dither != "pillow" and dither not in KERNELS):
+        sys.exit("unknown --tone %r or --dither %r" % (tone, dither))
     chosen = json.load(open(os.path.join(folder, "elegidos.json")))
     chosen.sort(key=lambda c: (ORDER.index(c["kind"]) if c["kind"] in ORDER else 9, c.get("artist") or "", c["id"]))
     texts, pictures, sheet = [], [], []
@@ -104,7 +120,7 @@ def main():
         if not os.path.exists(path):
             print("missing %s" % path)
             continue
-        im = picture(path, c.get("focus", 0.5), c.get("trim", True))
+        im = picture(path, c.get("focus", 0.5), c.get("trim", True), tone, dither)
         pictures.append(bmp(im))
         texts.append(latin(short_title(c.get("title")), 56) + latin(c.get("artist") or "", 40))
         sheet.append(im)

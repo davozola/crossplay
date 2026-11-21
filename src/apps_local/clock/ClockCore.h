@@ -9,7 +9,7 @@
 
 namespace clockcore {
 
-constexpr int kFaces = 10;
+constexpr int kFaces = 11;
 const char* faceName(int face);
 
 // One stroke of a numeral, in a box 1 wide and 1.6 tall with y downwards.
