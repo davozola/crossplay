@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <optional>
 
@@ -25,6 +26,8 @@
 #include "../hackernews/HackerNewsCore.h"
 #include "../hackernews/HackerNewsRows.h"
 #include "../hackernews/HackerNewsScreens.h"
+#include "../news/NewsScreens.h"
+#include "../ui/AutoRefresh.h"
 #include "../ui/Toybox.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxIcons.h"
@@ -44,6 +47,11 @@ constexpr const char* kDir = "/.crosspoint/rss";
 constexpr const char* kFeedsPath = "/.crosspoint/rss/feeds.tsv";
 constexpr const char* kPostsPath = "/.crosspoint/rss/posts.tsv";
 constexpr const char* kReadPath = "/.crosspoint/rss/read.txt";
+constexpr const char* kTextSizePath = "/.crosspoint/rss/textsize.cfg";
+// When the feeds were last read, seconds since 1970.
+constexpr const char* kRefreshedPath = "/.crosspoint/rss/refreshed.txt";
+// Opening the app reads the feeds unasked only this long after the last time.
+constexpr uint32_t kAutoRefreshSeconds = 2 * 60 * 60;
 // One file per post the feed carried words for, named by the post's id.
 constexpr const char* kBodiesDir = "/.crosspoint/rss/posts";
 
@@ -129,10 +137,17 @@ void RssActivity::onEnter() {
   feedFilter_ = -1;
   phase_ = Phase::List;
   viewStale_ = true;
-  // The list goes up first, from the card, so there is something to read
-  // whatever the radio says. With feeds to read, the first loop pass asks for
-  // the radio and reads them; with none, nothing touches the radio at all.
-  refreshOnFirstPass_ = !feeds_.empty();
+  frontPage_ = 0;
+  menuPage_ = 0;
+  std::string size;
+  if (readText(kTextSizePath, 8, size) && size[0] >= '0' && size[0] <= '2') {
+    textSize_ = static_cast<uint8_t>(size[0] - '0');
+  }
+  // The front goes up first, from the card, so there is something to read
+  // whatever the radio says. The first loop pass reads the feeds only when
+  // they are due and a saved network can be joined with no picker; Refresh
+  // is always a tap away.
+  refreshOnFirstPass_ = !feeds_.empty() && refreshDue();
   LOG_INF("RSS", "opened: %d feeds, %d posts, %d read, %d saved", static_cast<int>(feeds_.size()),
           static_cast<int>(posts_.size()), static_cast<int>(read_.ids().size()),
           static_cast<int>(library_.articles().size()));
@@ -226,6 +241,16 @@ void RssActivity::pruneBodies() {
   if (removed > 0) LOG_INF("RSS", "pruned %d post files", removed);
 }
 
+bool RssActivity::refreshDue() const {
+  if (posts_.empty()) return true;
+  if (!autorefresh::canJoinAlone()) return false;
+  const uint32_t now = nowOrZero();
+  std::string text;
+  if (now == 0 || !readText(kRefreshedPath, 32, text)) return true;
+  const uint32_t last = static_cast<uint32_t>(std::strtoul(text.c_str(), nullptr, 10));
+  return last == 0 || now < last || now - last >= kAutoRefreshSeconds;
+}
+
 // --- The radio -----------------------------------------------------------
 
 void RssActivity::ensureConnected(const Pending what) {
@@ -273,13 +298,13 @@ void RssActivity::request(const Pending what) {
     busyMessage_.clear();
     switch (what) {
       case Pending::Refresh:
-        busyHeadline_ = "REFRESHING";
+        busyHeadline_ = "Reading your feeds";
         break;
       case Pending::Article:
-        busyHeadline_ = "OPENING";
+        busyHeadline_ = "Opening the post";
         break;
       default:
-        busyHeadline_ = "JOINING";
+        busyHeadline_ = "Joining Wi-Fi";
         break;
     }
   }
@@ -430,8 +455,6 @@ void RssActivity::adopt(const std::vector<rss::Post>& fresh) {
     posts_ = rss::combine(feeds_, posts_, fresh);
     read_.retainOnly(posts_);
     viewStale_ = true;
-    // The row it named has moved.
-    selected_ = -1;
   }
   saveFeeds();
   savePosts();
@@ -451,10 +474,10 @@ void RssActivity::refreshAll() {
     {
       RenderLock lock(*this);
       phase_ = Phase::Busy;
-      busyHeadline_ = "REFRESHING";
-      char progress[32];
-      std::snprintf(progress, sizeof(progress), "%d of %d", i + 1, count);
-      busyMessage_ = feeds_[static_cast<size_t>(i)].title + "\n" + progress;
+      busyHeadline_ = "Reading your feeds";
+      char progress[48];
+      std::snprintf(progress, sizeof(progress), ", feed %d of %d. ", i + 1, count);
+      busyMessage_ = feeds_[static_cast<size_t>(i)].title + progress + "What was read last time stays on the card.";
       busyStoppable_ = true;
     }
     requestUpdateAndWait();
@@ -483,6 +506,7 @@ void RssActivity::refreshAll() {
   busyStoppable_ = false;
   LOG_INF("RSS", "refresh: %d of %d feeds read, %d failed%s", answered, count, failed, stopRefresh_ ? ", stopped" : "");
   adopt(fresh);
+  if (!stopRefresh_ && now != 0) writeText(kRefreshedPath, std::to_string(static_cast<unsigned long>(now)));
   stopRefresh_ = false;
   {
     RenderLock lock(*this);
@@ -510,7 +534,7 @@ void RssActivity::loop() {
         break;
       case Pending::Article:
         if (!fetchArticle()) {
-          showNotice(hn::kUnreachableHeadline, "Could not reach the site. Saved posts still work.", false);
+          showNotice("Could not reach it", "The site did not answer. Saved posts still read.");
         }
         break;
       case Pending::Phone:
@@ -534,6 +558,7 @@ void RssActivity::loop() {
       case Phase::Reading:
       case Phase::Notice:
       case Phase::Busy:
+      case Phase::Menu:
         returnToList();
         return;
       case Phase::Phone:
@@ -541,11 +566,9 @@ void RssActivity::loop() {
         returnToList();
         return;
       case Phase::List:
-        // Back walks out one layer at a time: a narrowed list to the feeds, any
-        // other tab to every post, every post out of the app.
-        if (feedFilter_ >= 0) {
-          showTab(rssui::Tab::Feeds);
-        } else if (tab_ != rssui::Tab::All) {
+        // Back walks out one layer at a time: one feed or the saved shelf to
+        // every post, every post out of the app.
+        if (tab_ != rssui::Tab::All) {
           showTab(rssui::Tab::All);
         } else {
           shelf::leave(renderer, mappedInput);
@@ -554,23 +577,35 @@ void RssActivity::loop() {
     }
   }
 
-  // A vertical swipe pages, the same way round as in Hacker News.
+  // A vertical swipe pages. Sideways it turns the page of a post, and on the
+  // front steps to the next feed. A swipe from the left edge is Back and never
+  // reaches here.
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
+  const bool left = swipe == MappedInputManager::SwipeDir::Left;
+  const bool right = swipe == MappedInputManager::SwipeDir::Right;
   const bool next = mappedInput.wasReleased(MappedInputManager::Button::Down) ||
                     mappedInput.wasReleased(MappedInputManager::Button::PageForward) ||
                     swipe == MappedInputManager::SwipeDir::Up;
   const bool prev = mappedInput.wasReleased(MappedInputManager::Button::Up) ||
                     mappedInput.wasReleased(MappedInputManager::Button::PageBack) ||
                     swipe == MappedInputManager::SwipeDir::Down;
-  if (next || prev) {
-    if (phase_ == Phase::Reading) {
-      turnPage(next ? 1 : -1);
-      return;
-    }
-    if (phase_ == Phase::List) {
+  if (phase_ == Phase::Reading && (next || prev || left || right)) {
+    turnPage(next || left ? 1 : -1);
+    return;
+  }
+  if (phase_ == Phase::List) {
+    if (next || prev) {
       pageList(next ? 1 : -1);
       return;
     }
+    if (left || right) {
+      stepView(left ? 1 : -1);
+      return;
+    }
+  }
+  if (phase_ == Phase::Menu && (next || prev)) {
+    pageMenu(next ? 1 : -1);
+    return;
   }
 
   int tapX = 0;
@@ -582,6 +617,13 @@ void RssActivity::loop() {
   input.touchY = static_cast<int16_t>(tapY);
   const fui::ActionEvent event = interactions_.route(input);
 
+  // A tap on the post itself turns the page: the right half forward, the left
+  // half back.
+  if (phase_ == Phase::Reading && event.action == fui::NO_ACTION) {
+    turnPage(tapX >= renderer.getScreenWidth() / 2 ? 1 : -1);
+    return;
+  }
+
   switch (event.action) {
     case rssui::ActionOpenPost:
       if (tab_ == rssui::Tab::Saved) {
@@ -590,17 +632,27 @@ void RssActivity::loop() {
         openPost(event.value);
       }
       break;
-    case rssui::ActionOpenFeed:
-      openFeed(event.value);
+    case rssui::ActionMenu: {
+      {
+        RenderLock lock(*this);
+        phase_ = Phase::Menu;
+        menuSeek_ = true;
+      }
+      requestUpdate();
       break;
-    case rssui::ActionShowAll:
-      showTab(rssui::Tab::All);
+    }
+    case rssui::ActionView:
+      showView(event.value);
       break;
-    case rssui::ActionShowFeeds:
-      showTab(rssui::Tab::Feeds);
+    case rssui::ActionNext:
+      if (phase_ == Phase::Menu) {
+        pageMenu(1);
+      } else if (phase_ == Phase::List) {
+        pageList(1);
+      }
       break;
-    case rssui::ActionShowSaved:
-      showTab(rssui::Tab::Saved);
+    case rssui::ActionRefresh:
+      if (!feeds_.empty()) ensureConnected(Pending::Refresh);
       break;
     case rssui::ActionAddFeeds:
       // The phone screen needs the radio, so the picker comes first when it is
@@ -611,19 +663,27 @@ void RssActivity::loop() {
       stopPhone();
       returnToList();
       break;
-    case hnui::ActionPagePrev:
-      turnPage(-1);
+    case newsui::ActionTextSize: {
+      {
+        RenderLock lock(*this);
+        textSize_ = static_cast<uint8_t>((textSize_ + 1) % 3);
+        restoreAt_ = paging_.lines > 0
+                         ? static_cast<int>(static_cast<uint64_t>(paging_.topOf(page_)) * 1000 / paging_.lines)
+                         : 0;
+      }
+      writeText(kTextSizePath, std::string(1, static_cast<char>('0' + textSize_)));
+      requestUpdate();
       break;
-    case hnui::ActionPageNext:
-      turnPage(1);
+    }
+    case newsui::ActionFavourite:
+      if (!readerKey_.empty() && library_.contains(readerKey_)) {
+        unsaveCurrent();
+      } else {
+        saveCurrent();
+      }
       break;
-    case hnui::ActionSave:
-      saveCurrent();
-      break;
-    case hnui::ActionUnsave:
-      unsaveCurrent();
-      break;
-    case hnui::ActionNoticeBack:
+    case newsui::ActionBack:
+    case rssui::ActionNoticeBack:
       returnToList();
       break;
     default:
@@ -636,10 +696,9 @@ void RssActivity::loop() {
 void RssActivity::showTab(const rssui::Tab tab) {
   {
     RenderLock lock(*this);
-    tab_ = tab;
+    tab_ = tab == rssui::Tab::Feeds ? rssui::Tab::All : tab;
     feedFilter_ = -1;
-    topIndex_ = 0;
-    selected_ = -1;
+    frontPage_ = 0;
     phase_ = Phase::List;
     viewStale_ = true;
   }
@@ -652,10 +711,39 @@ void RssActivity::openFeed(const int feedIndex) {
     RenderLock lock(*this);
     tab_ = rssui::Tab::Feeds;
     feedFilter_ = feedIndex;
-    topIndex_ = 0;
-    selected_ = -1;
+    frontPage_ = 0;
+    phase_ = Phase::List;
     viewStale_ = true;
   }
+  requestUpdate();
+}
+
+void RssActivity::showView(const int view) {
+  if (view == rssui::kViewAll) {
+    showTab(rssui::Tab::All);
+  } else if (view == rssui::kViewSaved) {
+    showTab(rssui::Tab::Saved);
+  } else {
+    openFeed(view - rssui::kViewFirstFeed);
+  }
+}
+
+int RssActivity::currentView() const {
+  if (tab_ == rssui::Tab::Saved) return rssui::kViewSaved;
+  return tab_ == rssui::Tab::Feeds && feedFilter_ >= 0 ? rssui::kViewFirstFeed + feedFilter_ : rssui::kViewAll;
+}
+
+void RssActivity::stepView(const int delta) {
+  const int views = rssui::kViewFirstFeed + static_cast<int>(feeds_.size());
+  showView((currentView() + delta + views) % views);
+}
+
+void RssActivity::pageMenu(const int delta) {
+  const int views = rssui::kViewFirstFeed + static_cast<int>(feeds_.size());
+  const int perPage = menuRowsPerPage_ > 0 ? menuRowsPerPage_ : 1;
+  const int pages = (views + perPage - 1) / perPage;
+  if (pages <= 1) return;
+  menuPage_ = (menuPage_ + delta + pages) % pages;
   requestUpdate();
 }
 
@@ -684,9 +772,6 @@ void RssActivity::rebuildView() {
     view_.reserve(static_cast<size_t>(count));
     // Newest kept first.
     for (int i = count - 1; i >= 0; --i) view_.push_back(i);
-  } else if (tab_ == rssui::Tab::Feeds && feedFilter_ < 0) {
-    view_.reserve(feeds_.size());
-    for (size_t i = 0; i < feeds_.size(); ++i) view_.push_back(static_cast<int>(i));
   } else {
     const std::string key = feedFilter_ >= 0 ? rss::keyFor(feeds_[static_cast<size_t>(feedFilter_)].url) : "";
     view_.reserve(posts_.size());
@@ -694,15 +779,35 @@ void RssActivity::rebuildView() {
       if (key.empty() || posts_[i].feed == key) view_.push_back(static_cast<int>(i));
     }
   }
+  // Opening a post turns its headline from bold to plain, which can change how
+  // many lines it takes, so the pages are measured again from the one on
+  // screen: the earlier starts still stand.
+  if (frontPage_ < static_cast<int>(pageStarts_.size())) {
+    pageStarts_.resize(static_cast<size_t>(frontPage_) + 1);
+  } else {
+    pageStarts_.clear();
+    frontPage_ = 0;
+  }
+  if (!pageStarts_.empty() && pageStarts_.back() >= static_cast<int>(view_.size())) {
+    pageStarts_.clear();
+    frontPage_ = 0;
+  }
   viewStale_ = false;
 }
 
 void RssActivity::pageList(const int delta) {
-  const int count = static_cast<int>(view_.size());
-  if (count <= 0 || visibleRows_ <= 0) return;
-  const int pages = shelfui::pageCountFor(count, visibleRows_);
-  if (pages <= 1) return;
-  topIndex_ = shelfui::pageStep(shelfui::pageFor(topIndex_, visibleRows_), pages, delta) * visibleRows_;
+  {
+    RenderLock lock(*this);
+    if (delta > 0) {
+      // render() adds the start of the page after the one it drew, when there
+      // is one; the last page turns over to the first.
+      frontPage_ = frontPage_ + 1 < static_cast<int>(pageStarts_.size()) ? frontPage_ + 1 : 0;
+    } else if (frontPage_ > 0) {
+      --frontPage_;
+    } else {
+      return;
+    }
+  }
   requestUpdate();
 }
 
@@ -720,7 +825,6 @@ void RssActivity::openPost(const int viewIndex) {
   const int index = viewAt(viewIndex);
   if (index < 0 || index >= static_cast<int>(posts_.size())) return;
   const rss::Post& post = posts_[static_cast<size_t>(index)];
-  selected_ = viewIndex;
   openPostIndex_ = index;
   readingSaved_ = false;
   // Opened is read, whether or not the words then arrive: the dot answers
@@ -746,7 +850,7 @@ void RssActivity::openPost(const int viewIndex) {
       showDocument(post, summary, kNoteNotAPage);
       return;
     }
-    showNotice("NOT READABLE HERE", "That post is a link to something only a browser can open.", true);
+    showNotice("Not readable here", "That post is a link to something only a browser can open.");
     return;
   }
   ensureConnected(Pending::Article);
@@ -787,8 +891,8 @@ bool RssActivity::fetchArticle() {
       showDocument(post, summary, kNoteNotText);
       return true;
     }
-    showNotice("NOT READABLE HERE",
-               "That page came back with no article in it. Whatever is there needs a browser to see.", true);
+    showNotice("Not readable here",
+               "That page came back with no article in it. Whatever is there needs a browser to see.");
     return true;
   }
   std::string words;
@@ -813,8 +917,9 @@ void RssActivity::showSummaryOffline() {
 void RssActivity::showDocument(const rss::Post& post, const std::string& words, const char* note) {
   {
     RenderLock lock(*this);
-    // The headline again, because the band cuts a long one; then whose it is and
-    // when, which nothing else on the reader says.
+    // What the shelf keeps: the headline, whose it is and when, then the words.
+    // The page sets the headline itself and carries the byline in its top
+    // line, so it reads the document from after both.
     document_ = post.title;
     document_ += "\n\n";
     const int feed = feedIndexForKey(post.feed);
@@ -825,15 +930,17 @@ void RssActivity::showDocument(const rss::Post& post, const std::string& words, 
       document_ += byline;
       document_ += "\n\n";
     }
+    bodyOffset_ = document_.size();
     document_ += words;
     if (note != nullptr) {
       document_ += "\n\n";
       document_ += note;
     }
     readerTitle_ = post.title;
-    topLine_ = 0;
-    lineCount_ = 0;
-    visibleLines_ = 0;
+    readerSection_ = byline.empty() ? "RSS" : byline;
+    page_ = 0;
+    restoreAt_ = -1;
+    paging_ = news::Paging{};
     saveFailedNotice_ = false;
     phase_ = Phase::Reading;
   }
@@ -849,21 +956,22 @@ void RssActivity::openSaved(const int viewIndex) {
   const hn::SavedArticle& article = saved[static_cast<size_t>(index)];
   std::string text;
   if (!library_.readArticle(article, text)) {
-    showNotice("NOT THERE", "That post is in the list but its words are missing from the card.", false);
+    showNotice("Not there", "That post is in the list but its words are missing from the card.");
     return;
   }
   {
     RenderLock lock(*this);
-    selected_ = viewIndex;
-    // Saved exactly as it was shown -- headline, byline and all -- so it is
-    // shown again as it is.
     document_ = utf8FoldTypography(text);
     readerTitle_ = article.title;
+    // Saved with its headline first, which the page sets itself.
+    const std::string lead = utf8FoldTypography(article.title) + "\n\n";
+    bodyOffset_ = document_.compare(0, lead.size(), lead) == 0 ? lead.size() : 0;
+    readerSection_ = "Saved";
     readerKey_ = article.url;
     readingSaved_ = true;
-    topLine_ = 0;
-    lineCount_ = 0;
-    visibleLines_ = 0;
+    page_ = 0;
+    restoreAt_ = -1;
+    paging_ = news::Paging{};
     saveFailedNotice_ = false;
     phase_ = Phase::Reading;
   }
@@ -879,7 +987,7 @@ void RssActivity::saveCurrent() {
     saved = library_.save(readerKey_, readerTitle_, document_);
   }
   if (!saved) {
-    // Said over the page rather than instead of it; see Hacker News's card #40.
+    // Said over the page, in its top line, rather than instead of it.
     saveFailedNotice_ = true;
     requestUpdate();
     return;
@@ -900,22 +1008,22 @@ void RssActivity::unsaveCurrent() {
     if (readingSaved_) {
       readingSaved_ = false;
       phase_ = Phase::List;
-      selected_ = -1;
     }
   }
   requestUpdate();
 }
 
 void RssActivity::turnPage(const int delta) {
-  if (phase_ != Phase::Reading || visibleLines_ == 0) return;
-  saveFailedNotice_ = false;
-  const uint32_t span = visibleLines_;
-  const uint32_t maxTop = lineCount_ > span ? lineCount_ - span : 0;
-  if (delta > 0) {
-    topLine_ = topLine_ + span > maxTop ? maxTop : topLine_ + span;
+  if (phase_ != Phase::Reading) return;
+  const uint32_t pages = paging_.pages();
+  if (delta > 0 && page_ + 1 < pages) {
+    ++page_;
+  } else if (delta < 0 && page_ > 0) {
+    --page_;
   } else {
-    topLine_ = topLine_ > span ? topLine_ - span : 0;
+    return;
   }
+  saveFailedNotice_ = false;
   requestUpdate();
 }
 
@@ -932,12 +1040,11 @@ void RssActivity::returnToList() {
   requestUpdate();
 }
 
-void RssActivity::showNotice(const char* headline, const char* message, const bool unreadable) {
+void RssActivity::showNotice(const char* headline, const char* message) {
   {
     RenderLock lock(*this);
     noticeHeadline_ = headline;
     noticeMessage_ = message;
-    noticeUnreadable_ = unreadable;
     phase_ = Phase::Notice;
   }
   requestUpdate();
@@ -978,7 +1085,7 @@ void RssActivity::startPhone() {
   server_ = makeUniqueNoThrow<RssServer>(desk_);
   if (!server_ || !server_->begin()) {
     stopPhone();
-    showNotice("NO LUCK", "The reader could not open its web server. Try again in a moment.", false);
+    showNotice("No luck", "The reader could not open its web server. Try again in a moment.");
     return;
   }
 #ifdef SIMULATOR
@@ -1055,8 +1162,10 @@ void RssActivity::removeFeed(const rss::Request& request) {
   {
     RenderLock lock(*this);
     feeds_.erase(at);
+    // The front may have been narrowed to it, or to a feed after it.
     feedFilter_ = -1;
-    if (tab_ == rssui::Tab::Feeds) topIndex_ = 0;
+    if (tab_ == rssui::Tab::Feeds) tab_ = rssui::Tab::All;
+    frontPage_ = 0;
     phoneStatus_ = "Removed " + title + ".";
   }
   // Its posts go with it; adopt() drops the posts of a feed no longer here.
@@ -1126,190 +1235,214 @@ void RssActivity::addFeed() {
 
 void RssActivity::render(RenderLock&&) {
   renderer.clearScreen();
-  const toybox::Faces faces = phase_ == Phase::Reading ? toybox::readerFaces() : toybox::readingFaces();
-  fui::GfxRendererTarget target = toybox::makeTarget(renderer, faces);
-  const fui::DeviceContext device = target.deviceContext();
+  // Two sets of faces, because a target draws from three: the page (small
+  // serif, the reading serif at the reader's size, the display serif) and the
+  // heads (small reading serif, bold serif, large bold serif). NEWS's own.
+  const int readingFace = phase_ != Phase::Reading ? toybox::kReadingMidFontId
+                          : textSize_ == 0         ? toybox::kReadingSmallFontId
+                          : textSize_ == 2         ? toybox::kReadingFontId
+                                                   : toybox::kReadingMidFontId;
+  fui::GfxRendererTarget page =
+      toybox::makeTarget(renderer, toybox::Faces{toybox::kSerifSmallFontId, readingFace, toybox::kSerifTitleFontId});
+  fui::GfxRendererTarget heads = toybox::makeTarget(
+      renderer,
+      toybox::Faces{toybox::kReadingSmallFontId, toybox::kReadingBoldSmallFontId, toybox::kReadingBoldFontId});
+  const fui::DeviceContext device = page.deviceContext();
   const fui::ThemeTokens& tokens = toybox::themeTokens();
+  const rssui::Ink ink{page, heads, tokens};
   const fui::InputSnapshot noInput{};
   interactionsReady_ = false;
-  toybox::Frame frame(target, device, noInput, interactions_);
+  toybox::Frame frame(page, device, noInput, interactions_);
   toybox::Screen screen(frame);
   const char* what = "RSS";
 
   switch (phase_) {
     case Phase::Busy: {
-      hnui::NoticeModel model;
-      model.band = "RSS";
+      rssui::NoticeModel model;
       model.headline = busyHeadline_.c_str();
       model.message = busyMessage_.c_str();
       // A refresh can take a while across many feeds, and the left-edge swipe
       // that is Back is not written anywhere, so the screen carries the way
       // out. A single fetch is over before a finger could reach it.
       if (busyStoppable_) {
-        model.actionLabel = "STOP";
+        model.actionLabel = "Stop";
         model.action = rssui::ActionStopRefresh;
       }
-      hnui::buildNotice(screen, model);
+      rssui::buildNotice(screen, ink, model);
       what = "RSS busy";
       break;
     }
 
     case Phase::List: {
       if (viewStale_) rebuildView();
-      const bool feedsList = tab_ == rssui::Tab::Feeds && feedFilter_ < 0;
       const bool saved = tab_ == rssui::Tab::Saved;
-      const int16_t rowHeight = feedsList ? rssui::feedRowHeight(target, tokens) : rssui::postRowHeight(target, tokens);
-      const fui::Rect band = feedsList ? rssui::feedsBand(device) : rssui::postsBand(device);
-      visibleRows_ = fui::listVisibleRows(band, rowHeight, tokens.listRowGap);
+      const bool narrowed = tab_ == rssui::Tab::Feeds && feedFilter_ >= 0;
       const int count = static_cast<int>(view_.size());
-      if (visibleRows_ > 0) {
-        // Onto a page boundary, never onto "the last screenful"; see the
-        // same clamp in HackerNewsActivity::render for the bug that cost.
-        const int pages = shelfui::pageCountFor(count, visibleRows_);
-        const int maxTop = pages > 0 ? (pages - 1) * visibleRows_ : 0;
-        topIndex_ = std::min(std::max(topIndex_, 0), maxTop);
-      }
+      if (pageStarts_.empty()) pageStarts_.push_back(0);
+      if (frontPage_ >= static_cast<int>(pageStarts_.size())) frontPage_ = 0;
+      const int first = pageStarts_[static_cast<size_t>(frontPage_)];
 
-      // Only the rows this page shows are built, fitted and handed over.
-      const rssui::PageWindow page = rssui::pageWindow(count, visibleRows_, topIndex_);
-      const int first = page.first;
-      const int window = page.count;
-      labels_.assign(static_cast<size_t>(window), std::string());
-      values_.assign(static_cast<size_t>(window), std::string());
-      items_.assign(static_cast<size_t>(window), fui::ListItem{});
-      fui::TextStyle titleStyle = tokens.bodyText;
-      titleStyle.maxLines = feedsList ? 1 : 2;
-      const fui::TextStyle footnote = rssui::footnoteStyle(tokens);
-      const int16_t feedTitleWidth = rssui::feedTitleWidth(target, device, tokens);
-      // A post's headline gets whatever its own site name leaves.
-      const auto fitPost = [&](const char* title, const std::string& site, const size_t slot) {
-        values_[slot] =
-            site.empty() ? std::string() : toybox::fitLines(target, site.c_str(), rssui::postSiteWidth(), 1, footnote);
-        const int16_t siteWidth =
-            values_[slot].empty() ? 0 : target.measureText(footnote.font, values_[slot].c_str(), footnote).width;
-        labels_[slot] =
-            toybox::fitLines(target, title, rssui::postTitleWidth(device, tokens, siteWidth), 2, titleStyle);
-      };
+      // Only the rows a page could hold are built and measured.
+      const int window = std::max(0, std::min(count - first, rssui::kMaxRows));
+      std::vector<std::string> kickers(static_cast<size_t>(window));
+      std::vector<rssui::Row> rows(static_cast<size_t>(window));
       for (int i = 0; i < window; ++i) {
         const size_t slot = static_cast<size_t>(i);
         const int index = view_[static_cast<size_t>(first + i)];
-        fui::ListItem& item = items_[slot];
-        item.actionValue = static_cast<int16_t>(first + i);
-        if (feedsList) {
-          const rss::Feed& feed = feeds_[static_cast<size_t>(index)];
-          labels_[slot] = toybox::fitLines(target, feed.title.c_str(), feedTitleWidth, 1, titleStyle);
-          const int unread = rss::unreadCount(posts_, read_, rss::keyFor(feed.url));
-          if (feed.failed) {
-            values_[slot] = "FAILED";
-          } else if (unread > 0) {
-            values_[slot] = std::to_string(unread);
-          }
-        } else if (saved) {
+        if (saved) {
           const hn::SavedArticle& article = library_.articles()[static_cast<size_t>(index)];
-          fitPost(article.title.c_str(), siteForSaved(article.url), slot);
-          item.icon = rssui::readMark();
+          rows[slot].title = article.title.c_str();
+          kickers[slot] = siteForSaved(article.url);
         } else {
           const rss::Post& post = posts_[static_cast<size_t>(index)];
-          // Narrowed to one feed, the band already names the site, so its
-          // rows give that room to the headline.
-          const int feed = feedFilter_ >= 0 ? -1 : feedIndexForKey(post.feed);
-          fitPost(post.title.c_str(),
-                  feed >= 0 ? rss::shortName(feeds_[static_cast<size_t>(feed)].title) : std::string(), slot);
-          item.icon = read_.contains(post.id) ? rssui::readMark() : rssui::unreadMark();
+          rows[slot].title = post.title.c_str();
+          rows[slot].unread = !read_.contains(post.id);
+          // Narrowed to one feed, the masthead already names the site.
+          const int feed = narrowed ? -1 : feedIndexForKey(post.feed);
+          if (feed >= 0) kickers[slot] = rss::shortName(feeds_[static_cast<size_t>(feed)].title);
+          const std::string date = rss::formatDate(post.date);
+          if (!date.empty()) kickers[slot] += kickers[slot].empty() ? date : ", " + date;
         }
       }
-      // A second pass, because the strings above must stop moving before a
-      // ListItem points at them.
-      for (int i = 0; i < window; ++i) {
-        items_[static_cast<size_t>(i)].label = labels_[static_cast<size_t>(i)].c_str();
-        items_[static_cast<size_t>(i)].value = values_[static_cast<size_t>(i)].c_str();
-      }
+      // A second pass, because the strings must stop moving before a row
+      // points at them.
+      for (int i = 0; i < window; ++i) rows[static_cast<size_t>(i)].kicker = kickers[static_cast<size_t>(i)].c_str();
 
-      rssui::ListModel model;
-      model.tab = tab_;
-      if (feedFilter_ >= 0) {
-        bandTitle_ = feeds_[static_cast<size_t>(feedFilter_)].title;
-        model.title = bandTitle_.c_str();
-        model.narrowed = true;
-      } else {
-        model.title = feedsList ? "FEEDS" : (saved ? "SAVED" : "RSS");
+      int unread = 0;
+      if (!saved) {
+        for (const int index : view_) {
+          if (!read_.contains(posts_[static_cast<size_t>(index)].id)) ++unread;
+        }
       }
-      model.items = items_.empty() ? nullptr : items_.data();
-      model.count = count;
-      model.windowFirst = first;
-      model.windowCount = window;
-      model.topIndex = topIndex_;
-      model.selected = selected_;
+      char right[24] = "";
+      if (unread > 0) std::snprintf(right, sizeof(right), "%d NEW", unread);
+
+      rssui::FrontModel model;
+      model.title = narrowed ? feeds_[static_cast<size_t>(feedFilter_)].title.c_str() : (saved ? "Saved" : "RSS");
+      model.right = right;
+      model.canRefresh = !feeds_.empty() && !saved;
+      model.rows = rows.empty() ? nullptr : rows.data();
+      model.count = window;
+      model.first = first;
+      model.page = frontPage_ + 1;
+      const int fits = window > 0 ? rssui::frontFit(ink, device, rows.data(), window) : 0;
+      model.more = first + fits < count;
+      if (model.more && static_cast<int>(pageStarts_.size()) == frontPage_ + 1) pageStarts_.push_back(first + fits);
       if (count == 0) {
-        const rssui::Empty empty = rssui::emptyFor(tab_, !feeds_.empty(), feedFilter_ >= 0);
+        const rssui::Empty empty = rssui::emptyFor(tab_, !feeds_.empty());
         model.emptyHeadline = empty.headline;
         model.emptyMessage = empty.message;
         model.emptyActionLabel = empty.actionLabel;
         model.emptyAction = empty.action;
       }
-      if (feedsList) {
-        rssui::buildFeeds(screen, model);
-        what = "RSS feeds";
-      } else {
-        rssui::buildPosts(screen, model);
-        what = saved ? "RSS saved" : "RSS posts";
+      rssui::buildFront(screen, ink, model);
+      what = saved ? "RSS saved" : "RSS posts";
+      break;
+    }
+
+    case Phase::Menu: {
+      const int views = rssui::kViewFirstFeed + static_cast<int>(feeds_.size());
+      menuRowsPerPage_ = rssui::menuRows(ink, device);
+      const int pages = (views + menuRowsPerPage_ - 1) / menuRowsPerPage_;
+      if (menuSeek_) {
+        menuSeek_ = false;
+        menuPage_ = currentView() / menuRowsPerPage_;
       }
+      if (menuPage_ >= pages) menuPage_ = 0;
+      const int first = menuPage_ * menuRowsPerPage_;
+      const int window = std::min(views - first, menuRowsPerPage_);
+      std::vector<std::string> counts(static_cast<size_t>(window));
+      std::vector<rssui::MenuRow> rows(static_cast<size_t>(window));
+      for (int i = 0; i < window; ++i) {
+        const size_t slot = static_cast<size_t>(i);
+        const int view = first + i;
+        rows[slot].view = view;
+        rows[slot].current = view == currentView();
+        int count = 0;
+        if (view == rssui::kViewAll) {
+          rows[slot].name = "All posts";
+          for (const rss::Post& post : posts_) {
+            if (!read_.contains(post.id)) ++count;
+          }
+        } else if (view == rssui::kViewSaved) {
+          rows[slot].name = "Saved";
+          count = static_cast<int>(library_.articles().size());
+        } else {
+          const rss::Feed& feed = feeds_[static_cast<size_t>(view - rssui::kViewFirstFeed)];
+          rows[slot].name = feed.title.c_str();
+          if (feed.failed) {
+            counts[slot] = "no answer";
+          } else {
+            count = rss::unreadCount(posts_, read_, rss::keyFor(feed.url));
+          }
+        }
+        if (count > 0) counts[slot] = std::to_string(count);
+      }
+      for (int i = 0; i < window; ++i) {
+        if (!counts[static_cast<size_t>(i)].empty()) {
+          rows[static_cast<size_t>(i)].right = counts[static_cast<size_t>(i)].c_str();
+        }
+      }
+      char right[24];
+      std::snprintf(right, sizeof(right), "%d %s", static_cast<int>(feeds_.size()),
+                    feeds_.size() == 1 ? "FEED" : "FEEDS");
+      rssui::MenuModel model;
+      model.right = right;
+      model.rows = rows.data();
+      model.count = window;
+      model.page = menuPage_ + 1;
+      model.pages = pages;
+      rssui::buildMenu(screen, ink, model);
+      what = "RSS menu";
       break;
     }
 
     case Phase::Reading: {
-      const fui::Rect body = hnui::readerBody(device);
-      const int16_t lineHeight = target.lineHeight(tokens.bodyText.font);
-      visibleLines_ = fui::textAreaVisibleLines(body, lineHeight);
-      hnui::ReaderBody bodyText;
-      bodyText.text = document_.c_str();
-      bodyText.style = tokens.bodyText;
-      bodyText.wrap = &wrap_;
-      lineCount_ = hnui::readerLineCount(target, device, bodyText);
-      const uint32_t measured = lineCount_;
-      const uint32_t pages = visibleLines_ > 0 ? (lineCount_ + visibleLines_ - 1) / visibleLines_ : 1;
-      const uint32_t page = visibleLines_ > 0 ? topLine_ / visibleLines_ + 1 : 1;
-      std::snprintf(pageLabel_, sizeof(pageLabel_), "%lu/%lu", static_cast<unsigned long>(page),
-                    static_cast<unsigned long>(pages < 1 ? 1 : pages));
-
-      hnui::ReaderModel model;
+      const char* body = document_.c_str() + std::min(bodyOffset_, document_.size());
+      const newsui::StoryMetrics m = newsui::storyMetrics(ink, device, readerTitle_.c_str());
+      fui::TextStyle bodyStyle;
+      bodyStyle.font = fui::FONT_SLOT_BODY;
+      bodyStyle.maxLines = 255;
+      paging_.lines = wrap_.lineCount(page, m.body.width, body, bodyStyle);
+      paging_.first = m.firstLines;
+      paging_.rest = m.restLines;
+      if (restoreAt_ >= 0) {
+        page_ = paging_.pageOf(static_cast<uint32_t>(static_cast<uint64_t>(paging_.lines) * restoreAt_ / 1000));
+        restoreAt_ = -1;
+      }
+      if (page_ >= paging_.pages()) page_ = paging_.pages() - 1;
+      std::snprintf(pageLabel_, sizeof(pageLabel_), "%lu / %lu", static_cast<unsigned long>(page_ + 1),
+                    static_cast<unsigned long>(paging_.pages()));
+      newsui::StoryModel model;
+      model.section = saveFailedNotice_ ? "Not saved: the card is full." : readerSection_.c_str();
       model.title = readerTitle_.c_str();
-      model.topLine = topLine_;
+      model.body = body;
+      model.wrap = &wrap_;
+      model.topLine = paging_.topOf(page_);
+      model.firstPage = page_ == 0;
       model.pageLabel = pageLabel_;
-      model.hasSwap = false;
-      model.canPagePrev = topLine_ > 0;
-      model.canPageNext = lineCount_ > topLine_ + visibleLines_;
-      model.canSave = !readerKey_.empty();
-      model.saved = model.canSave && library_.contains(readerKey_);
-      model.saveNotice = saveFailedNotice_ ? "Not saved: the card is full." : nullptr;
-      lineCount_ = hnui::buildReader(screen, model, bodyText);
-      if (lineCount_ != measured) requestUpdate();
-      what = "RSS reader";
+      model.favourite = !readerKey_.empty() && library_.contains(readerKey_);
+      newsui::buildStory(screen, ink, model);
+      what = "RSS story";
       break;
     }
 
     case Phase::Notice: {
-      hnui::NoticeModel model;
-      model.band = "RSS";
+      rssui::NoticeModel model;
       model.headline = noticeHeadline_.c_str();
       model.message = noticeMessage_.c_str();
-      model.mark = noticeUnreadable_ ? &icon_unreadable_32 : nullptr;
-      // Every notice here goes back to the list: there are no comments to
-      // offer the way Hacker News's unreadable notice does.
-      const hnui::NoticeControl control = hnui::noticeControl(false);
-      model.actionLabel = control.label;
-      model.action = control.action;
-      hnui::buildNotice(screen, model);
+      model.actionLabel = "Back";
+      model.action = rssui::ActionNoticeBack;
+      rssui::buildNotice(screen, ink, model);
       what = "RSS notice";
       break;
     }
 
     case Phase::Phone: {
       rssui::PhoneModel model;
-      model.url = phoneUrl_.c_str();
       model.readable = phoneReadable_.c_str();
       model.status = phoneStatus_.c_str();
-      const fui::Rect qr = rssui::buildPhone(screen, model);
+      const fui::Rect qr = rssui::buildPhone(screen, ink, model);
       QrUtils::drawQrCode(renderer, Rect{qr.x, qr.y, qr.width, qr.height}, phoneUrl_);
       what = "RSS phone";
       break;
@@ -1318,7 +1451,5 @@ void RssActivity::render(RenderLock&&) {
 
   interactionsReady_ = true;
   toybox::reportOverflow(interactions_, what);
-  const auto labels = mappedInput.mapLabels("Back", "", "Up", "Down");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }

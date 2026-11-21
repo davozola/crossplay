@@ -8,31 +8,41 @@ tell a reader.
 
 - **On the shelf** as RSS, the last row of the Apps folder (appended, so no
   existing row moved under a thumb that knew where it was).
+- **It is set like NEWS**, a page of a paper rather than the fork's black band
+  and boxed rows (davozola fork, 2026-11-21): a serif masthead over a double
+  rule, headlines set whole and divided by hairlines, the controls in one quiet
+  line at the foot.
 - **The first screen is every post from every feed**, newest first, with the
-  site's name at the right of each row, the way Hacker News's front page carries
-  its comment counts. A dot in front of a headline means the post has not been
-  opened. The last post opened is drawn inverted, as Hacker News marks it.
-- **ALL, FEEDS, SAVED** along the foot, filled where you are. FEEDS lists the
-  sites with how many of each one's posts are unread, or FAILED when the last
-  refresh did not reach it; tapping one narrows the list to that site, its name
-  in the band. Over a narrowed list FEEDS stays filled and stays live, because it
-  is the way back to the list of feeds.
-- **Feeds are added from a phone**, the way Notes takes its typing. ADD FEEDS
-  (on the empty first screen) or ADD OR REMOVE (on FEEDS) joins Wi-Fi, serves one
-  page and shows a QR code with the address under it. On the page a person pastes
-  either a site's address or a feed's, and removes feeds. The panel says what
-  happened in a sentence: "Adding kottke.org...", "Added Kottke.", "No feed at
-  that address."
-- **Refresh happens when the app opens**, over Wi-Fi, and at no other time.
-  Nothing runs in the background or asleep. Declining the Wi-Fi picker is not
-  leaving: the list read last time is on the card and opens as it was.
-- **Reading** is Hacker News's reader with no second view: the band carries the
-  headline, the page and SAVE; the footer is two page arrows. A post the feed
-  carried whole (`content:encoded`, Atom `<content>`) is read off the card. Any
-  other post is fetched through the extractor Hacker News uses (r.jina.ai) and
-  judged by Hacker News's readability gate.
+  site's name and the date in a small line over each headline. An unread post
+  is bold behind a square; an opened one is the plain face. The masthead says
+  how many are new.
+- **The foot is Feeds, Refresh and the page.** Feeds (or the masthead) opens
+  the menu: all posts, the saved shelf, and each feed with how many of its
+  posts are unread, or "no answer" when the last refresh did not reach it.
+  Tapping one sets the front to it. A sideways swipe on the front steps to the
+  next one without the menu; a vertical swipe pages. Pages are measured as
+  they are reached, so the foot says which page this is, not how many.
+- **Feeds are added from a phone**, the way Notes takes its typing. Add feeds
+  (on the empty first screen) or Add or remove (on the menu) joins Wi-Fi, serves
+  one page and shows a QR code with the address under it. On the page a person
+  pastes either a site's address or a feed's, and removes feeds. The panel says
+  what happened in a sentence: "Adding kottke.org...", "Added Kottke.", "No feed
+  at that address."
+- **The card is shown first.** Opening the app reads the feeds unasked only
+  when two hours have gone by since the last refresh and a saved network can
+  be joined with no picker; Refresh on the front and on the menu reads them at
+  any time. Nothing runs in the background or asleep. Declining the Wi-Fi
+  picker is not leaving: the list read last time is on the card and opens as
+  it was.
+- **Reading** is NEWS's story page: the headline on the first page, whose it
+  is and the page in one line at the top, and Back, Aa and Save at the foot. A
+  tap on the right half or a swipe turns on, the left half back; Aa steps
+  through three sizes of type and is remembered. A post the feed carried whole
+  (`content:encoded`, Atom `<content>`) is read off the card. Any other post
+  is fetched through the extractor Hacker News uses (r.jina.ai) and judged by
+  Hacker News's readability gate.
 - **Read posts are marked read** the moment they are opened, whether or not the
-  words then arrive: the dot answers "have I looked at this".
+  words then arrive: the bold face answers "have I looked at this".
 - **SAVE** keeps the post on the card exactly as it was shown, in the same
   shelf format Hacker News's saved articles use, in a folder of its own.
 - **No server of ours and no account.** The reader fetches each feed from its
@@ -46,20 +56,18 @@ tell a reader.
 | `src/apps_local/rss/RssCore.*`                   | the model, addresses, dates, HTML to text, keeping the newest, the files on the card. Freestanding                                   |
 | `src/apps_local/rss/RssFeed.*`                   | the streaming parser (expat) for the three formats, the HTML `<link>` scanner, the probe that tells a feed from a page. Freestanding |
 | `src/apps_local/rss/RssDesk.*`                   | what the phone page asked for and what the app answered, behind one mutex. Freestanding                                              |
-| `src/apps_local/rss/RssScreens.*`                | the lists, the feeds screen and the phone screen. Freestanding                                                                       |
+| `src/apps_local/rss/RssScreens.*`                | the front, the menu, the notice and the phone screen. Freestanding                                                                   |
 | `src/apps_local/rss/RssServer.*`, `RssPage.html` | the phone page and its four routes                                                                                                   |
 | `src/apps_local/rss/RssFetch.*` | the feed GET that STOP can interrupt while it connects |
 | `src/apps_local/rss/RssActivity.*`               | the radio, the card and the panel                                                                                                    |
 | `host-tests/rss/`                                | the formats, discovery, limits, broken feeds, dates, read and saved state, the desk                                                  |
-| `host-tests/ui/` (RSS block)                     | every screen's taps, the segments, the reader without a second view, the refresh's STOP                                              |
+| `host-tests/ui/` (RSS block)                     | every screen's taps, the unread mark, the menu's rows, the refresh's Stop                                                            |
 
-Shared with Hacker News rather than copied: the reader (`hnui::buildReader`
-with `hasSwap = false`), the notice (`hnui::buildNotice` with `band = "RSS"`),
-the empty-list block (`hnui::emptyBlock`), the saved shelf (`hn::Library`, which
-now takes its directory), the extractor's address and size cap
-(`hn::kExtractorPrefix`, `hn::kMaxArticleBytes`) and the readability gate. Each
-change to Hacker News is a defaulted parameter or a moved constant; its screens
-and behaviour are unchanged, and its suites say so.
+Shared rather than copied: the story page and its paging are NEWS's
+(`newsui::buildStory`, `news::Paging`); the saved shelf (`hn::Library`, which
+takes its directory), the extractor's address and size cap
+(`hn::kExtractorPrefix`, `hn::kMaxArticleBytes`) and the readability gate are
+Hacker News's.
 
 ## The three formats
 

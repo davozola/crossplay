@@ -34,6 +34,7 @@
 
 #include "../../activities/Activity.h"
 #include "../hackernews/HackerNewsLibrary.h"
+#include "../news/NewsCore.h"
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxScreen.h"
 #include "../ui/ToyboxWrappedText.h"
@@ -63,7 +64,8 @@ class RssActivity final : public Activity {
  private:
   enum class Phase : uint8_t {
     Busy,     // a refresh, an article, or adding a feed
-    List,     // posts, feeds or saved, by tab_
+    List,     // the front: every post, one feed's, or the saved shelf, by tab_
+    Menu,     // where the front can go
     Reading,  // one post
     Notice,   // a refusal, with a way back
     Phone,    // the QR code and the page behind it
@@ -112,10 +114,18 @@ class RssActivity final : public Activity {
   // --- Lists -----------------------------------------------------------
   void showTab(rssui::Tab tab);
   void openFeed(int feedIndex);
-  // The rows of whatever the list is showing, as indices: into posts_ for a
-  // posts list, into feeds_ for the feeds, into the saved shelf for saved.
+  // What the menu's rows carry: rssui::kViewAll, kViewSaved, kViewFirstFeed + n.
+  void showView(int view);
+  int currentView() const;
+  // The next or the previous view, round and round: a sideways swipe.
+  void stepView(int delta);
+  void pageMenu(int delta);
+  // The rows of the front, as indices: into posts_, or into the saved shelf.
   void rebuildView();
   void pageList(int delta);
+  // Whether enough time has gone by since the last refresh to read the feeds
+  // unasked on the way in.
+  bool refreshDue() const;
   int feedIndexForKey(const std::string& key) const;
   std::string siteForSaved(const std::string& url) const;
 
@@ -134,7 +144,7 @@ class RssActivity final : public Activity {
   void unsaveCurrent();
   void turnPage(int delta);
   void returnToList();
-  void showNotice(const char* headline, const char* message, bool unreadable);
+  void showNotice(const char* headline, const char* message);
   std::string bodyPath(const std::string& id, rss::Body body) const;
 
   // --- The phone -------------------------------------------------------
@@ -155,41 +165,49 @@ class RssActivity final : public Activity {
   rss::ReadSet read_;
   hn::Library library_{"/.crosspoint/rss/saved"};
 
+  // Tab::Feeds is the front narrowed to feedFilter_.
   rssui::Tab tab_ = rssui::Tab::All;
-  // The feed the posts list is narrowed to, or -1 for every feed.
+  // The feed the front is narrowed to, or -1.
   int feedFilter_ = -1;
   std::vector<int> view_;
   bool viewStale_ = true;
-  int topIndex_ = 0;
-  int visibleRows_ = 0;
-  // The row last opened in the list on screen, drawn inverted, or -1.
-  int selected_ = -1;
-  // The strings the list window draws, owned here because fui::ListItem holds
-  // pointers. Rebuilt every paint for the rows on the page and no others.
-  std::vector<std::string> labels_;
-  std::vector<std::string> values_;
-  std::vector<freeink::ui::ListItem> items_;
-  std::string bandTitle_;
+  // Where each page of the front starts in view_. Headlines are set whole, so
+  // a page holds as many as fit; measured as pages are reached, and thrown
+  // away with the view.
+  std::vector<int> pageStarts_;
+  int frontPage_ = 0;
+  int menuPage_ = 0;
+  // Set when the menu opens: its first paint turns to the page holding the
+  // view being read, which needs the row count only a paint knows.
+  bool menuSeek_ = false;
+  int menuRowsPerPage_ = 0;
 
   // The post being read.
   int openPostIndex_ = -1;
+  // What the saved shelf keeps: the headline, whose it is, then the words.
+  // The page shows it from bodyOffset_, under a headline of its own.
   std::string document_;
+  size_t bodyOffset_ = 0;
   toybox::WrappedText wrap_;
   std::string readerTitle_;
+  // The quiet line over a post: whose it is and when.
+  std::string readerSection_;
   // The saved shelf's key for what is on screen: the post's link, or an
   // address made from its id when the feed gave it none.
   std::string readerKey_;
   bool readingSaved_ = false;
   bool saveFailedNotice_ = false;
-  uint32_t topLine_ = 0;
-  uint32_t lineCount_ = 0;
-  uint16_t visibleLines_ = 0;
-  static constexpr int kPageLabelCap = 2 * toybox::kULongChars + toybox::literalChars("/") + 1;
+  news::Paging paging_;
+  uint32_t page_ = 0;
+  // After the type size changes: how far through the post was, in thousandths,
+  // to open the new pages at. -1 when there is nothing to restore.
+  int restoreAt_ = -1;
+  uint8_t textSize_ = 1;  // 0 small, 1 medium, 2 large
+  static constexpr int kPageLabelCap = 2 * toybox::kULongChars + toybox::literalChars(" / ") + 1;
   char pageLabel_[kPageLabelCap] = "";
 
   std::string noticeHeadline_;
   std::string noticeMessage_;
-  bool noticeUnreadable_ = false;
 
   std::string busyHeadline_;
   std::string busyMessage_;

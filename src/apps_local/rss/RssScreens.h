@@ -1,71 +1,75 @@
 #pragma once
 
-// The RSS screens. Freestanding builders in the ChessScreens mould: a model in,
-// a drawn frame out, no renderer and no Activity, so host-tests/ui/ can assert
-// what they drew and what they made tappable.
+// What RSS draws. Set like NEWS, a page of a paper rather than the fork's
+// black band and boxed rows: a serif masthead over a double rule, headlines
+// set whole and divided by hairlines, and controls in one quiet line at the
+// foot. Freestanding builders: a model in, a drawn frame out, no renderer and
+// no Activity, so host-tests/ui/ can assert what they drew and made tappable.
 //
-// ---------------------------------------------------------------------------
-// Four screens of its own, and two it borrows.
-//
-//   posts   every post, newest first, or one feed's -- Hacker News's front page
-//           with the site's name where the comment count was, and a dot on
-//           every post not yet opened
-//   feeds   the sites, each with how many of its posts are unread
-//   saved   the posts kept on the card (the posts screen, built from the shelf)
+//   front   the posts of every feed, of one feed, or of the saved shelf. An
+//           unread post is set bold behind a square; an opened one is plain
+//   menu    where the front can go: every post, the saved shelf, each feed
+//           with its unread count, and the way to the phone and to a refresh
+//   notice  a wait or a refusal, with one word at the foot to leave by
 //   phone   the QR code a phone scans to add and remove feeds
 //
-// A post is read in Hacker News's reader (hnui::buildReader, with no second
-// view), and every wait and every refusal is Hacker News's notice
-// (hnui::buildNotice) under this app's own band. One reader in the fork for
-// somebody else's prose, and one way of saying "not here".
-//
-// The three lists share a strip of segments at the foot -- ALL, FEEDS, SAVED
-// -- filled where you are, outlined where you can go, the same pair Hacker News
-// draws for its two.
-// ---------------------------------------------------------------------------
+// A post is read in NEWS's story page (newsui::buildStory), so the two apps
+// turn pages, change the type size and save the same way.
 
 #include <cstdint>
 
+#include "../news/NewsScreens.h"
 #include "../ui/ToyboxScreen.h"
 
 namespace rssui {
 
 namespace fui = freeink::ui;
+using Ink = newsui::Ink;
 
-// Hacker News owns the 300s up to 312 (its reader and notice, which this app
-// draws through); these sit above them.
+// NEWS owns 340 to 420 (its story page is drawn through); these sit above.
 enum : fui::ActionId {
-  ActionOpenPost = 340,  // value: the row's index in the list being shown
-  ActionShowAll = 341,
-  ActionShowFeeds = 342,
-  ActionShowSaved = 343,
-  ActionOpenFeed = 344,  // value: the feed's index
-  ActionAddFeeds = 345,  // the phone screen
-  ActionPhoneDone = 346,
-  ActionStopRefresh = 347,
+  ActionOpenPost = 430,  // value: the row's index in the list being shown
+  ActionMenu = 431,
+  ActionView = 432,  // value: 0 every post, 1 the saved shelf, 2 + n feed n
+  ActionAddFeeds = 433,
+  ActionPhoneDone = 434,
+  ActionStopRefresh = 435,
+  ActionRefresh = 436,
+  ActionNext = 437,
+  ActionNoticeBack = 438,
 };
 
+// What the front is showing: every post, one feed's, or the saved shelf.
 enum class Tab : uint8_t { All, Feeds, Saved };
 
-// --- The lists -----------------------------------------------------------
+constexpr int kMaxRows = 16;
+constexpr int kViewAll = 0;
+constexpr int kViewSaved = 1;
+constexpr int kViewFirstFeed = 2;
 
-struct ListModel {
-  // The band: the app's name, a feed's name when narrowed to one, FEEDS, SAVED.
-  const char* title = "RSS";
-  Tab tab = Tab::All;
-  // A posts list narrowed to one feed. FEEDS stays filled -- you are among the
-  // feeds -- and is the one way back to the list of them, so it stays live.
-  bool narrowed = false;
-  // A window of rows: items[0] is row `windowFirst` of `count`. The activity
-  // builds only the rows a page shows, because a list of thirty feeds is six
-  // hundred posts and fitting six hundred headlines to fill one page is waste.
-  const fui::ListItem* items = nullptr;
+// --- The front -----------------------------------------------------------
+
+struct Row {
+  const char* title = "";
+  // The small line over the headline: the site, the date, or both. May be "".
+  const char* kicker = "";
+  bool unread = false;
+};
+
+struct FrontModel {
+  const char* title = "RSS";   // the masthead: the app, a feed's name, Saved
+  const char* right = "";      // opposite it: "12 NEW", or ""
+  const char* note = nullptr;  // the middle of the foot, in place of Refresh
+  bool canRefresh = false;
+  // A window of rows: rows[0] is row `first` of the list. Taps carry the
+  // absolute index.
+  const Row* rows = nullptr;
   int count = 0;
-  int windowFirst = 0;
-  int windowCount = 0;
-  int topIndex = 0;
-  // The row last opened, drawn inverted the way Hacker News marks it, or -1.
-  int selected = -1;
+  int first = 0;
+  // Pages are measured as they are reached, so the front knows which page it
+  // is on and whether another follows, not how many there are.
+  int page = 1;
+  bool more = false;
   // Drawn instead of rows when there are none. The control is drawn only when
   // both its label and its action are set.
   const char* emptyHeadline = nullptr;
@@ -74,68 +78,56 @@ struct ListModel {
   fui::ActionId emptyAction = fui::NO_ACTION;
 };
 
-// The rows a page draws, which are the rows the activity has to build: row
-// `first` of the list and the `count` after it. `topIndex` is the page the
-// activity is on, `visible` how many rows a page holds. On the last page of a
-// list that does not divide into pages, `first` is before `topIndex`: the list
-// fills that page from the end, as every list in the fork does.
-struct PageWindow {
-  int first = 0;
-  int count = 0;
-};
-PageWindow pageWindow(int listCount, int visible, int topIndex);
+// How many of `rows` a page holds from its first: headlines are set whole, so
+// it depends on how long they are. At least one when there is one.
+int frontFit(const Ink& ink, const fui::DeviceContext& device, const Row* rows, int count);
+// Returns how many rows it drew.
+int buildFront(toybox::Screen& screen, const Ink& ink, const FrontModel& model);
 
-// The posts of every feed, of one feed, or of the saved shelf. Rows open with
-// ActionOpenPost and their absolute index.
-void buildPosts(toybox::Screen& screen, const ListModel& model);
-
-// The feeds, with a way to the phone above the segments. Rows open with
-// ActionOpenFeed and their index.
-void buildFeeds(toybox::Screen& screen, const ListModel& model);
-
-// The bands the two lists draw rows into. Exported so the activity pages by
-// the rows that really fit rather than by a second guess at them.
-fui::Rect postsBand(const fui::DeviceContext& device);
-fui::Rect feedsBand(const fui::DeviceContext& device);
-
-// A post row: two lines of headline, the same height Hacker News gives a story.
-int16_t postRowHeight(const fui::DrawTarget& target, const fui::ThemeTokens& tokens);
-// A feed row: one line of name.
-int16_t feedRowHeight(const fui::DrawTarget& target, const fui::ThemeTokens& tokens);
-
-// The width a post's headline is drawn into: the row, less the unread mark
-// and THIS row's site name, which the component measures per row. Fitting
-// every headline to the widest name would cut short every post of a feed
-// with a short one.
-int16_t postTitleWidth(const fui::DeviceContext& device, const fui::ThemeTokens& tokens, int16_t siteWidth);
-// The most room a site's name gets at the right of a row.
-int16_t postSiteWidth();
-int16_t feedTitleWidth(const fui::DrawTarget& target, const fui::DeviceContext& device, const fui::ThemeTokens& tokens);
-// The style a post's site and a feed's count are drawn in.
-fui::TextStyle footnoteStyle(const fui::ThemeTokens& tokens);
-
-// The mark in front of a post not yet opened, and the blank one in front of a
-// post that has been: the same size, so every headline starts at one x.
-fui::BitmapRef unreadMark();
-fui::BitmapRef readMark();
-
-// What an empty list says, and whether it offers a way to fill itself.
+// What an empty front says, and whether it offers a way to fill itself.
 struct Empty {
   const char* headline = nullptr;
   const char* message = nullptr;
   const char* actionLabel = nullptr;
   fui::ActionId action = fui::NO_ACTION;
 };
-// `haveFeeds`: any feed at all is subscribed. `oneFeed`: the list is narrowed
-// to a single feed.
-Empty emptyFor(Tab tab, bool haveFeeds, bool oneFeed);
+// `haveFeeds`: any feed at all is subscribed.
+Empty emptyFor(Tab tab, bool haveFeeds);
+
+// --- The menu ------------------------------------------------------------
+
+struct MenuRow {
+  const char* name = "";
+  const char* right = nullptr;  // an unread count, "failed", or nothing
+  int view = 0;                 // what ActionView carries
+  bool current = false;
+};
+
+struct MenuModel {
+  const char* right = "";         // opposite the masthead: "4 FEEDS"
+  const MenuRow* rows = nullptr;  // this page's
+  int count = 0;
+  int page = 1;
+  int pages = 1;
+};
+// The rows a page of the menu holds.
+int menuRows(const Ink& ink, const fui::DeviceContext& device);
+void buildMenu(toybox::Screen& screen, const Ink& ink, const MenuModel& model);
+
+// --- The notice ----------------------------------------------------------
+
+struct NoticeModel {
+  const char* headline = "";
+  const char* message = "";
+  // The one word at the foot, drawn only when both are set.
+  const char* actionLabel = nullptr;
+  fui::ActionId action = fui::NO_ACTION;
+};
+void buildNotice(toybox::Screen& screen, const Ink& ink, const NoticeModel& model);
 
 // --- The phone -----------------------------------------------------------
 
 struct PhoneModel {
-  // What the QR carries: the device's own address, generated from the live IP
-  // at the moment of drawing.
-  const char* url = "";
   // What a person reads and can type: the mDNS name when the responder
   // started, the dotted address when it did not.
   const char* readable = "";
@@ -146,6 +138,6 @@ struct PhoneModel {
 
 // Returns the square the caller draws the code into: QrUtils needs a renderer,
 // which this layer does not have.
-fui::Rect buildPhone(toybox::Screen& screen, const PhoneModel& model);
+fui::Rect buildPhone(toybox::Screen& screen, const Ink& ink, const PhoneModel& model);
 
 }  // namespace rssui
