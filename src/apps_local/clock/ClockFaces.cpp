@@ -8,6 +8,7 @@
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxTokens.h"
 #include "ClockType.h"
+#include "sloppy/SloppyDigits.h"
 
 namespace clockfaces {
 
@@ -638,6 +639,48 @@ void faceAnalogico(const Canvas& c, const Moment& now) {
   }
 }
 
+// ------------------------------------------------------------------ 11 SLOPPY
+// The time written by hand: CrossMux's sloppy numerals (sloppy/README.md). The
+// hand is dealt from the date and the hour, so it holds still from one minute
+// to the next and is somebody else's every hour. Style and seeds are static:
+// 440 bytes that the render task's stack does not have to carry.
+void faceSloppy(const Canvas& c, const Moment& now) {
+  const Said s = saidOf(now);
+  if (!now.valid) return;
+  static sloppy::Style style;
+  static sloppy::Seeds seeds;
+  static uint32_t dealt = 0;
+  uint32_t seed = static_cast<uint32_t>(now.year * 366 + now.yearDay) * 2654435761u;
+  seed ^= static_cast<uint32_t>(now.hour + 1) * 0x85EBCA6Bu;
+  if (seed == 0) seed = 1;
+  if (seed != dealt) {
+    sloppy::rollStyle(seed, style);
+    sloppy::prepareSeeds(seed, style, seeds);
+    // The thinnest hands CrossMux deals are for a screen held in the hand;
+    // this one is read from a stand across the room.
+    if (style.strokeWidth < 4) style.strokeWidth = 4;
+    dealt = seed;
+  }
+  const int foot = toybox::kTileCut.inkHeight + 28;
+  text(c, toybox::kTileFontId, toybox::kTileCut, c.w / 2, c.h - foot + 6, s.shortCaps, 0);
+  if (c.wide()) {
+    // Hours and minutes side by side, with the colon as two blots between.
+    const int gap = 72;
+    const int half = (c.w - gap) / 2;
+    const int top = 12;
+    const int tall = c.h - foot - top;
+    sloppy::draw(c.r, style, seeds, s.hh, sloppy::Bounds{8, top, half - 8, tall});
+    sloppy::draw(c.r, style, seeds, s.mm, sloppy::Bounds{half + gap, top, half - 8, tall});
+    const int dot = style.strokeWidth + 3;
+    disc(c, c.w / 2, top + tall / 2 - tall / 7, dot);
+    disc(c, c.w / 2 - 2, top + tall / 2 + tall / 7, dot);
+  } else {
+    char rows[8];
+    std::snprintf(rows, sizeof(rows), "%s\n%s", s.hh, s.mm);
+    sloppy::draw(c.r, style, seeds, rows, sloppy::Bounds{0, 16, c.w, c.h - foot - 16});
+  }
+}
+
 }  // namespace
 
 void draw(GfxRenderer& renderer, const int face, const Moment& now) {
@@ -670,8 +713,11 @@ void draw(GfxRenderer& renderer, const int face, const Moment& now) {
     case 8:
       facePalabras(c, now);
       break;
-    default:
+    case 9:
       faceAnalogico(c, now);
+      break;
+    default:
+      faceSloppy(c, now);
       break;
   }
 }

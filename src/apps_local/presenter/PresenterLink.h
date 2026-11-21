@@ -16,6 +16,9 @@ void end();
 State state();
 // One key press and release. False when no computer is linked.
 bool tap(uint8_t usage);
+// The same with modifiers held: the report's first byte, Ctrl Shift Alt Gui
+// from bit 0. DECK's shortcuts go through here.
+bool chord(uint8_t modifiers, uint8_t usage);
 // Forgets every computer paired with this device.
 void forget();
 // True where the radio is real; false in builds that only pretend.

@@ -19,17 +19,19 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y siete cosas:
+Sticky**. Conserva todo lo del original y añade treinta y nueve cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
-| **Reloj** | Reloj de sobremesa en vertical u horizontal con diez esferas, cada una con su tipografía (editorial, puntos, póster, grotesca, noir, terminal, cápsula, píxel, palabras y analógico), en claro u oscuro. |
+| **Reloj** | Reloj de sobremesa en vertical u horizontal con once esferas, cada una con su tipografía (editorial, puntos, póster, grotesca, noir, terminal, cápsula, píxel, palabras y analógico, más una escrita a mano), en claro u oscuro. |
 | **Casa** | La temperatura y la humedad de la habitación con el sensor de la propia Sticky, leídas cada tres segundos mientras está abierta, y las últimas 24 horas de cada una en una gráfica. |
 | **Hoy** | Una página para dejar en el soporte: la hora, el tiempo, los mercados, el mar y las efemérides del día, en diez estilos sobre blanco que se cambian deslizando: dos con la letra del firmware y ocho propios (diario, calma, esferas, cartel, un paisaje hecho con los datos, mosaico, billete y hoja de almanaque con la luna). Llena la pantalla entera, tocar cada parte abre su app y Atrás vuelve a Hoy. Al actualizar trae también las efemérides. |
 | **Reversi** | Atrapa las fichas del otro color entre dos tuyas y se dan la vuelta. Contra el dispositivo en tres niveles o a dos en la misma pantalla, en tablero de 8 o de 6. |
 | **Dots and Boxes** | Puntos y cajas: una raya por turno, y quien cierra un cuadrado se lo queda y repite. Contra el dispositivo o a dos, de 3×3 a 6×6. |
 | **Jukebox** | Un mando para Plexamp: lo que suena en un reproductor de tu red, con su carátula, y pausa, salto, volumen, aleatorio y repetición desde la Sticky. Se enlaza a tu cuenta de Plex con un código en plex.tv/link y no instala nada en el reproductor. Ver [docs/jukebox.md](docs/jukebox.md). |
 | **Presenter** | Mando de diapositivas por Bluetooth: la Sticky se empareja como un teclado y pasa las de PowerPoint, Keynote o Google Slides en Mac y PC sin instalar nada. Botones grandes para avanzar y retroceder, pantalla en negro, y un reloj de la charla que arranca con la primera diapositiva y avisa a cinco y a dos minutos del final. Ver [docs/presenter.md](docs/presenter.md). |
+| **Deck** | Quince atajos por programa enviados por Bluetooth como un teclado: sistema, Chrome, Excel, Word, PowerPoint y ON1 Photo RAW, para Mac o Windows, que pregunta la primera vez. Sin instalar nada en el ordenador. |
+| **Voz** | Notas de voz: hablas hasta un minuto y Gemini u OpenAI (con tu propia clave) lo devuelve como idea, tarea o nota, con título, resumen y transcripción. El audio y la nota quedan en la tarjeta, en `/voz`. Solo en la Sticky. |
 | **Liner Notes** | Notas de los discos de tu propia colección: por qué importa cada uno, su contexto, cómo suena, qué escuchar y con qué otros discos tuyos se relaciona, en español o en inglés. El contenido no va en el firmware: es un paquete que haces tú en el ordenador y copias a la tarjeta, y la app lo lee disco a disco. Marcas propias, álbum del día, búsqueda por letra y un botón que pone el disco en Plexamp a través del Jukebox. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
@@ -199,8 +201,10 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
 | **Hoy**         | The time, the weather, the markets and the sea on one page.              |
 | **Casa**        | The room's temperature and humidity, and the last day of each as a line. |
-| **Reloj**       | A desk clock, upright or on its side, in ten faces set in ten typefaces.  |
+| **Reloj**       | A desk clock, upright or on its side, in eleven faces: ten set in ten typefaces and one written by hand.  |
 | **Presenter**   | A Bluetooth slide clicker with a talk clock that warns at five and two minutes. |
+| **Deck**        | Fifteen shortcuts per program over Bluetooth, for a Mac or Windows.     |
+| **Voz**         | Voice notes, transcribed and summarised by Gemini or OpenAI.            |
 | **Liner Notes** | Notes on the records in your own library, read from a pack you build and copy to the card. |
 | **Pomodoro**    | A focus timer that redraws once a minute and beeps when the session ends. |
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |
