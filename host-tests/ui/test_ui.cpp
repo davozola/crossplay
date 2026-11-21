@@ -8795,7 +8795,8 @@ void testSudokuBoxRulesStandOutFromCellLines() {
   CHECK(sudokuui::kBoxRule < toybox::kBoardFrame);
 }
 
-// The pair has to be an exact inverse, not merely agree at the centres. Both
+// The pair has to be an exact inverse, not merely agree at the centres (the
+// board frame aside, which the edge cells own). Both
 // halves matter: a rect the hit test does not cover is a dead region, and a
 // point the hit test claims for a cell outside that cell's rect is a tap that
 // lands somewhere the player did not touch.
@@ -8816,8 +8817,17 @@ void testTheSudokuGridAndItsHitTestAreExactInverses() {
     for (int x = 0; x < 480; ++x) {
       int got = -1;
       if (!sudokuui::cellAt(ctx, x, y, got)) continue;
+      // An edge cell also owns the strip of board frame beside it, so a finger
+      // that lands on the frame still reaches the cell it was aiming at.
       const fui::Rect box = sudokuui::cellRect(ctx, got);
-      if (x < box.x || x >= box.right() || y < box.y || y >= box.bottom()) everyClaimIsInsideItsRect = false;
+      const int column = got % sudoku::kSize;
+      const int row = got / sudoku::kSize;
+      const int frame = toybox::kBoardFrame;
+      const int left = box.x - (column == 0 ? frame : 0);
+      const int right = box.right() + (column == sudoku::kSize - 1 ? frame : 0);
+      const int top = box.y - (row == 0 ? frame : 0);
+      const int bottom = box.bottom() + (row == sudoku::kSize - 1 ? frame : 0);
+      if (x < left || x >= right || y < top || y >= bottom) everyClaimIsInsideItsRect = false;
     }
   }
   CHECK(everyPixelMapsHome);

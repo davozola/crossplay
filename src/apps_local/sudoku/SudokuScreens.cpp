@@ -512,11 +512,14 @@ fui::Rect cellRect(const fui::DeviceContext& device, const int cell) {
 }
 
 bool cellAt(const fui::DeviceContext& device, const int x, const int y, int& cell) {
-  const int16_t left = gridLeft(device);
-  if (x < left || y < gridTop()) return false;
-  const int column = (x - left) / kCell;
-  const int row = (y - gridTop()) / kCell;
-  if (column >= sk::kSize || row >= sk::kSize) return false;
+  // The board's black frame belongs to the edge cell beside it. A finger
+  // aiming at an edge cell lands on the frame often enough, and a tap that did
+  // nothing on a panel with no instant feedback reads as a broken screen.
+  const int16_t outerLeft = boardLeft(device);
+  if (x < outerLeft || y < kBoardTop || x >= outerLeft + kBoardOuter || y >= kBoardTop + kBoardOuter) return false;
+  const auto clampIndex = [](const int index) { return index < 0 ? 0 : (index >= sk::kSize ? sk::kSize - 1 : index); };
+  const int column = clampIndex((x - gridLeft(device)) < 0 ? -1 : (x - gridLeft(device)) / kCell);
+  const int row = clampIndex((y - gridTop()) < 0 ? -1 : (y - gridTop()) / kCell);
   cell = row * sk::kSize + column;
   return true;
 }
