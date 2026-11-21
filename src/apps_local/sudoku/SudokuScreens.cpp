@@ -353,7 +353,7 @@ void drawMiniature(toybox::Screen& screen, const fui::Rect& room, const sk::Game
 
 // A lesson is a title, a sentence, and a small board before and after the
 // gesture it describes. The before/after pair is what makes the pictures teach
-// rather than decorate: four of the five pages are about a GESTURE, and a
+// rather than decorate: four of the six pages are about a GESTURE, and a
 // gesture is a change, which a single still frame cannot show.
 struct Lesson {
   const char* title;
@@ -363,6 +363,7 @@ struct Lesson {
   const char* detail;
   const char* before;
   const char* after;  // nullptr when the page is a rule rather than a gesture
+  // nullptr `before` too: the page is the level ladder, drawn from the core.
   uint8_t armed;
 };
 
@@ -382,6 +383,10 @@ const Lesson kLessons[] = {
     // Both fives go black, not one: the clue is clashing too, and the game
     // inverts every cell in a clash rather than only the newest.
     {"MISTAKES", "A DIGIT THAT CLASHES TURNS BLACK.", "HINT NAMES A CELL YOU CAN SOLVE.", "A.C.5...I", "A.C!!...I", 5},
+    // The levels, last because they only mean something once HINT has been
+    // met: the names in the table are the very words HINT prints.
+    {"LEVELS", "A LEVEL IS THE HARDEST TRICK ITS PUZZLE NEEDS.", "NOT HOW MANY CLUES IT GIVES.", nullptr, nullptr,
+     0},
 };
 constexpr int kLessonCount = static_cast<int>(sizeof(kLessons) / sizeof(kLessons[0]));
 
@@ -441,6 +446,44 @@ void drawFace(toybox::Screen& screen, const fui::Rect& box, const char* face, co
           fui::makeRect(static_cast<int16_t>(left - toybox::kRule), static_cast<int16_t>(top - toybox::kRule),
                         static_cast<int16_t>(grid + 2 * toybox::kRule), static_cast<int16_t>(grid + 2 * toybox::kRule)),
           toybox::kRule);
+  }
+}
+
+// The level ladder as a table: each level and the tricks it may ask for, in
+// the words HINT uses. Built from `levelOf`, never typed out, so the page
+// cannot drift from what the generator actually promises.
+void drawLevels(toybox::Screen& screen, const fui::Rect& room) {
+  const int16_t rowHeight = static_cast<int16_t>(textBand(1, toybox::kUiCut) + textBand(2, toybox::kTileCut));
+  const int16_t total = static_cast<int16_t>(rowHeight * sk::kLevelCount);
+  int16_t y = static_cast<int16_t>(room.y + (room.height > total ? (room.height - total) / 2 : 0));
+  const int16_t x = static_cast<int16_t>(room.x + toybox::kGutter);
+  const int16_t width = static_cast<int16_t>(room.width - 2 * toybox::kGutter);
+
+  fui::TextStyle name;
+  name.font = toybox::kUiFont;
+  name.align = fui::TextAlign::Left;
+  fui::TextStyle tricks;
+  tricks.font = toybox::kTileFont;
+  tricks.align = fui::TextAlign::Left;
+  tricks.maxLines = 2;
+
+  for (int level = 0; level < sk::kLevelCount; ++level) {
+    char list[96] = {};
+    int used = 0;
+    for (int rung = 1; rung < sk::kTechniqueCount; ++rung) {
+      const sk::Technique technique = static_cast<sk::Technique>(rung);
+      if (static_cast<int>(sk::levelOf(technique)) != level) continue;
+      used += std::snprintf(list + used, sizeof(list) - static_cast<size_t>(used), "%s%s", used > 0 ? ", " : "",
+                            sk::techniqueName(technique));
+      if (used >= static_cast<int>(sizeof(list))) break;
+    }
+    if (level > 0) screen.target().fill(fui::makeRect(x, y, width, toybox::kHairline), fui::Paint::solid(fui::Color::Black));
+    const fui::Rect nameBand = fui::makeRect(x, y, width, textBand(1, toybox::kUiCut));
+    screen.target().text(nameBand, sk::levelName(static_cast<sk::Level>(level)), name);
+    screen.target().text(fui::makeRect(x, static_cast<int16_t>(y + nameBand.height), width,
+                                       textBand(2, toybox::kTileCut)),
+                         list, tricks);
+    y = static_cast<int16_t>(y + rowHeight);
   }
 }
 
@@ -618,7 +661,7 @@ void buildHowTo(toybox::Screen& screen, const HowToModel& model) {
   next.action = ActionHowToNext;
   screen.button(next, screen.takeBottom(toybox::kPillHeight, toybox::kGutter));
 
-  // BEFORE AND AFTER. Four of the five pages describe a gesture, and a gesture
+  // BEFORE AND AFTER. Four of the six pages describe a gesture, and a gesture
   // is a change: one still frame cannot show it and two can.
   fui::TextStyle title;
   title.font = toybox::kDisplayFont;
@@ -643,7 +686,9 @@ void buildHowTo(toybox::Screen& screen, const HowToModel& model) {
 
   screen.takeTop(toybox::kGutter);
   const fui::Rect room = screen.body();
-  if (lesson.after == nullptr) {
+  if (lesson.before == nullptr) {
+    drawLevels(screen, room);
+  } else if (lesson.after == nullptr) {
     const int16_t side = room.width < room.height ? room.width : room.height;
     drawFace(screen,
              fui::makeRect(static_cast<int16_t>(room.x + (room.width - side) / 2),
