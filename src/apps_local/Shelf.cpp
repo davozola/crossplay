@@ -78,6 +78,7 @@
 #include "ui/ExtraIcons.h"
 #include "ui/ToyboxIcons.h"
 #include "underhand/UnderhandActivity.h"
+#include "voz/VozActivity.h"
 #include "wallpapers/WallpapersActivity.h"
 #include "wavelength/WavelengthActivity.h"
 #include "weather/WeatherActivity.h"
@@ -274,6 +275,9 @@ constexpr shelf::Item kApps[] = {
     {"DECK", &icon_deck_32, &DeckActivity::create, 3, false, "Atajos de teclado por Bluetooth",
      "Quince atajos por programa (sistema, Chrome, Excel, Word, PowerPoint y ON1 Photo RAW), para Mac o Windows, "
      "enviados como un teclado Bluetooth, sin instalar nada."},
+    {"VOZ", &icon_voz_32, &VozActivity::create, 3, false, "Notas de voz",
+     "Hablas hasta un minuto y Gemini u OpenAI, con tu propia clave, lo devuelve como nota: idea, tarea o nota, "
+     "con título, resumen y lo que dijiste. Todo queda en la tarjeta. Solo en la Sticky, que tiene micrófono."},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create, 3, false, "Temporizador de concentración",
      "Sesiones de trabajo y descanso; pita al acabar cada una."},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create, 3, false, "Reloj de ajedrez",
