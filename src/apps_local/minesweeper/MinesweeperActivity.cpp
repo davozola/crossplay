@@ -23,7 +23,7 @@ constexpr char kHistoryPath[] = "/.crosspoint/minesweeper.sav";
 // How long a finger must rest on a cell to plant a flag. Long enough that a
 // deliberate dig never trips it, short enough that it does not feel broken on a
 // panel whose own refresh is half a second.
-constexpr unsigned long kFlagHoldMs = 400;
+constexpr unsigned long kFlagHoldMs = 500;  // matches Sudoku's pencil hold
 }  // namespace
 
 std::unique_ptr<Activity> MinesweeperActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput) {
