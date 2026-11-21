@@ -385,8 +385,7 @@ const Lesson kLessons[] = {
     {"MISTAKES", "A DIGIT THAT CLASHES TURNS BLACK.", "HINT NAMES A CELL YOU CAN SOLVE.", "A.C.5...I", "A.C!!...I", 5},
     // The levels, last because they only mean something once HINT has been
     // met: the names in the table are the very words HINT prints.
-    {"LEVELS", "A LEVEL IS THE HARDEST TRICK ITS PUZZLE NEEDS.", "NOT HOW MANY CLUES IT GIVES.", nullptr, nullptr,
-     0},
+    {"LEVELS", "A LEVEL IS THE HARDEST TRICK ITS PUZZLE NEEDS.", "NOT HOW MANY CLUES IT GIVES.", nullptr, nullptr, 0},
 };
 constexpr int kLessonCount = static_cast<int>(sizeof(kLessons) / sizeof(kLessons[0]));
 
@@ -477,12 +476,13 @@ void drawLevels(toybox::Screen& screen, const fui::Rect& room) {
                             sk::techniqueName(technique));
       if (used >= static_cast<int>(sizeof(list))) break;
     }
-    if (level > 0) screen.target().fill(fui::makeRect(x, y, width, toybox::kHairline), fui::Paint::solid(fui::Color::Black));
+    if (level > 0)
+      screen.target().fill(fui::makeRect(x, y, width, toybox::kHairline), fui::Paint::solid(fui::Color::Black));
     const fui::Rect nameBand = fui::makeRect(x, y, width, textBand(1, toybox::kUiCut));
     screen.target().text(nameBand, sk::levelName(static_cast<sk::Level>(level)), name);
-    screen.target().text(fui::makeRect(x, static_cast<int16_t>(y + nameBand.height), width,
-                                       textBand(2, toybox::kTileCut)),
-                         list, tricks);
+    screen.target().text(
+        fui::makeRect(x, static_cast<int16_t>(y + nameBand.height), width, textBand(2, toybox::kTileCut)), list,
+        tricks);
     y = static_cast<int16_t>(y + rowHeight);
   }
 }

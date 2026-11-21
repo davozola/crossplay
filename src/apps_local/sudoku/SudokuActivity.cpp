@@ -28,9 +28,8 @@ constexpr int kStateBytes = 768;
 // How long a finger rests on a cell before it pencils. The same as
 // Minesweeper's flag hold, deliberately: this is the device's one two-gesture
 // idiom and two apps disagreeing about its timing would make it feel broken in
-// whichever one the player met second. 500ms, the system long press: at 400ms
-// a firm, deliberate tap -- the natural press on a panel with no instant
-// feedback -- pencilled a mark instead of writing the digit.
+// whichever one the player met second. 500ms, the system long press, so a
+// firm, deliberate tap still writes the digit.
 constexpr unsigned long kPencilHoldMs = 500;
 
 sk::Level nextLevel(const sk::Level level) {
@@ -406,10 +405,8 @@ void SudokuActivity::loop() {
         holdCell = cell;
         holdSinceMs = millis();
         holdFired = false;
-        // No repaint here. Shading the cell on touch-down cost a panel refresh
-        // on EVERY tap, plus another to unshade it, and a tap landing while
-        // those were still on the glass read as a tap that did nothing. The
-        // pencil mark appearing is the feedback a hold needs.
+        // No repaint on touch-down: shading the cell would cost two panel
+        // refreshes per tap. The pencil mark appearing is the hold's feedback.
       } else if (!holdFired && millis() - holdSinceMs >= kPencilHoldMs) {
         holdFired = true;
         notice = nullptr;
@@ -433,9 +430,8 @@ void SudokuActivity::loop() {
   if (!input.touchReleased) return;
 
   // The grid and the pad are hit-tested against geometry, not the interaction
-  // table, so they do not wait for interactionsReady: that flag is down for
-  // the whole of every rebuild, and a digit tapped in that window used to be
-  // dropped. surfaceRevealed() is their gate.
+  // table, so they do not wait for interactionsReady, which is down for every
+  // rebuild. surfaceRevealed() is their gate.
   if (screen == sk::Screen::Board) {
     const fui::DeviceContext device = toybox::makeTarget(renderer).deviceContext();
     int cell = 0;
