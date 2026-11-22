@@ -25,7 +25,7 @@ class DeckActivity final : public Activity {
   bool preventAutoSleep() override { return true; }
 
  private:
-  enum class View : uint8_t { Ask, Keys };
+  enum class View : uint8_t { Ask, Keys, Help };
 
   bool loadState();  // true when the computer has been named before
   void saveState();
@@ -33,6 +33,7 @@ class DeckActivity final : public Activity {
   void press(int button);
   void drawAsk();
   void drawKeys();
+  void drawHelp();
   int buttonAt(int x, int y) const;
 
   View view_ = View::Ask;
@@ -45,5 +46,7 @@ class DeckActivity final : public Activity {
   bool cleanNext_ = true;
   bool radioUsed_ = false;
   int pressX_ = -1;
-  int osLineY_ = 0;  // where the column names the computer, for a tap to change it
+  int osLineY_ = 0;
+  int forgetTop_ = 0;       // where HELP draws its button, for the tap
+  bool forgotten_ = false;  // where the column names the computer, for a tap to change it
 };

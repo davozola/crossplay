@@ -45,11 +45,11 @@ While a talk is open the device does not go to sleep.
   while the app is open and waiting could pair with it the first time. Once a
   computer is paired, the link is encrypted.
 - Up to three computers are remembered (the core's `CONFIG_BT_NIMBLE_MAX_BONDS`).
-  FORGET PAIRED COMPUTERS clears them on the device; remove "Sticky Presenter"
+  FORGET PAIRED COMPUTERS clears them on the device; remove "Sticky"
   in the computer's Bluetooth settings too, or it will keep trying the old keys.
 - The radio is on only while the app is open. Leaving the app restarts the
   device quietly, as after Wi-Fi, so the radio's memory comes back whole.
-- It advertises as "Sticky Presenter" with the keyboard appearance; it sends no
+- It advertises as "Sticky" (DECK uses the same name and pairing) with the keyboard appearance; it sends no
   data other than the key reports and a battery level the host may read.
 
 ## Verified and not

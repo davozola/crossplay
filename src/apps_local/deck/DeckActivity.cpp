@@ -5,13 +5,17 @@
 #include <HalStorage.h>
 #include <Memory.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "../../SilentRestart.h"
 #include "../Shelf.h"
 #include "../presenter/PresenterLink.h"
 #include "../ui/ToyboxFonts.h"
+#include "../ui/ToyboxSerif.h"
 #include "../ui/ToyboxTokens.h"
 #include "DeckFonts.h"
 
@@ -34,7 +38,6 @@ constexpr Cut kLabelSmallCut{toybox::kSerifSmallCut.ascender, toybox::kSerifSmal
 constexpr Cut kSmallCut{toybox::kTileCut.ascender, toybox::kTileCut.inkHeight};
 
 constexpr char kSavePath[] = "/.crosspoint/deck.sav";
-constexpr char kDeviceName[] = "Sticky Deck";
 constexpr int kSide = 186;   // the left column
 constexpr int kMargin = 18;  // round the page
 constexpr int kBackSwipeEdge = 28;
@@ -112,6 +115,10 @@ void dottedColumn(const GfxRenderer& r, const int x, const int top, const int bo
   for (int y = top; y < bottom; y += 6) r.drawPixel(x, y, true);
 }
 
+void dottedRow(const GfxRenderer& r, const int y, const int left, const int right) {
+  for (int x = left; x < right; x += 6) r.drawPixel(x, y, true);
+}
+
 const char* osName(const deck::Os os) { return os == deck::Os::Mac ? "MAC" : "WINDOWS"; }
 
 const char* linkLine(const radio::State state) {
@@ -140,7 +147,7 @@ void DeckActivity::onEnter() {
   deckfonts::ensure(renderer);
   renderer.setOrientation(GfxRenderer::Orientation::LandscapeCounterClockwise);
   view_ = loadState() ? View::Keys : View::Ask;
-  radioUsed_ = radio::begin(kDeviceName, batteryPercent());
+  radioUsed_ = radio::begin(radio::kName, batteryPercent());
   linkShown_ = static_cast<uint8_t>(radio::state());
   cleanNext_ = true;
   requestUpdate();
@@ -249,6 +256,22 @@ void DeckActivity::loop() {
     return;
   }
 
+  if (view_ == View::Help) {
+    int x = 0;
+    int y = 0;
+    if (!mappedInput.wasScreenTapped(x, y)) return;
+    if (x > kSide && y >= forgetTop_ && y < forgetTop_ + 64) {
+      radio::forget();
+      forgotten_ = true;
+      requestUpdate();
+      return;
+    }
+    view_ = View::Keys;
+    cleanNext_ = true;
+    requestUpdate();
+    return;
+  }
+
   switch (mappedInput.wasSwipe()) {
     case MappedInputManager::SwipeDir::Left:
       turn(1);
@@ -273,8 +296,14 @@ void DeckActivity::loop() {
   if (!mappedInput.wasScreenTapped(x, y)) return;
   if (x <= kSide) {
     // The system's name, under the template's, is where it is changed.
-    if (y >= osLineY_ - 34 && y <= osLineY_ + 30) {
+    if (y >= osLineY_ - 34 && y <= osLineY_ + 8) {
       view_ = View::Ask;
+      cleanNext_ = true;
+      requestUpdate();
+    } else if (y > osLineY_ + 8 && y <= osLineY_ + 60) {
+      // The link's line, and the help under it while nothing is linked.
+      forgotten_ = false;
+      view_ = View::Help;
       cleanNext_ = true;
       requestUpdate();
     }
@@ -365,6 +394,10 @@ void DeckActivity::drawKeys() {
   base += 20;
   put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base,
       note_ ? note_ : linkLine(static_cast<radio::State>(linkShown_)));
+  if (static_cast<radio::State>(linkShown_) != radio::State::Linked) {
+    base += 20;
+    put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base, "CÓMO ENLAZAR >");
+  }
 
   char of[16];
   std::snprintf(of, sizeof(of), "de %d", deck::kTemplateCount);
@@ -413,11 +446,61 @@ void DeckActivity::drawKeys() {
   }
 }
 
+// How to pair, for when the computer will not find the device: most often
+// because it remembers an older pairing that a newly flashed image erased.
+void DeckActivity::drawHelp() {
+  const GfxRenderer& r = renderer;
+  const int w = r.getScreenWidth();
+  const int h = r.getScreenHeight();
+  int base = kMargin + 20 + kItalicCut.cap;
+  put(r, kItalicFontId, kItalicCut, kMargin + 6, base, "Enlazar");
+  base += 16;
+  r.fillRect(kMargin + 6, base, kSide - kMargin - 20, 2, true);
+  base += 28;
+  put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base, "SE LLAMA");
+  base += 20;
+  put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base, "STICKY");
+  base += 20;
+  put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base, linkLine(static_cast<radio::State>(linkShown_)));
+  put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, h - kMargin - 6, "TOCA PARA VOLVER");
+  r.fillRect(kSide, kMargin, 3, h - 2 * kMargin, true);
+
+  static const char* const kSteps[] = {
+      "EN EL ORDENADOR, ABRE BLUETOOTH: EN EL MAC, AJUSTES DEL SISTEMA; EN WINDOWS, CONFIGURACIÓN.",
+      "ELIGE STICKY Y CONECTA. SOLO HACE FALTA LA PRIMERA VEZ; DESPUÉS SE ENLAZA SOLA AL ABRIR DECK O PRESENTER.",
+      "SI SALE STICKY O STICKY PRESENTER PERO NO CONECTA, OLVÍDALO EN EL ORDENADOR Y VUELVE AL PASO 2. PASA AL "
+      "GRABAR UNA IMAGEN NUEVA, QUE BORRA EL EMPAREJAMIENTO DE ESTE LADO."};
+  const int x = kSide + 34;
+  const int textX = x + 64;
+  const int width = w - textX - kMargin;
+  int top = kMargin + 8;
+  std::vector<std::string> lines;
+  for (int i = 0; i < 3; ++i) {
+    char n[2] = {static_cast<char>('1' + i), 0};
+    put(r, kItalicFontId, kItalicCut, x, top + kItalicCut.cap + 4, n);
+    lines.clear();
+    toyboxserif::wrap(r, toybox::kTileFontId, kSteps[i], width, 4, lines);
+    int lineBase = top + kSmallCut.cap + 10;
+    for (const std::string& l : lines) {
+      put(r, toybox::kTileFontId, kSmallCut, textX, lineBase, l.c_str());
+      lineBase += 22;
+    }
+    top = std::max(lineBase, top + kItalicCut.cap + 16) + 22;
+    if (i < 2) dottedRow(r, top - 12, x, w - kMargin);
+  }
+  forgetTop_ = h - kMargin - 64;
+  r.drawRect(x, forgetTop_, w - x - kMargin, 56, 2, true);
+  put(r, toybox::kTileFontId, kSmallCut, x + 18, forgetTop_ + 34,
+      forgotten_ ? "HECHO: LA STICKY YA NO RECUERDA NINGÚN ORDENADOR" : "OLVIDAR LOS ORDENADORES EN LA STICKY");
+}
+
 void DeckActivity::render(RenderLock&&) {
   renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   renderer.clearScreen();
   if (view_ == View::Ask) {
     drawAsk();
+  } else if (view_ == View::Help) {
+    drawHelp();
   } else {
     drawKeys();
   }
