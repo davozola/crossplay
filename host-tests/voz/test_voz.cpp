@@ -40,6 +40,37 @@ int main() {
   int16_t silent[2] = {0, 0};
   check(normalise(silent, 2) == 1, "silence");
 
+  // levels
+  int16_t stuck[4] = {-32768, -32768, -32768, -32768};
+  check(levelOf(stuck, 4).peak == 0 && levelOf(stuck, 4).rms == 0, "a stuck line is silence");
+  int16_t tone[4] = {1100, 900, 1100, 900};
+  check(levelOf(tone, 4).peak == 100 && levelOf(tone, 4).rms == 100, "level about the mean");
+  check(levelOf(tone, 0).peak == 0, "no samples, no level");
+
+  check(levelBar(0) == 0 && levelBar(kHeardPeak / 2 - 1) == 0, "an empty bar for silence");
+  check(levelBar(kHeardPeak) == 20 && levelBar(kHeardPeak * 4) == 40, "each doubling is a step");
+  check(levelBar(32767) == 100, "a full bar at full scale");
+
+  // microphone setups
+  for (int i = 0; i < kMicSetups; ++i) check(micIndex(micSetup(i)) == i, "setup round trip");
+  check(micSetup(0).enableHigh && !micSetup(0).rightSlot && !micSetup(0).fastClock, "setup 0 is the board's notes");
+  char setupName[24];
+  micSetupName(micSetup(7), setupName, sizeof(setupName));
+  check(!std::strcmp(setupName, "BAJA DER 2 MHZ"), "setup name", setupName);
+  Level heard[kMicSetups];
+  bool opened[kMicSetups];
+  for (int i = 0; i < kMicSetups; ++i) opened[i] = true;
+  check(bestSetup(heard, opened, kMicSetups) == -1, "nothing heard, no setup");
+  heard[2].peak = 500;
+  heard[2].rms = 90;
+  heard[5].peak = 300;
+  heard[5].rms = 120;
+  heard[6].peak = kHeardPeak - 1;
+  heard[6].rms = 400;
+  check(bestSetup(heard, opened, kMicSetups) == 5, "the loudest setup wins");
+  opened[5] = false;
+  check(bestSetup(heard, opened, kMicSetups) == 2, "one that did not open cannot win");
+
   // base64
   const char* samples[][2] = {{"", ""},
                               {"f", "Zg=="},

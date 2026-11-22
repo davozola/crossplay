@@ -36,6 +36,7 @@ using voz::kNotesDir;
 constexpr char kConfigDir[] = "/.crosspoint/voz";
 constexpr char kConfigPath[] = "/.crosspoint/voz/voz.cfg";
 constexpr char kModelsPath[] = "/.crosspoint/voz/modelos.txt";
+constexpr char kMicPath[] = "/.crosspoint/voz/mic.cfg";
 constexpr const char* kKeyPaths[] = {"/.crosspoint/voz/gemini.key", "/.crosspoint/voz/openai.key"};
 constexpr const char* kServiceNames[] = {"Gemini", "OpenAI"};
 constexpr const char* kServiceCaps[] = {"GEMINI", "OPENAI"};
@@ -136,6 +137,9 @@ void VozActivity::onEnter() {
   loadKey(voz::Service::Gemini);
   loadKey(voz::Service::OpenAI);
   voz::readModels(readText(kModelsPath, 2048), models_);
+  // The setup the microphone test settled on, when it has been run.
+  const std::string micCfg = readText(kMicPath, 8);
+  voz::audio::useSetup(!micCfg.empty() && micCfg[0] >= '0' && micCfg[0] < '0' + voz::kMicSetups ? micCfg[0] - '0' : -1);
   scan();
   view_ = View::List;
   step_ = Step::Idle;
@@ -316,6 +320,13 @@ void VozActivity::endRecording() {
   }
   if (index < 0) {
     show(View::List);
+    return;
+  }
+  if (voz::audio::lastTake().peak < voz::kHeardPeak) {
+    // Sent anyway, a silent take comes back as a note the service made up.
+    message("No se oyó nada",
+            "LA GRABACIÓN QUEDA GUARDADA, PERO ESTÁ EN SILENCIO Y NO SE HA ENVIADO. "
+            "PRUEBA EL MICRÓFONO EN AJUSTES.");
     return;
   }
   if (keys_[static_cast<int>(service_)][0] == 0) {
@@ -507,6 +518,24 @@ void VozActivity::loopPhone() {
   requestUpdate();
 }
 
+// ---------------------------------------------------------------- microphone
+
+void VozActivity::testMic() {
+  micTesting_ = true;
+  micTested_ = false;
+  show(View::MicTest);
+  // The page asking for a voice must be on the panel before the test blocks.
+  requestUpdateAndWait();
+  micTested_ = voz::audio::probe(micLevels_, micOpened_);
+  micBest_ = micTested_ ? voz::bestSetup(micLevels_, micOpened_, voz::kMicSetups) : -1;
+  if (micBest_ >= 0) {
+    voz::audio::useSetup(micBest_);
+    writeText(kMicPath, std::string(1, static_cast<char>('0' + micBest_)));
+  }
+  micTesting_ = false;
+  show(View::MicTest);
+}
+
 // ---------------------------------------------------------------- input
 
 void VozActivity::loop() {
@@ -559,6 +588,14 @@ void VozActivity::loop() {
     case View::Phone:
       loopPhone();
       return;
+    case View::MicTest: {
+      int x = 0;
+      int y = 0;
+      if (mappedInput.wasScreenTapped(x, y) || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        show(View::Settings);
+      }
+      return;
+    }
     case View::List:
       loopList();
       return;
@@ -704,6 +741,9 @@ void VozActivity::loopSettings() {
   } else if (y >= 594 && y < 690) {
     openPhone(View::Settings);
     return;
+  } else if (y >= 692 && y < 768) {
+    testMic();
+    return;
   } else {
     return;
   }
@@ -722,6 +762,9 @@ void VozActivity::render(RenderLock&&) {
       break;
     case View::Phone:
       drawPhone();
+      break;
+    case View::MicTest:
+      drawMicTest();
       break;
     case View::Recording:
       drawRecording();
@@ -829,6 +872,13 @@ void VozActivity::drawRecording() {
   put(r, toybox::kTileFontId, kSmall, kMargin, 462, "0:00");
   putRight(r, toybox::kTileFontId, kSmall, w - kMargin, 462, "1:00");
   putCentre(r, toybox::kTileFontId, kSmall, w / 2, 520, "HABLA CERCA DE LA PANTALLA");
+  // What the microphone hears right now: a bar that stays empty is a
+  // microphone that is not listening.
+  put(r, toybox::kTileFontId, kSmall, kMargin, 578, "NIVEL");
+  const int levelX = kMargin + 70;
+  const int levelW = w - kMargin - levelX;
+  r.drawRect(levelX, 562, levelW, 18, 1, true);
+  r.fillRect(levelX, 562, levelW * voz::levelBar(voz::audio::level()) / 100, 18, true);
 
   r.fillRect(w / 2 - 52, kButtonY - 52, 104, 104, true);
   r.fillRect(w / 2 - 18, kButtonY - 18, 36, 36, false);
@@ -878,6 +928,50 @@ void VozActivity::drawPhone() {
     put(r, toybox::kTileFontId, kSmall, kMargin, kCodeTop + kCode + 150 + i * 24, line);
   }
   put(r, toybox::kTileFontId, kSmall, kMargin, r.getScreenHeight() - 40, "TOCA PARA CERRAR LA PÁGINA");
+}
+
+void VozActivity::drawMicTest() {
+  const GfxRenderer& r = renderer;
+  const int w = r.getScreenWidth();
+  put(r, df::kItalicFontId, df::kItalicCut, kMargin, 28 + df::kItalicCut.cap, "Micrófono");
+  r.fillRect(kMargin, 104, w - 2 * kMargin, 2, true);
+  if (micTesting_) {
+    put(r, toybox::kTileFontId, kSmall, kMargin, 150, "HABLA SIN PARAR, CERCA DE LA PANTALLA,");
+    put(r, toybox::kTileFontId, kSmall, kMargin, 176, "HASTA QUE CAMBIE ESTA PÁGINA.");
+    put(r, toybox::kTileFontId, kSmall, kMargin, 228, "TARDA UNOS OCHO SEGUNDOS");
+    return;
+  }
+  if (!micTested_) {
+    put(r, toybox::kTileFontId, kSmall, kMargin, 150, "ESTE APARATO NO TIENE MICRÓFONO.");
+    put(r, toybox::kTileFontId, kSmall, kMargin, r.getScreenHeight() - 40, "TOCA PARA VOLVER");
+    return;
+  }
+  put(r, df::kItalicSmallFontId, df::kItalicSmallCut, kMargin, 160, micBest_ >= 0 ? "Te oye" : "No oye nada");
+  put(r, toybox::kTileFontId, kSmall, kMargin, 196,
+      micBest_ >= 0 ? "SE QUEDA CON EL AJUSTE MARCADO." : "NINGÚN AJUSTE HA OÍDO UNA VOZ.");
+
+  // Every setup and what it heard, so a test that fails still says something.
+  put(r, toybox::kTileFontId, kSmall, kMargin, 250, "AJUSTE");
+  putRight(r, toybox::kTileFontId, kSmall, w - kMargin - 110, 250, "PICO");
+  putRight(r, toybox::kTileFontId, kSmall, w - kMargin, 250, "MEDIA");
+  dottedRow(r, 262, kMargin, w - kMargin);
+  for (int i = 0; i < voz::kMicSetups; ++i) {
+    const int base = 296 + i * 40;
+    char name[24];
+    voz::micSetupName(voz::micSetup(i), name, sizeof(name));
+    if (i == micBest_) r.fillRect(kMargin, base - 14, 12, 12, true);
+    put(r, toybox::kTileFontId, kSmall, kMargin + 24, base, name);
+    char number[16];
+    if (micOpened_[i]) {
+      std::snprintf(number, sizeof(number), "%d", micLevels_[i].peak);
+      putRight(r, toybox::kTileFontId, kSmall, w - kMargin - 110, base, number);
+      std::snprintf(number, sizeof(number), "%d", micLevels_[i].rms);
+      putRight(r, toybox::kTileFontId, kSmall, w - kMargin, base, number);
+    } else {
+      putRight(r, toybox::kTileFontId, kSmall, w - kMargin, base, "NO ABRE");
+    }
+  }
+  put(r, toybox::kTileFontId, kSmall, kMargin, r.getScreenHeight() - 40, "TOCA PARA VOLVER");
 }
 
 void VozActivity::drawMessage() {
@@ -1041,7 +1135,14 @@ void VozActivity::drawSettings() {
   put(r, toybox::kTileFontId, kSmall, kMargin, 662, "ESCANEA UN CÓDIGO Y PEGA LA CLAVE");
   putRight(r, toybox::kTileFontId, kSmall, w - kMargin, 634, "ABRIR");
   dottedRow(r, 690, kMargin, w - kMargin);
-  int base = 730;
+  put(r, toybox::kSerifTileFontId, kTile, kMargin, 728, "Micrófono");
+  char micLine[40];
+  char micName[24];
+  voz::micSetupName(voz::micSetup(voz::audio::setupInUse()), micName, sizeof(micName));
+  std::snprintf(micLine, sizeof(micLine), "AJUSTE: %s", micName);
+  put(r, toybox::kTileFontId, kSmall, kMargin, 754, micLine);
+  putRight(r, toybox::kTileFontId, kSmall, w - kMargin, 728, "PROBAR");
+  int base = 786;
   char model[96];
   if (service_ == voz::Service::Gemini) {
     std::snprintf(model, sizeof(model), "MODELO: %s", models_.gemini.c_str());

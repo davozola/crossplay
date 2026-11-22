@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "VozCore.h"
+
 namespace voz::audio {
 
 // Large buffers, in PSRAM where there is any. Free with release().
@@ -26,5 +28,21 @@ size_t samples();
 bool save(const char* path);
 // Ends any take and frees everything. Safe to call twice.
 void discard();
+
+// The loudest the microphone has heard since this was last asked: the bar on
+// the recording screen. Zero when nothing is being recorded.
+int level();
+// How loud the take save() last wrote was, measured before it was raised.
+Level lastTake();
+
+// The microphone setup takes are recorded with (voz::micSetup's index), and
+// the one this board's notes give.
+void useSetup(int index);
+int setupInUse();
+int boardSetup();
+// Listens for about half a second through every setup and reports what each
+// heard. Blocks for some seconds; not while a take is running. False when this
+// device has no microphone.
+bool probe(Level levels[kMicSetups], bool opened[kMicSetups]);
 
 }  // namespace voz::audio

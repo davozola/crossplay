@@ -74,6 +74,89 @@ inline int normalise(int16_t* pcm, const size_t count) {
   return gain;
 }
 
+// ---------------------------------------------------------------- the microphone
+// How loud a stretch of sound is. The mean is taken out first: a PDM line that
+// is stuck reads as a constant, which is silence, not a loud take.
+struct Level {
+  int peak = 0;  // the largest swing either side of the mean
+  int rms = 0;
+};
+inline Level levelOf(const int16_t* pcm, const size_t count) {
+  Level level;
+  if (count == 0) return level;
+  int64_t sum = 0;
+  for (size_t i = 0; i < count; ++i) sum += pcm[i];
+  const int mean = static_cast<int>(sum / static_cast<int64_t>(count));
+  uint64_t squares = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int v = pcm[i] - mean;
+    const int a = v < 0 ? -v : v;
+    if (a > level.peak) level.peak = a;
+    squares += static_cast<uint64_t>(static_cast<int64_t>(v) * v);
+  }
+  uint64_t mean2 = squares / count;
+  uint64_t root = 0;
+  for (uint64_t bit = 1ULL << 30; bit != 0; bit >>= 2) {
+    if (mean2 >= root + bit) {
+      mean2 -= root + bit;
+      root = (root >> 1) + bit;
+    } else {
+      root >>= 1;
+    }
+  }
+  level.rms = static_cast<int>(root);
+  return level;
+}
+
+// A take whose loudest moment is under this had nobody speaking in it, or no
+// microphone behind it. Speech at arm's length peaks in the hundreds.
+constexpr int kHeardPeak = 40;
+
+// A peak as how full the level bar is, 0 to 100. Speech is quiet against full
+// scale, so each doubling of the peak is one more step: a straight line would
+// leave the bar empty for everything short of a shout.
+inline int levelBar(const int peak) {
+  int steps = 0;
+  for (int v = peak; v >= kHeardPeak / 2 && steps < 10; v >>= 1) ++steps;
+  return steps * 10;
+}
+
+// The three things about a PDM microphone a board's notes can have wrong, and
+// the Sticky's were never checked on a unit: which level powers it, which
+// clock edge it answers on, and whether it wants the faster clock (its
+// datasheet's standard mode starts at 1.1 MHz, above the 1.024 MHz default).
+struct MicSetup {
+  bool enableHigh = true;
+  bool rightSlot = false;
+  bool fastClock = false;
+};
+constexpr int kMicSetups = 8;
+inline MicSetup micSetup(const int index) {
+  MicSetup setup;
+  setup.enableHigh = (index & 1) == 0;
+  setup.rightSlot = (index & 2) != 0;
+  setup.fastClock = (index & 4) != 0;
+  return setup;
+}
+inline int micIndex(const MicSetup& setup) {
+  return (setup.enableHigh ? 0 : 1) | (setup.rightSlot ? 2 : 0) | (setup.fastClock ? 4 : 0);
+}
+// "ALTA IZQ 1 MHZ": a setup in the words the test screen lists it by.
+inline void micSetupName(const MicSetup& setup, char* out, const size_t cap) {
+  std::snprintf(out, cap, "%s %s %s", setup.enableHigh ? "ALTA" : "BAJA", setup.rightSlot ? "DER" : "IZQ",
+                setup.fastClock ? "2 MHZ" : "1 MHZ");
+}
+// The setup that heard the most, or -1 when none heard anything. One that
+// would not open counts as silent.
+inline int bestSetup(const Level* levels, const bool* opened, const int count) {
+  int best = -1;
+  for (int i = 0; i < count; ++i) {
+    if (!opened[i] || levels[i].peak < kHeardPeak) continue;
+    if (best < 0 || levels[i].rms > levels[best].rms) best = i;
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------- base64
 constexpr size_t base64Length(const size_t bytes) { return (bytes + 2) / 3 * 4; }
 

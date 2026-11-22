@@ -25,11 +25,11 @@ class VozActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override {
-    return view_ == View::Recording || view_ == View::Working || view_ == View::Phone;
+    return view_ == View::Recording || view_ == View::Working || view_ == View::Phone || view_ == View::MicTest;
   }
 
  private:
-  enum class View : uint8_t { List, Recording, Working, Detail, Settings, Message, Phone };
+  enum class View : uint8_t { List, Recording, Working, Detail, Settings, Message, Phone, MicTest };
   enum class Step : uint8_t { Idle, Ready, Running };
 
   struct Entry {
@@ -59,6 +59,9 @@ class VozActivity final : public Activity {
   void stopPhone();
   void loopPhone();
   void drawPhone();
+  // Listens through every microphone setup and keeps the one that hears.
+  void testMic();
+  void drawMicTest();
   void erase(int index);
   void show(View view);
   void message(const char* headline, const char* detail);
@@ -87,6 +90,12 @@ class VozActivity final : public Activity {
   const char* phoneStatus_ = "";
   bool devPaused_ = false;
   View phoneFrom_ = View::List;
+  // The microphone test: what each setup heard, and which one won (-1: none).
+  bool micTesting_ = false;
+  bool micTested_ = false;
+  voz::Level micLevels_[voz::kMicSetups];
+  bool micOpened_[voz::kMicSetups] = {};
+  int micBest_ = -1;
   std::vector<Entry> entries_;
   int page_ = 0;
   int opened_ = -1;   // the entry the detail shows
