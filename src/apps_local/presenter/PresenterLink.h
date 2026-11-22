@@ -24,4 +24,8 @@ void forget();
 // True where the radio is real; false in builds that only pretend.
 bool real();
 
+// What a computer lists the device as, for PRESENTER and DECK alike: one
+// pairing serves both.
+constexpr char kName[] = "Sticky";
+
 }  // namespace presenter::link
