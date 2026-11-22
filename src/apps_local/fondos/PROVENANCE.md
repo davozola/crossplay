@@ -4,7 +4,8 @@ Every picture in `fondos.pack` is a work from the Art Institute of Chicago's ope
 collection, which the museum marks as public domain and offers for unrestricted use
 (https://www.artic.edu/open-access/open-access-images). They were found with the museum's
 public API by `tools_local/wallpapers/aic_fondos.py`, and cropped to the panel and dithered
-to black and white by `tools_local/wallpapers/make_pack.py`. The list below is in pack order;
+to black and white by `tools_local/wallpapers/make_pack.py` with `--dither stucki`
+(error diffusion with the Stucki kernel and a serpentine scan, from `tone.py`). The list below is in pack order;
 each number is the work's id at `https://www.artic.edu/artworks/<id>`.
 
 | # | Work | Artist | Date | AIC id |
