@@ -11,6 +11,7 @@
 
 #include "../../activities/Activity.h"
 #include "VozCore.h"
+#include "VozServer.h"
 
 class VozActivity final : public Activity {
  public:
@@ -23,10 +24,12 @@ class VozActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
-  bool preventAutoSleep() override { return view_ == View::Recording || view_ == View::Working; }
+  bool preventAutoSleep() override {
+    return view_ == View::Recording || view_ == View::Working || view_ == View::Phone;
+  }
 
  private:
-  enum class View : uint8_t { List, Recording, Working, Detail, Settings, Message };
+  enum class View : uint8_t { List, Recording, Working, Detail, Settings, Message, Phone };
   enum class Step : uint8_t { Idle, Ready, Running };
 
   struct Entry {
@@ -49,6 +52,12 @@ class VozActivity final : public Activity {
   void send(int index);
   void runSend();
   void askKey(voz::Service service);
+  // The page a phone pastes a key into: joins Wi-Fi, then serves it.
+  void openPhone();
+  void startPhone();
+  void stopPhone();
+  void loopPhone();
+  void drawPhone();
   void erase(int index);
   void show(View view);
   void message(const char* headline, const char* detail);
@@ -69,7 +78,13 @@ class VozActivity final : public Activity {
   Step step_ = Step::Idle;
   voz::Service service_ = voz::Service::Gemini;
   voz::Models models_;
-  char keys_[2][200] = {};
+  char keys_[2][voz::kMaxKeyChars + 1] = {};
+  std::unique_ptr<VozServer> server_;
+  // What the QR code carries, and what a person can read and type.
+  std::string phoneUrl_;
+  std::string phoneReadable_;
+  const char* phoneStatus_ = "";
+  bool devPaused_ = false;
   std::vector<Entry> entries_;
   int page_ = 0;
   int opened_ = -1;   // the entry the detail shows

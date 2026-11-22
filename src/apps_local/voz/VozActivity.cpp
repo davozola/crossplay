@@ -1,5 +1,6 @@
 #include "VozActivity.h"
 
+#include <ESPmDNS.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -16,6 +17,8 @@
 #include "../../SilentRestart.h"
 #include "../../activities/network/WifiSelectionActivity.h"
 #include "../../activities/util/KeyboardEntryActivity.h"
+#include "../../util/DeviceHostname.h"
+#include "../../util/QrUtils.h"
 #include "../Shelf.h"
 #include "../deck/DeckFonts.h"
 #include "../ui/AutoRefresh.h"
@@ -155,6 +158,7 @@ void VozActivity::onExit() {
     voz::audio::save(path);
   }
   voz::audio::discard();
+  stopPhone();
   renderer.setClipRect(0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
   Activity::onExit();
   if (wifiActivated_ && !devmode::holdsRadio()) {
@@ -405,6 +409,102 @@ void VozActivity::askKey(const voz::Service service) {
   });
 }
 
+// ---------------------------------------------------------------- phone
+
+void VozActivity::openPhone() {
+  wifiActivated_ = true;
+  if (WiFi.status() == WL_CONNECTED) {
+    startPhone();
+    return;
+  }
+  headline_ = "Desde el móvil";
+  detail_ = "UNIÉNDOSE A LA WI-FI";
+  show(View::Working);
+  if (autorefresh::canJoinAlone()) {
+    // The page must be on the panel before the join blocks.
+    requestUpdateAndWait();
+    if (autorefresh::joinSaved()) {
+      startPhone();
+      return;
+    }
+  }
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) {
+                           renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+                           if (result.isCancelled) {
+                             show(View::Settings);
+                           } else {
+                             startPhone();
+                           }
+                         });
+}
+
+void VozActivity::startPhone() {
+  // Developer Mode holds port 80 while its toggle is on, and two binds on one
+  // port fail in a way that reads as a broken screen. It yields while this
+  // page is up; every way off it goes through stopPhone().
+  devmode::pause();
+  devPaused_ = true;
+  server_ = makeUniqueNoThrow<VozServer>();
+  if (!server_ || !server_->begin()) {
+    LOG_ERR("VOZ", "the phone page did not start");
+    stopPhone();
+    message("No se pudo", "EL LECTOR NO PUDO ABRIR SU PÁGINA. PRUEBA OTRA VEZ EN UN MOMENTO.");
+    return;
+  }
+  server_->setHave(keys_[0][0] != 0, keys_[1][0] != 0);
+#ifdef SIMULATOR
+  const bool mdnsUp = false;
+  const std::string dotted = "127.0.0.1";
+#else
+  MDNS.end();
+  const bool mdnsUp = MDNS.begin(devicehost::mdnsName());
+  const std::string dotted = std::string(WiFi.localIP().toString().c_str());
+#endif
+  // The code carries the address, always; the name depends on a responder
+  // that can fail to start.
+  phoneUrl_ = "http://" + dotted + "/v";
+  phoneReadable_ = mdnsUp ? std::string("http://") + devicehost::mdnsName() + ".local/v" : phoneUrl_;
+  phoneStatus_ = "ESPERANDO AL MÓVIL";
+  show(View::Phone);
+}
+
+void VozActivity::stopPhone() {
+  if (server_) {
+    server_->stop();
+    server_.reset();
+#ifndef SIMULATOR
+    MDNS.end();
+#endif
+  }
+  if (devPaused_) {
+    devPaused_ = false;
+    devmode::resume();
+  }
+}
+
+void VozActivity::loopPhone() {
+  int x = 0;
+  int y = 0;
+  if (mappedInput.wasScreenTapped(x, y) || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    stopPhone();
+    show(View::Settings);
+    return;
+  }
+  if (!server_) return;
+  server_->handleClient();
+  voz::Service service = voz::Service::Gemini;
+  char key[sizeof(keys_[0])];
+  if (!server_->take(service, key, sizeof(key))) return;
+  const int i = static_cast<int>(service);
+  std::snprintf(keys_[i], sizeof(keys_[i]), "%s", key);
+  std::memset(key, 0, sizeof(key));
+  saveKey(service);
+  phoneStatus_ = service == voz::Service::Gemini ? "CLAVE DE GEMINI GUARDADA" : "CLAVE DE OPENAI GUARDADA";
+  cleanNext_ = false;
+  requestUpdate();
+}
+
 // ---------------------------------------------------------------- input
 
 void VozActivity::loop() {
@@ -453,6 +553,9 @@ void VozActivity::loop() {
       return;
     case View::Settings:
       loopSettings();
+      return;
+    case View::Phone:
+      loopPhone();
       return;
     case View::List:
       loopList();
@@ -591,6 +694,9 @@ void VozActivity::loopSettings() {
   } else if (y >= 500 && y < 580) {
     askKey(voz::Service::OpenAI);
     return;
+  } else if (y >= 594 && y < 690) {
+    openPhone();
+    return;
   } else {
     return;
   }
@@ -606,6 +712,9 @@ void VozActivity::render(RenderLock&&) {
   switch (view_) {
     case View::List:
       drawList();
+      break;
+    case View::Phone:
+      drawPhone();
       break;
     case View::Recording:
       drawRecording();
@@ -732,6 +841,35 @@ void VozActivity::drawWorking() {
     put(r, toybox::kTileFontId, kSmall, kMargin, 176, line);
   }
   put(r, toybox::kTileFontId, kSmall, kMargin, 202, "TARDA UNOS SEGUNDOS");
+}
+
+void VozActivity::drawPhone() {
+  const GfxRenderer& r = renderer;
+  const int w = r.getScreenWidth();
+  put(r, df::kItalicFontId, df::kItalicCut, kMargin, 28 + df::kItalicCut.cap, "Desde el móvil");
+  r.fillRect(kMargin, 104, w - 2 * kMargin, 2, true);
+  put(r, toybox::kTileFontId, kSmall, kMargin, 140, "ESCANEA EL CÓDIGO CON EL MÓVIL, EN LA MISMA WI-FI,");
+  put(r, toybox::kTileFontId, kSmall, kMargin, 164, "Y PEGA LA CLAVE EN LA PÁGINA QUE SE ABRE.");
+
+  constexpr int kCode = 300;
+  constexpr int kCodeTop = 200;
+  QrUtils::drawQrCode(renderer, Rect{(w - kCode) / 2, kCodeTop, kCode, kCode}, phoneUrl_);
+
+  // The one string somebody may have to type, so it is set to be read.
+  const std::string address = fitted(r, toybox::kSerifTileFontId, phoneReadable_, w - 2 * kMargin);
+  put(r, toybox::kSerifTileFontId, kTile, (w - r.getTextWidth(toybox::kSerifTileFontId, address.c_str())) / 2,
+      kCodeTop + kCode + 52, address.c_str());
+  dottedRow(r, kCodeTop + kCode + 80, kMargin, w - kMargin);
+
+  put(r, toybox::kTileFontId, kSmall, kMargin, kCodeTop + kCode + 116, phoneStatus_);
+  for (int i = 0; i < 2; ++i) {
+    char hint[32];
+    voz::keyHint(keys_[i], hint, sizeof(hint));
+    char line[64];
+    std::snprintf(line, sizeof(line), "%s: %s", kServiceCaps[i], hint);
+    put(r, toybox::kTileFontId, kSmall, kMargin, kCodeTop + kCode + 150 + i * 24, line);
+  }
+  put(r, toybox::kTileFontId, kSmall, kMargin, r.getScreenHeight() - 40, "TOCA PARA CERRAR LA PÁGINA");
 }
 
 void VozActivity::drawMessage() {
@@ -890,13 +1028,12 @@ void VozActivity::drawSettings() {
   }
   dottedRow(r, 592, kMargin, w - kMargin);
 
-  int base = 630;
-  for (const char* line : {"LAS CLAVES SE GUARDAN EN LA TARJETA, EN", "/.CROSSPOINT/VOZ/. UNA LARGA SE PUEDE",
-                           "COPIAR AHÍ DESDE EL ORDENADOR."}) {
-    put(r, toybox::kTileFontId, kSmall, kMargin, base, line);
-    base += 22;
-  }
-  base += 14;
+  // A key is forty characters or more: the phone pastes it.
+  put(r, toybox::kSerifTileFontId, kTile, kMargin, 634, "Pegarlas desde el móvil");
+  put(r, toybox::kTileFontId, kSmall, kMargin, 662, "ESCANEA UN CÓDIGO Y PEGA LA CLAVE");
+  putRight(r, toybox::kTileFontId, kSmall, w - kMargin, 634, "ABRIR");
+  dottedRow(r, 690, kMargin, w - kMargin);
+  int base = 730;
   char model[96];
   if (service_ == voz::Service::Gemini) {
     std::snprintf(model, sizeof(model), "MODELO: %s", models_.gemini.c_str());

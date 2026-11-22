@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111110">
+<title>Claves de Voz</title>
+<style>
+:root{
+  --ink:#111110; --paper:#f5f2ea; --paper-2:#ebe7db; --edge:#a9a494; --muted:#46443c;
+  --serif:Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --gutter:clamp(1.25rem,4vw,2rem);
+}
+@media (prefers-color-scheme:dark){
+  :root{--ink:#f2f1ec; --paper:#100f0e; --paper-2:#1a1917; --edge:#5a564c; --muted:#b8b5aa}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.55 var(--body);-webkit-text-size-adjust:100%}
+main{max-width:34rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
+h1{font:italic 400 2.1rem/1.1 var(--serif);margin:0 0 .7rem}
+.rule{height:2px;background:var(--ink);margin:0 0 1.2rem}
+p{margin:0 0 1.2rem;color:var(--muted)}
+section{border-top:1px dotted var(--edge);padding:1.1rem 0 1.3rem}
+h2{font:400 1.35rem/1.2 var(--serif);margin:0;display:flex;align-items:baseline;justify-content:space-between;gap:1rem}
+h2 span{font:.68rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+label{display:block;font:.68rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:.9rem 0 .45rem}
+input{display:block;width:100%;font:16px/1.3 var(--mono);color:var(--ink);background:var(--paper-2);
+  border:1px solid var(--edge);border-radius:0;padding:.75rem .8rem;-webkit-appearance:none;appearance:none}
+input:focus{outline:2px solid var(--ink);outline-offset:1px}
+button{display:block;width:100%;margin-top:.7rem;font:.8rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--paper);background:var(--ink);border:0;border-radius:0;padding:1rem;cursor:pointer}
+button:disabled{opacity:.45}
+.said{min-height:1.5em;margin:.7rem 0 0;font-size:.95rem;color:var(--ink)}
+.said.bad{font-weight:600}
+footer{border-top:1px dotted var(--edge);padding-top:1rem;font-size:.9rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Claves de Voz</h1>
+  <div class="rule"></div>
+  <p>Pega aqu&iacute; la clave y toca Guardar. Se guarda en la tarjeta del lector y no vuelve a salir de &eacute;l.</p>
+
+  <section>
+    <h2>Gemini <span id="have-gemini"></span></h2>
+    <label for="key-gemini">Clave de Gemini</label>
+    <input id="key-gemini" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="AIza...">
+    <button type="button" id="save-gemini">Guardar</button>
+    <div class="said" id="said-gemini" role="status"></div>
+  </section>
+
+  <section>
+    <h2>OpenAI <span id="have-openai"></span></h2>
+    <label for="key-openai">Clave de OpenAI</label>
+    <input id="key-openai" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-...">
+    <button type="button" id="save-openai">Guardar</button>
+    <div class="said" id="said-openai" role="status"></div>
+  </section>
+
+  <footer>Cuando termines, toca la pantalla del lector para cerrar esta p&aacute;gina.</footer>
+</main>
+<script>
+(function () {
+  var services = ['gemini', 'openai'];
+
+  function el(id) { return document.getElementById(id); }
+
+  function say(service, text, bad) {
+    var node = el('said-' + service);
+    node.textContent = text;
+    node.className = bad ? 'said bad' : 'said';
+  }
+
+  function showState(state) {
+    services.forEach(function (service) {
+      el('have-' + service).textContent = state[service] ? 'Con clave' : 'Sin clave';
+    });
+  }
+
+  function refresh() {
+    fetch('/v/state', { cache: 'no-store' })
+      .then(function (response) { return response.json(); })
+      .then(showState)
+      .catch(function () {});
+  }
+
+  function save(service) {
+    var input = el('key-' + service);
+    var button = el('save-' + service);
+    var key = input.value.replace(/\s+/g, '');
+    if (key.length < 8) {
+      say(service, 'Pega la clave entera primero.', true);
+      return;
+    }
+    button.disabled = true;
+    say(service, 'Guardando...', false);
+    fetch('/v/key?s=' + service, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: key })
+      .then(function (response) {
+        return response.text().then(function (text) { return { ok: response.ok, text: text }; });
+      })
+      .then(function (result) {
+        button.disabled = false;
+        if (result.ok) {
+          input.value = '';
+          say(service, 'Guardada. Termina en ' + key.slice(-4) + '.', false);
+          refresh();
+        } else {
+          say(service, result.text || 'No se pudo guardar.', true);
+        }
+      })
+      .catch(function () {
+        button.disabled = false;
+        say(service, 'No se pudo llegar al lector. Comprueba que su pantalla sigue en esta página.', true);
+      });
+  }
+
+  services.forEach(function (service) {
+    el('save-' + service).addEventListener('click', function () { save(service); });
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>

@@ -148,6 +148,21 @@ int main() {
   char key[64];
   check(tidyKey("  AIza Sy-abc_123\n", key, sizeof(key)) && !std::strcmp(key, "AIzaSy-abc_123"), "tidy key", key);
   check(!tidyKey("short", key, sizeof(key)), "too short");
+  // A key pasted on the phone page: tidied the same way, but never cut short.
+  check(tidyPastedKey(" AIzaSy-abc_123\r\n", key, sizeof(key)) && !std::strcmp(key, "AIzaSy-abc_123"), "pasted key",
+        key);
+  check(!tidyPastedKey("short", key, sizeof(key)), "pasted too short");
+  const std::string longKey(sizeof(key) - 1, 'k');
+  check(tidyPastedKey(longKey.c_str(), key, sizeof(key)) && longKey == key, "pasted key that just fits");
+  const std::string tooLong(sizeof(key), 'k');
+  check(!tidyPastedKey(tooLong.c_str(), key, sizeof(key)), "pasted key too long is refused, not cut");
+  Service named = Service::OpenAI;
+  check(serviceFromName("gemini", named) && named == Service::Gemini, "service gemini");
+  check(serviceFromName("openai", named) && named == Service::OpenAI, "service openai");
+  check(!serviceFromName("claude", named) && !serviceFromName("", named) && !serviceFromName(nullptr, named),
+        "unknown service");
+  check(phoneStateJson(true, false) == "{\"gemini\":true,\"openai\":false}", "phone state",
+        phoneStateJson(true, false).c_str());
   char hint[32];
   keyHint("sk-proj-abcd1234", hint, sizeof(hint));
   check(!std::strcmp(hint, "TERMINA EN 1234"), "hint", hint);

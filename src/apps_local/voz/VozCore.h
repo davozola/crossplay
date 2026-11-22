@@ -437,6 +437,41 @@ inline bool tidyKey(const char* in, char* out, const size_t cap) {
   return n >= 8;
 }
 
+// The longest key kept. Gemini's are 39 characters and OpenAI's project keys
+// run past 160.
+constexpr size_t kMaxKeyChars = 199;
+
+// A key pasted on the phone page. Unlike one typed on the panel it can be cut
+// short by the paste, and a key cut to fit would be saved and then refused by
+// the service with no hint why, so one too long to keep whole is turned away.
+inline bool tidyPastedKey(const char* in, char* out, const size_t cap) {
+  size_t printable = 0;
+  for (const char* p = in; *p; ++p) {
+    if (*p > ' ' && *p < 0x7F) ++printable;
+  }
+  if (printable + 1 > cap) return false;
+  return tidyKey(in, out, cap);
+}
+
+// The service a phone page's request names.
+inline bool serviceFromName(const char* name, Service& service) {
+  if (name == nullptr) return false;
+  if (!std::strcmp(name, "gemini")) {
+    service = Service::Gemini;
+    return true;
+  }
+  if (!std::strcmp(name, "openai")) {
+    service = Service::OpenAI;
+    return true;
+  }
+  return false;
+}
+
+// What the phone page is told: which services have a key, and nothing of one.
+inline std::string phoneStateJson(const bool gemini, const bool openai) {
+  return std::string("{\"gemini\":") + (gemini ? "true" : "false") + ",\"openai\":" + (openai ? "true" : "false") + "}";
+}
+
 // "····a1b2": enough of a key to recognise it, not enough to read it off.
 inline void keyHint(const char* key, char* out, const size_t cap) {
   const size_t n = std::strlen(key);
