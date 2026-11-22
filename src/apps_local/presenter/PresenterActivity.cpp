@@ -54,7 +54,6 @@ constexpr Option kOptionTable[] = {
 static_assert(sizeof(kLengths) / sizeof(kLengths[0]) == presenter::kLimitCount);
 
 constexpr char kOptionsPath[] = "/.crosspoint/presenter.cfg";
-constexpr char kDeviceName[] = "Sticky Presenter";
 constexpr uint8_t kCleanAfterPaints = 10;
 
 uint8_t batteryPercent() {
@@ -114,7 +113,7 @@ void PresenterActivity::onEnter() {
   loadOptions();
   view_ = View::Setup;
   clock_.reset();
-  radioUsed_ = radio::begin(kDeviceName, batteryPercent());
+  radioUsed_ = radio::begin(radio::kName, batteryPercent());
   linkShown_ = radio::state();
   shown_ = face(static_cast<uint32_t>(millis()));
   requestUpdate();
@@ -264,7 +263,9 @@ void PresenterActivity::buildSetup(toybox::Screen& screen) {
   if (note_[0] != 0) {
     help = note_;
   } else if (state == radio::State::Waiting) {
-    help = "ON THE COMPUTER, OPEN THE BLUETOOTH SETTINGS AND CHOOSE \"STICKY PRESENTER\". ONLY NEEDED THE FIRST TIME.";
+    help =
+        "ON THE COMPUTER, OPEN THE BLUETOOTH SETTINGS AND CHOOSE \"STICKY\". IF IT IS LISTED BUT WILL NOT "
+        "CONNECT, FORGET IT THERE FIRST: FLASHING A NEW IMAGE CLEARS THE DEVICE'S SIDE OF THE PAIRING.";
   } else if (state == radio::State::Linked) {
     help = radio::real() ? "IT TYPES LIKE A KEYBOARD: CLICK ON THE SLIDES FIRST SO THEY TAKE THE KEYS."
                          : "THIS BUILD HAS NO BLUETOOTH: THE LINK SHOWN IS PRETEND.";
