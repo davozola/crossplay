@@ -47,6 +47,10 @@ TaskHandle_t task = nullptr;
 void micPower(const bool on, const bool enableHigh) {
   const int8_t pin = BoardConfig::ACTIVE.mic.enable;
   if (pin == BoardConfig::PIN_UNASSIGNED) return;
+  // The sleep path holds this pad at its off level (PowerManager's
+  // powerDownRailsForSleep), and a hold outlives the wake: until it is let go
+  // the write below does nothing and the microphone never gets its rail.
+  gpio_hold_dis(static_cast<gpio_num_t>(pin));
   pinMode(pin, OUTPUT);
   digitalWrite(pin, on == enableHigh ? HIGH : LOW);
 }
@@ -370,6 +374,7 @@ void diagnose(MicFacts& facts) {
 #endif
   if (mic.enable != BoardConfig::PIN_UNASSIGNED) {
     const gpio_num_t enable = static_cast<gpio_num_t>(mic.enable);
+    gpio_hold_dis(enable);
     gpio_reset_pin(enable);
     gpio_set_direction(enable, GPIO_MODE_INPUT_OUTPUT);
     gpio_set_level(enable, 1);
