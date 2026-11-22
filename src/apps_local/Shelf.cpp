@@ -283,9 +283,9 @@ constexpr shelf::Item kApps[] = {
      "Hablas hasta un minuto y Gemini u OpenAI, con tu propia clave, lo devuelve como nota: idea, tarea o nota, "
      "con título, resumen y lo que dijiste. Todo queda en la tarjeta. Solo en la Sticky, que tiene micrófono."},
     {"PARLEM", &icon_parlem_32, &ParlemActivity::create, 3, false, "Catalán para empezar: una frase útil al día",
-     "Ciento cincuenta frases de cada día en catalán (saludar, pedir en el bar, comprar, quedar), en letra grande, "
-     "con su traducción al castellano y un consejo. Una nueva cada día; un toque pasa a la siguiente y deslizar "
-     "hacia arriba cambia el estilo."},
+     "Trescientas frases de cada día en catalán en doce secciones (saludar, el bar, comprar, la salud, el "
+     "trabajo), en letra grande, con su traducción al castellano y un tip en cada una. Una nueva cada día; un toque "
+     "pasa a la siguiente y deslizar hacia arriba cambia el estilo."},
     {"DITA", &icon_dita_32, &DitaActivity::create, 3, false, "Una frase hecha en catalán cada día",
      "Ciento cincuenta dichos y frases hechas en catalán, con lo que quieren decir en castellano y lo que dicen "
      "palabra por palabra. Una nueva cada día; un toque pasa a la siguiente y deslizar hacia arriba cambia el estilo."},
