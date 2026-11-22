@@ -26,8 +26,8 @@
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "deck/DeckActivity.h"
-#include "dita/DitaActivity.h"
 #include "discover/DiscoverActivity.h"
+#include "dita/DitaActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "fmguide/FmGuideActivity.h"
 #include "fondos/FondosActivity.h"
@@ -53,6 +53,7 @@
 #include "mancala/MancalaActivity.h"
 #include "markets/MarketsActivity.h"
 #include "mastermind/MastermindActivity.h"
+#include "meteo/WeatherActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
 #include "mystery/MysteryActivity.h"
@@ -60,6 +61,7 @@
 #include "news/NewsActivity.h"
 #include "notes/NotesActivity.h"
 #include "paint/PaintActivity.h"
+#include "parlem/ParlemActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
@@ -84,7 +86,6 @@
 #include "voz/VozActivity.h"
 #include "wallpapers/WallpapersActivity.h"
 #include "wavelength/WavelengthActivity.h"
-#include "meteo/WeatherActivity.h"
 #include "wikies/WikipediaActivity.h"
 #include "wordle/WordleActivity.h"
 #include "yahtzee/YahtzeeActivity.h"
@@ -281,6 +282,10 @@ constexpr shelf::Item kApps[] = {
     {"VOZ", &icon_voz_32, &VozActivity::create, 3, false, "Notas de voz",
      "Hablas hasta un minuto y Gemini u OpenAI, con tu propia clave, lo devuelve como nota: idea, tarea o nota, "
      "con título, resumen y lo que dijiste. Todo queda en la tarjeta. Solo en la Sticky, que tiene micrófono."},
+    {"PARLEM", &icon_parlem_32, &ParlemActivity::create, 3, false, "Catalán para empezar: una frase útil al día",
+     "Ciento cincuenta frases de cada día en catalán (saludar, pedir en el bar, comprar, quedar), en letra grande, "
+     "con su traducción al castellano y un consejo. Una nueva cada día; un toque pasa a la siguiente y deslizar "
+     "hacia arriba cambia el estilo."},
     {"DITA", &icon_dita_32, &DitaActivity::create, 3, false, "Una frase hecha en catalán cada día",
      "Ciento cincuenta dichos y frases hechas en catalán, con lo que quieren decir en castellano y lo que dicen "
      "palabra por palabra. Una nueva cada día; un toque pasa a la siguiente y deslizar hacia arriba cambia el estilo."},
@@ -309,7 +314,8 @@ constexpr shelf::Item kApps[] = {
     {"RSS", &icon_rss_32, &RssActivity::create, 1, false, "Tus webs, lo último primero",
      "Los feeds que eliges, leídos al abrir por Wi-Fi y guardados en la tarjeta para leerlos sin red."},
     {"READING STATS", &icon_readingstats_32, &ReadingStatsActivity::create, 1, false, "Tu lectura en cifras",
-     "Tiempo leído esta semana, la racha, los minutos de cada día de las dos últimas semanas y los libros acabados este año."},
+     "Tiempo leído esta semana, la racha, los minutos de cada día de las dos últimas semanas y los libros acabados "
+     "este año."},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
