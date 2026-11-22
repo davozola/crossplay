@@ -51,6 +51,8 @@ bool readNote(const char* stamp, voz::Note& note) {
 
 }  // namespace
 
+VozServer::VozServer() = default;
+
 VozServer::~VozServer() { stop(); }
 
 bool VozServer::begin() {

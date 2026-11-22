@@ -21,7 +21,7 @@ class WebServer;
 
 class VozServer {
  public:
-  VozServer() = default;
+  VozServer();
   ~VozServer();
   VozServer(const VozServer&) = delete;
   VozServer& operator=(const VozServer&) = delete;
