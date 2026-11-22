@@ -19,7 +19,7 @@
 
 Esto es un fork personal de [CrossPlay](https://github.com/ma-r-s/crossplay),
 de [ma-r-s](https://github.com/ma-r-s), hecho para una **Seeed reTerminal
-Sticky**. Conserva todo lo del original y añade treinta y nueve cosas:
+Sticky**. Conserva todo lo del original y añade cuarenta cosas:
 
 | Nuevo           | Qué es                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
@@ -32,6 +32,7 @@ Sticky**. Conserva todo lo del original y añade treinta y nueve cosas:
 | **Presenter** | Mando de diapositivas por Bluetooth: la Sticky se empareja como un teclado y pasa las de PowerPoint, Keynote o Google Slides en Mac y PC sin instalar nada. Botones grandes para avanzar y retroceder, pantalla en negro, y un reloj de la charla que arranca con la primera diapositiva y avisa a cinco y a dos minutos del final. Ver [docs/presenter.md](docs/presenter.md). |
 | **Deck** | Quince atajos por programa enviados por Bluetooth como un teclado: sistema, Chrome, Excel, Word, PowerPoint y ON1 Photo RAW, para Mac o Windows, que pregunta la primera vez. Sin instalar nada en el ordenador. |
 | **Voz** | Notas de voz: hablas hasta un minuto y Gemini u OpenAI (con tu propia clave) lo devuelve como idea, tarea o nota, con título, resumen y transcripción. El audio y la nota quedan en la tarjeta, en `/voz`. Solo en la Sticky. |
+| **Dita** | Una frase hecha en catalán cada día, en apaisado: el dicho, lo que quiere decir en castellano y lo que dice palabra por palabra. Ciento cincuenta, en tres estilos que se cambian deslizando hacia arriba; un toque pasa a la siguiente. |
 | **Liner Notes** | Notas de los discos de tu propia colección: por qué importa cada uno, su contexto, cómo suena, qué escuchar y con qué otros discos tuyos se relaciona, en español o en inglés. El contenido no va en el firmware: es un paquete que haces tú en el ordenador y copias a la tarjeta, y la app lo lee disco a disco. Marcas propias, álbum del día, búsqueda por letra y un botón que pone el disco en Plexamp a través del Jukebox. |
 | **Pomodoro**    | Temporizador de concentración que pita al acabar cada sesión.           |
 | **Tak**         | El juego de Playtak, 4x4 a 6x6, contra la máquina o a dos.              |
@@ -205,6 +206,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Presenter**   | A Bluetooth slide clicker with a talk clock that warns at five and two minutes. |
 | **Deck**        | Fifteen shortcuts per program over Bluetooth, for a Mac or Windows.     |
 | **Voz**         | Voice notes, transcribed and summarised by Gemini or OpenAI.            |
+| **Dita**        | A Catalan saying a day, with its meaning in Spanish, in three styles.   |
 | **Liner Notes** | Notes on the records in your own library, read from a pack you build and copy to the card. |
 | **Pomodoro**    | A focus timer that redraws once a minute and beeps when the session ends. |
 | **Chess Clock** | Two clocks with increment for a board between you; tap your half to move. |

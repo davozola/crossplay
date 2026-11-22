@@ -26,6 +26,7 @@
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "deck/DeckActivity.h"
+#include "dita/DitaActivity.h"
 #include "discover/DiscoverActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "fmguide/FmGuideActivity.h"
@@ -280,6 +281,9 @@ constexpr shelf::Item kApps[] = {
     {"VOZ", &icon_voz_32, &VozActivity::create, 3, false, "Notas de voz",
      "Hablas hasta un minuto y Gemini u OpenAI, con tu propia clave, lo devuelve como nota: idea, tarea o nota, "
      "con título, resumen y lo que dijiste. Todo queda en la tarjeta. Solo en la Sticky, que tiene micrófono."},
+    {"DITA", &icon_dita_32, &DitaActivity::create, 3, false, "Una frase hecha en catalán cada día",
+     "Ciento cincuenta dichos y frases hechas en catalán, con lo que quieren decir en castellano y lo que dicen "
+     "palabra por palabra. Una nueva cada día; un toque pasa a la siguiente y deslizar hacia arriba cambia el estilo."},
     {"POMODORO", &icon_pomodoro_32, &PomodoroActivity::create, 3, false, "Temporizador de concentración",
      "Sesiones de trabajo y descanso; pita al acabar cada una."},
     {"CHESS CLOCK", &icon_chessclock_32, &ChessClockActivity::create, 3, false, "Reloj de ajedrez",
