@@ -32,6 +32,10 @@ using deckfonts::kNumeralFontId;
 constexpr Cut kLabelCut{toybox::kSerifTileCut.ascender, toybox::kSerifTileCut.inkHeight};
 constexpr Cut kLabelSmallCut{toybox::kSerifSmallCut.ascender, toybox::kSerifSmallCut.inkHeight};
 constexpr Cut kSmallCut{toybox::kTileCut.ascender, toybox::kTileCut.inkHeight};
+constexpr Cut kKeyCut{toybox::kButtonCut.ascender, toybox::kButtonCut.inkHeight};
+constexpr Cut kBandCut{toybox::kUiCut.ascender, toybox::kUiCut.inkHeight};
+constexpr Cut kBoldCut{toybox::kReadingBoldCut.ascender, toybox::kReadingBoldCut.inkHeight};
+constexpr Cut kBoldSmallCut{toybox::kReadingBoldSmallCut.ascender, toybox::kReadingBoldSmallCut.inkHeight};
 
 constexpr char kSavePath[] = "/.crosspoint/deck.sav";
 constexpr char kDeviceName[] = "Sticky Deck";
@@ -39,6 +43,15 @@ constexpr int kSide = 186;   // the left column
 constexpr int kMargin = 18;  // round the page
 constexpr int kBackSwipeEdge = 28;
 constexpr uint32_t kLitMs = 350;
+
+// Teclado: a strip over five by three key caps.
+constexpr int kStrip = 54;
+constexpr int kKeyGap = 8;
+constexpr int kKeyEdge = 14;
+constexpr int kKeyRadius = 12;
+// Indice: a band over three columns of five rows.
+constexpr int kBand = 58;
+constexpr int kIndexEdge = 16;
 
 uint8_t batteryPercent() {
 #if defined(SIMULATOR)
@@ -106,6 +119,34 @@ void label(const GfxRenderer& r, const char* text, const int x, const int baseli
   if (words[1][0]) put(r, font, cut, x, baseline + lead, words[1], ink);
 }
 
+// Words set on as few lines as they fit, at most `maxLines`; a word wider than
+// the line is left to run. Returns how many lines it made.
+int wrapWords(const GfxRenderer& r, const int font, const char* text, const int width, char lines[][40],
+              const int maxLines) {
+  int count = 0;
+  lines[0][0] = 0;
+  const char* p = text;
+  while (*p) {
+    const char* end = std::strchr(p, ' ');
+    if (!end) end = p + std::strlen(p);
+    const int length = static_cast<int>(end - p);
+    char trial[96];
+    if (lines[count][0]) {
+      std::snprintf(trial, sizeof(trial), "%s %.*s", lines[count], length, p);
+    } else {
+      std::snprintf(trial, sizeof(trial), "%.*s", length, p);
+    }
+    if (lines[count][0] && r.getTextWidth(font, trial) > width && count + 1 < maxLines) {
+      ++count;
+      std::snprintf(lines[count], 40, "%.*s", length > 39 ? 39 : length, p);
+    } else {
+      std::snprintf(lines[count], 40, "%.39s", trial);
+    }
+    p = *end ? end + 1 : end;
+  }
+  return lines[0][0] ? count + 1 : 0;
+}
+
 // A rule of dots, for the column breaks: lighter than a line, so the eye reads
 // the rows first, the way a printed table is read.
 void dottedColumn(const GfxRenderer& r, const int x, const int top, const int bottom) {
@@ -164,13 +205,13 @@ bool DeckActivity::loadState() {
     got = file.read(bytes, sizeof(bytes));
   }
   bool asked = false;
-  deck::unpackState(bytes, got, os_, template_, asked);
+  deck::unpackState(bytes, got, os_, template_, asked, style_);
   return asked;
 }
 
 void DeckActivity::saveState() {
   uint8_t bytes[deck::kStateBytes];
-  deck::packState(os_, template_, view_ == View::Keys, bytes);
+  deck::packState(os_, template_, view_ == View::Keys, style_, bytes);
   HalFile file;
   if (!Storage.openFileForWrite("DECK", kSavePath, file)) return;
   file.write(bytes, sizeof(bytes));
@@ -186,6 +227,16 @@ void DeckActivity::turn(const int by) {
   requestUpdate();
 }
 
+void DeckActivity::restyle(const int by) {
+  style_ = deck::stepStyle(style_, by);
+  lit_ = -1;
+  cleanNext_ = true;
+  saveState();
+  requestUpdate();
+}
+
+const char* DeckActivity::statusLine() const { return note_ ? note_ : linkLine(static_cast<radio::State>(linkShown_)); }
+
 void DeckActivity::press(const int button) {
   const deck::Chord chord = deck::kTemplates[template_].buttons[button].on(os_);
   const bool sent = radio::chord(chord.mods, chord.usage);
@@ -195,15 +246,51 @@ void DeckActivity::press(const int button) {
   requestUpdate();
 }
 
-// The grid: five columns, three rows, right of the column.
+// Each style lays its own grid; deck::buttonIn says which button a cell holds.
 int DeckActivity::buttonAt(const int x, const int y) const {
   const int w = renderer.getScreenWidth();
   const int h = renderer.getScreenHeight();
-  if (x <= kSide || y < kMargin || y >= h - kMargin) return -1;
-  const int col = (x - kSide) * 5 / (w - kSide - kMargin + 1);
-  const int row = (y - kMargin) * 3 / (h - 2 * kMargin);
-  if (col < 0 || col > 4 || row < 0 || row > 2) return -1;
-  return row * 5 + col;
+  const int cols = deck::kColumns(style_);
+  const int rows = deck::kRows(style_);
+  int left = 0;
+  int top = 0;
+  int right = 0;
+  int bottom = 0;
+  switch (style_) {
+    case deck::Style::Editorial:
+      left = kSide + 1;
+      top = kMargin;
+      right = w - kMargin + 1;
+      bottom = h - kMargin;
+      break;
+    case deck::Style::Teclado:
+      // The gaps between caps count for the cap beside them: a finger that
+      // lands on one meant a key.
+      left = kKeyEdge - kKeyGap / 2;
+      top = kStrip + 2;
+      right = w - kKeyEdge + kKeyGap / 2;
+      bottom = h - 8;
+      break;
+    case deck::Style::Indice:
+    case deck::Style::Count:
+      left = kIndexEdge;
+      top = kBand;
+      right = w - kIndexEdge;
+      bottom = h - 6;
+      break;
+  }
+  if (x < left || x >= right || y < top || y >= bottom) return -1;
+  const int col = (x - left) * cols / (right - left);
+  const int row = (y - top) * rows / (bottom - top);
+  if (col < 0 || col >= cols || row < 0 || row >= rows) return -1;
+  return deck::buttonIn(style_, col, row);
+}
+
+bool DeckActivity::onOsName(const int x, const int y) const {
+  if (style_ == deck::Style::Editorial) return x <= kSide && y >= osLineY_ - 34 && y <= osLineY_ + 30;
+  // Teclado and Indice name the computer at the right of their top line.
+  const int band = style_ == deck::Style::Teclado ? kStrip : kBand;
+  return y < band && x > renderer.getScreenWidth() / 2;
 }
 
 void DeckActivity::loop() {
@@ -256,6 +343,12 @@ void DeckActivity::loop() {
     case MappedInputManager::SwipeDir::Right:
       turn(-1);
       return;
+    case MappedInputManager::SwipeDir::Up:
+      restyle(1);
+      return;
+    case MappedInputManager::SwipeDir::Down:
+      restyle(-1);
+      return;
     default:
       break;
   }
@@ -271,13 +364,11 @@ void DeckActivity::loop() {
   int x = 0;
   int y = 0;
   if (!mappedInput.wasScreenTapped(x, y)) return;
-  if (x <= kSide) {
-    // The system's name, under the template's, is where it is changed.
-    if (y >= osLineY_ - 34 && y <= osLineY_ + 30) {
-      view_ = View::Ask;
-      cleanNext_ = true;
-      requestUpdate();
-    }
+  // The computer's name is where it is changed.
+  if (onOsName(x, y)) {
+    view_ = View::Ask;
+    cleanNext_ = true;
+    requestUpdate();
     return;
   }
   const int button = buttonAt(x, y);
@@ -319,7 +410,7 @@ void DeckActivity::drawAsk() {
   put(r, toybox::kTileFontId, kSmallCut, kSide + 34, h - kMargin - 6, "TOCA EL TUYO");
 }
 
-void DeckActivity::drawKeys() {
+void DeckActivity::drawEditorial() {
   const GfxRenderer& r = renderer;
   const int w = r.getScreenWidth();
   const int h = r.getScreenHeight();
@@ -363,8 +454,7 @@ void DeckActivity::drawKeys() {
   osLineY_ = base;
   put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base, osName(os_));
   base += 20;
-  put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base,
-      note_ ? note_ : linkLine(static_cast<radio::State>(linkShown_)));
+  put(r, toybox::kTileFontId, kSmallCut, kMargin + 6, base, statusLine());
 
   char of[16];
   std::snprintf(of, sizeof(of), "de %d", deck::kTemplateCount);
@@ -397,19 +487,138 @@ void DeckActivity::drawKeys() {
 
     char said[32];
     deck::describe(b.on(os_), os_, said, sizeof(said));
-    int font = toybox::kTileFontId;
-    if (r.getTextWidth(font, said) > cellW - 24) {
-      // "CTRL SHIFT CMD G" is the longest a template asks for; it takes two lines.
-      const char* last = std::strrchr(said, ' ');
-      if (last) {
-        char head[32];
-        std::snprintf(head, sizeof(head), "%.*s", static_cast<int>(last - said), said);
-        r.drawText(font, x + 16, y + cellH - 16 - kSmallCut.ascender - kSmallCut.cap - 7, head, ink);
-        r.drawText(font, x + 16, y + cellH - 16 - kSmallCut.ascender, last + 1, ink);
-        continue;
+    // Two lines at most: a third would run into a label that takes two.
+    char lines[2][40];
+    const int count = wrapWords(r, toybox::kTileFontId, said, cellW - 24, lines, 2);
+    const int lead = kSmallCut.cap + 7;
+    for (int n = 0; n < count; ++n) {
+      r.drawText(toybox::kTileFontId, x + 16, y + cellH - 16 - kSmallCut.ascender - (count - 1 - n) * lead, lines[n],
+                 ink);
+    }
+  }
+}
+
+// A black page of key caps. The cap is paper and its legend ink; a cap held
+// down turns over, to an outline with its legend in paper.
+void DeckActivity::drawTeclado() {
+  const GfxRenderer& r = renderer;
+  const int w = r.getScreenWidth();
+  const int h = r.getScreenHeight();
+  const deck::Template& tpl = deck::kTemplates[template_];
+  r.fillRect(0, 0, w, h, true);
+
+  // The strip: the program, then the computer, the link and the page.
+  put(r, toybox::kUiFontId, kBandCut, kKeyEdge + 2, 14 + kBandCut.cap, tpl.name, false);
+  char info[64];
+  std::snprintf(info, sizeof(info), "%s  ·  %s  ·  %d/%d", osName(os_), statusLine(), template_ + 1,
+                deck::kTemplateCount);
+  put(r, toybox::kTileFontId, kSmallCut, w - kKeyEdge - 2 - r.getTextWidth(toybox::kTileFontId, info),
+      14 + kBandCut.cap - 4, info, false);
+
+  const int keyW = (w - 2 * kKeyEdge - 4 * kKeyGap) / 5;
+  const int keyH = (h - kStrip - 10 - 2 * kKeyGap) / 3;
+  for (int i = 0; i < deck::kButtons; ++i) {
+    const deck::Place at = deck::placeOf(style_, i);
+    const int x = kKeyEdge + at.col * (keyW + kKeyGap);
+    const int y = kStrip + 4 + at.row * (keyH + kKeyGap);
+    const bool lit = i == lit_;
+    if (lit) {
+      r.drawRoundedRect(x, y, keyW, keyH, 3, kKeyRadius, false);
+    } else {
+      r.fillRoundedRect(x, y, keyW, keyH, kKeyRadius, Color::White);
+    }
+    const bool ink = !lit;
+    const deck::Button& b = tpl.buttons[i];
+
+    // The legend, in the largest capitals every word of it fits.
+    char words[2][40];
+    const int inner = keyW - 16;
+    int font = toybox::kButtonFontId;
+    Cut cut = kKeyCut;
+    int count = wrapWords(r, font, b.label, inner, words, 2);
+    for (int n = 0; n < count; ++n) {
+      if (r.getTextWidth(font, words[n]) > inner) {
+        font = toybox::kTileFontId;
+        cut = kSmallCut;
       }
     }
-    r.drawText(font, x + 16, y + cellH - 16 - kSmallCut.ascender, said, ink);
+    if (font == toybox::kTileFontId) count = wrapWords(r, font, b.label, inner, words, 2);
+    const int lead = cut.cap + 10;
+    // One line sits where the first of two would, so the legends line up
+    // along a row of keys.
+    const int first = y + 22 + cut.cap;
+    for (int n = 0; n < count; ++n) {
+      put(r, font, cut, x + (keyW - r.getTextWidth(font, words[n])) / 2, first + n * lead, words[n], ink);
+    }
+
+    char said[32];
+    deck::describe(b.on(os_), os_, said, sizeof(said));
+    char lines[2][40];
+    const int chordLines = wrapWords(r, toybox::kTileFontId, said, inner, lines, 2);
+    const int chordLead = kSmallCut.cap + 6;
+    for (int n = 0; n < chordLines; ++n) {
+      put(r, toybox::kTileFontId, kSmallCut, x + (keyW - r.getTextWidth(toybox::kTileFontId, lines[n])) / 2,
+          y + keyH - 13 - (chordLines - 1 - n) * chordLead, lines[n], ink);
+    }
+  }
+}
+
+// Three columns of five under a black band: a template's three rows, each set
+// as a column, a button to a line with its chord under it.
+void DeckActivity::drawIndice() {
+  const GfxRenderer& r = renderer;
+  const int w = r.getScreenWidth();
+  const int h = r.getScreenHeight();
+  const deck::Template& tpl = deck::kTemplates[template_];
+
+  r.fillRect(0, 0, w, kBand - 8, true);
+  put(r, toybox::kReadingBoldFontId, kBoldCut, kIndexEdge + 4, (kBand - 8 + kBoldCut.cap) / 2, deck::kTitles[template_],
+      false);
+  char info[64];
+  std::snprintf(info, sizeof(info), "%s  ·  %s  ·  %d DE %d", osName(os_), statusLine(), template_ + 1,
+                deck::kTemplateCount);
+  put(r, toybox::kTileFontId, kSmallCut, w - kIndexEdge - 4 - r.getTextWidth(toybox::kTileFontId, info),
+      (kBand - 8 + kSmallCut.cap) / 2, info, false);
+
+  const int colW = (w - 2 * kIndexEdge) / 3;
+  const int rowH = (h - kBand - 6) / 5;
+  for (int col = 1; col < 3; ++col) r.fillRect(kIndexEdge + col * colW, kBand + 6, 2, 5 * rowH - 12, true);
+
+  for (int i = 0; i < deck::kButtons; ++i) {
+    const deck::Place at = deck::placeOf(style_, i);
+    const int x = kIndexEdge + at.col * colW;
+    const int y = kBand + at.row * rowH;
+    const bool lit = i == lit_;
+    if (lit) r.fillRect(x + 4, y + 2, colW - 6, rowH - 3, true);
+    const bool ink = !lit;
+    if (at.row > 0 && !lit && i - 1 != lit_) r.fillRect(x + 14, y, colW - 26, 1, true);
+
+    const deck::Button& b = tpl.buttons[i];
+    char text[48];
+    sentenceCase(b.label, text, sizeof(text));
+    const int inner = colW - 30;
+    // On one line in the larger bold when it fits, in the smaller when it
+    // does not, and on two lines only when neither holds it.
+    char lines[2][40];
+    int font = toybox::kReadingBoldFontId;
+    Cut cut = kBoldCut;
+    if (r.getTextWidth(font, text) > inner) {
+      font = toybox::kReadingBoldSmallFontId;
+      cut = kBoldSmallCut;
+    }
+    const int count = wrapWords(r, font, text, inner, lines, 2);
+
+    char said[32];
+    deck::describe(b.on(os_), os_, said, sizeof(said));
+    // The label and its chord, centred in the row as one block.
+    const int labelLead = cut.cap + 8;
+    const int block = cut.cap + (count - 1) * labelLead + 12 + kSmallCut.cap;
+    int base = y + (rowH - block) / 2 + cut.cap;
+    for (int n = 0; n < count; ++n) {
+      put(r, font, cut, x + 16, base, lines[n], ink);
+      base += labelLead;
+    }
+    put(r, toybox::kTileFontId, kSmallCut, x + 16, base - labelLead + 12 + kSmallCut.cap, said, ink);
   }
 }
 
@@ -418,8 +627,12 @@ void DeckActivity::render(RenderLock&&) {
   renderer.clearScreen();
   if (view_ == View::Ask) {
     drawAsk();
+  } else if (style_ == deck::Style::Teclado) {
+    drawTeclado();
+  } else if (style_ == deck::Style::Indice) {
+    drawIndice();
   } else {
-    drawKeys();
+    drawEditorial();
   }
   renderer.displayBuffer(cleanNext_ ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanNext_ = false;

@@ -24,7 +24,7 @@ static int lettersIn(const char* s, const char* end) {
 }
 
 int main() {
-  check(kTemplateCount >= 6, "six templates or more");
+  check(kTemplateCount >= 7, "seven templates or more");
   for (int t = 0; t < kTemplateCount; ++t) {
     const Template& tpl = kTemplates[t];
     check(tpl.name && tpl.name[0], "a template is named");
@@ -56,9 +56,7 @@ int main() {
         check((c.mods & 0xF0) == 0, "left-hand modifiers only", tpl.name, k.label);
         for (int a = 0; a < b; ++a) {
           const Chord d = tpl.buttons[a].on(os);
-          // SISTEMA closes a window and quits a program with one chord on Windows, where they are one act.
-          const bool sameAct = t == 0 && os == Os::Windows && c.mods == kAlt && c.usage == fkey(4);
-          check(sameAct || d.mods != c.mods || d.usage != c.usage, "chords differ within a template", tpl.name, k.label);
+          check(d.mods != c.mods || d.usage != c.usage, "chords differ within a template", tpl.name, k.label);
         }
         char said[32];
         const int n = describe(c, os, said, sizeof(said));
@@ -94,12 +92,44 @@ int main() {
   Os os;
   int chosen;
   bool asked;
-  packState(Os::Windows, 3, true, state);
-  check(unpackState(state, kStateBytes, os, chosen, asked) && os == Os::Windows && chosen == 3 && asked, "state");
+  Style style;
+  packState(Os::Windows, 3, true, Style::Indice, state);
+  check(unpackState(state, kStateBytes, os, chosen, asked, style) && os == Os::Windows && chosen == 3 && asked &&
+            style == Style::Indice,
+        "state");
   state[2] = static_cast<uint8_t>(kTemplateCount);
-  check(!unpackState(state, kStateBytes, os, chosen, asked) && os == Os::Mac && chosen == 0 && !asked,
+  check(!unpackState(state, kStateBytes, os, chosen, asked, style) && os == Os::Mac && chosen == 0 && !asked &&
+            style == Style::Editorial,
         "a template that is gone is refused");
-  check(!unpackState(state, 2, os, chosen, asked), "a short state is refused");
+  check(!unpackState(state, 2, os, chosen, asked, style), "a short state is refused");
+  packState(Os::Mac, 1, true, Style::Teclado, state);
+  state[4] = static_cast<uint8_t>(kStyleCount);
+  check(!unpackState(state, kStateBytes, os, chosen, asked, style), "a style that is gone is refused");
+  // What the version before styles wrote is still read, as Editorial.
+  const uint8_t old[4] = {1, static_cast<uint8_t>(Os::Windows), 2, 1};
+  check(unpackState(old, 4, os, chosen, asked, style) && os == Os::Windows && chosen == 2 && asked &&
+            style == Style::Editorial,
+        "the old state is still read");
+
+  // Styles go round, and every button has one place in each.
+  check(stepStyle(Style::Editorial, 1) == Style::Teclado && stepStyle(Style::Indice, 1) == Style::Editorial &&
+            stepStyle(Style::Editorial, -1) == Style::Indice,
+        "styles go round");
+  for (int st = 0; st < kStyleCount; ++st) {
+    const Style each = static_cast<Style>(st);
+    check(kColumns(each) * kRows(each) == kButtons, "a style holds every button");
+    bool seen[kButtons] = {};
+    for (int b = 0; b < kButtons; ++b) {
+      const Place at = placeOf(each, b);
+      check(at.col >= 0 && at.col < kColumns(each) && at.row >= 0 && at.row < kRows(each), "a place is on the grid");
+      check(buttonIn(each, at.col, at.row) == b, "a place leads back to its button");
+      seen[at.row * kColumns(each) + at.col] = true;
+    }
+    for (int i = 0; i < kButtons; ++i) check(seen[i], "no two buttons share a place");
+  }
+  // Indice sets a template's rows as columns: the first five stay together.
+  check(placeOf(Style::Indice, 4).col == 0 && placeOf(Style::Indice, 5).col == 1 && placeOf(Style::Teclado, 5).row == 1,
+        "rows become columns");
 
   std::printf("%d checks, %d failed\n", checks, failures);
   if (failures == 0) std::printf("deck: all tests passed\n");

@@ -58,7 +58,8 @@ struct Template {
 };
 
 // How each template is titled on its own page, in the order of kTemplates.
-inline constexpr const char* kTitles[] = {"Sistema", "Chrome", "Excel", "Word", "PowerPoint", "ON1 Photo RAW"};
+inline constexpr const char* kTitles[] = {"Sistema",    "Chrome",        "Excel",    "Word",
+                                          "PowerPoint", "ON1 Photo RAW", "Reuniones"};
 
 // The same letter under Command on a Mac and under Control on Windows, which
 // is most of what the two have in common.
@@ -70,85 +71,107 @@ constexpr Button same(const char* label, const uint8_t mods, const uint8_t usage
   return {label, {mods, usage}, {mods, usage}};
 }
 
+// What earns a button: a chord that is awkward to hold or hard to remember.
+// Copy and paste are under the left hand already and are not here. Each
+// template is three rows of five that belong together, and a style may set
+// them as rows or as columns.
 inline constexpr Template kTemplates[] = {
     {"SISTEMA",
-     {both("COPIAR", 'C'),
-      both("PEGAR", 'V'),
-      both("CORTAR", 'X'),
-      both("DESHACER", 'Z'),
-      both("TODO", 'A'),
-      {"CAMBIAR APP", {kGui, kTab}, {kAlt, kTab}},
+     {// Getting about the desktop.
       {"VENTANAS", {kCtrl, kUp}, {kGui, kTab}},
-      {"ESCRITORIO", {0, fkey(11)}, {kGui, letter('D')}},
+      {"ESCRITORIO ANTERIOR", {kCtrl, kLeft}, {kCtrl | kGui, kLeft}},
+      {"ESCRITORIO SIGUIENTE", {kCtrl, kRight}, {kCtrl | kGui, kRight}},
+      {"VER ESCRITORIO", {0, fkey(11)}, {kGui, letter('D')}},
+      {"CAMBIAR APP", {kGui, kTab}, {kAlt, kTab}},
+      // Taking and finding things.
+      {"CAPTURA ZONA", {kGui | kShift, digit(4)}, {kGui | kShift, letter('S')}},
+      {"GRABAR PANTALLA", {kGui | kShift, digit(5)}, {kGui | kShift, letter('R')}},
+      {"PEGAR LIMPIO", {kGui | kAlt | kShift, letter('V')}, {kCtrl | kShift, letter('V')}},
       {"BUSCAR", {kGui, kSpace}, {kGui, letter('S')}},
-      {"CAPTURA", {kGui | kShift, digit(4)}, {kGui | kShift, letter('S')}},
-      both("GUARDAR", 'S'),
-      both("NUEVO", 'N'),
-      {"CERRAR", {kGui, letter('W')}, {kAlt, fkey(4)}},
-      {"SALIR", {kGui, letter('Q')}, {kAlt, fkey(4)}},
+      {"ARCHIVOS", {kGui | kAlt, kSpace}, {kGui, letter('E')}},
+      // The window in front.
+      {"MINIMIZAR", {kGui, letter('M')}, {kGui, kDown}},
+      {"PANTALLA COMPLETA", {kGui | kCtrl, letter('F')}, {0, fkey(11)}},
+      both("CERRAR VENTANA", 'W'),
+      {"FORZAR CIERRE", {kGui | kAlt, kEscape}, {kCtrl | kShift, kEscape}},
       {"BLOQUEAR", {kGui | kCtrl, letter('Q')}, {kGui, letter('L')}}}},
     {"CHROME",
-     {both("NUEVA PESTAÑA", 'T'),
+     {// Tabs.
+      both("NUEVA PESTAÑA", 'T'),
       both("CERRAR PESTAÑA", 'W'),
       both("REABRIR", 'T', kShift),
       same("PESTAÑA ANTERIOR", kCtrl | kShift, kTab),
       same("PESTAÑA SIGUIENTE", kCtrl, kTab),
-      {"ATRÁS", {kGui, kLeft}, {kAlt, kLeft}},
-      {"ADELANTE", {kGui, kRight}, {kAlt, kRight}},
-      both("RECARGAR", 'R'),
+      // Finding.
+      both("BUSCAR PESTAÑAS", 'A', kShift),
       both("DIRECCIÓN", 'L'),
       both("BUSCAR", 'F'),
+      both("RECARGA TOTAL", 'R', kShift),
       both("INCÓGNITO", 'N', kShift),
-      both("MARCADOR", 'D'),
+      // The browser's own pages.
       {"HISTORIAL", {kGui, letter('Y')}, {kCtrl, letter('H')}},
       {"DESCARGAS", {kGui | kShift, letter('J')}, {kCtrl, letter('J')}},
-      {"PANTALLA COMPLETA", {kGui | kCtrl, letter('F')}, {0, fkey(11)}}}},
+      both("MARCADOR", 'D'),
+      {"INSPECTOR", {kGui | kAlt, letter('I')}, {kCtrl | kShift, letter('I')}},
+      {"ÚLTIMA PESTAÑA", {kGui, digit(9)}, {kCtrl, digit(9)}}}},
     {"EXCEL",
-     {both("GUARDAR", 'S'),
-      both("DESHACER", 'Z'),
-      both("REHACER", 'Y'),
-      both("COPIAR", 'C'),
-      both("PEGAR", 'V'),
-      {"PEGADO ESPECIAL", {kGui | kCtrl, letter('V')}, {kCtrl | kAlt, letter('V')}},
+     {// A cell and what goes into it.
       {"EDITAR CELDA", {kCtrl, letter('U')}, {0, fkey(2)}},
-      same("FUNCIÓN", kShift, fkey(3)),
+      {"FIJAR REF", {kGui, letter('T')}, {0, fkey(4)}},
+      both("PEGAR VALORES", 'V', kShift),
+      {"PEGADO ESPECIAL", {kGui | kCtrl, letter('V')}, {kCtrl | kAlt, letter('V')}},
       {"FORMATO CELDAS", {kGui, digit(1)}, {kCtrl, digit(1)}},
+      // A range.
       same("FILTRO", kCtrl | kShift, letter('L')),
+      same("TABLA", kCtrl, letter('T')),
       both("RELLENAR ABAJO", 'D'),
-      both("TABLA", 'T'),
-      same("IR A", kCtrl, letter('G')),
+      // Shift and a digit is the same sign on a Spanish and an English keyboard
+      // for 1 and 5, which is what these two are written as.
+      same("FORMATO MILES", kCtrl | kShift, digit(1)),
+      same("PORCENTAJE", kCtrl | kShift, digit(5)),
+      // A model: its outline, its sheets, its numbers.
+      {"AGRUPAR", {kGui | kShift, letter('K')}, {kAlt | kShift, kRight}},
+      {"DESAGRUPAR", {kGui | kShift, letter('J')}, {kAlt | kShift, kLeft}},
       {"HOJA ANTERIOR", {kAlt, kLeft}, {kCtrl, kPageUp}},
-      {"HOJA SIGUIENTE", {kAlt, kRight}, {kCtrl, kPageDown}}}},
+      {"HOJA SIGUIENTE", {kAlt, kRight}, {kCtrl, kPageDown}},
+      same("RECALCULAR", 0, fkey(9))}},
     {"WORD",
-     {both("GUARDAR", 'S'),
-      both("DESHACER", 'Z'),
-      both("REHACER", 'Y'),
-      both("NEGRITA", 'B'),
-      both("CURSIVA", 'I'),
-      both("SUBRAYADO", 'U'),
+     {// Styles.
       {"TÍTULO 1", {kGui | kAlt, digit(1)}, {kCtrl | kAlt, digit(1)}},
       {"TÍTULO 2", {kGui | kAlt, digit(2)}, {kCtrl | kAlt, digit(2)}},
+      {"TÍTULO 3", {kGui | kAlt, digit(3)}, {kCtrl | kAlt, digit(3)}},
       both("NORMAL", 'N', kShift),
       both("VIÑETAS", 'L', kShift),
-      both("CENTRAR", 'E'),
-      both("BUSCAR", 'F'),
+      // Formatting carried, dropped and changed. Word moved the format
+      // painter's chords in 2024 to give Shift+V to pasting text alone.
+      both("PEGAR LIMPIO", 'V', kShift),
+      {"COPIAR FORMATO", {kGui | kAlt, letter('C')}, {kCtrl | kAlt, letter('C')}},
+      {"PEGAR FORMATO", {kGui | kAlt, letter('V')}, {kCtrl | kAlt, letter('V')}},
+      same("QUITAR FORMATO", kCtrl, kSpace),
+      same("MAYÚSCULAS", kShift, fkey(3)),
+      // Reviewing.
       {"COMENTAR", {kGui | kAlt, letter('A')}, {kCtrl | kAlt, letter('M')}},
       both("CONTROL CAMBIOS", 'E', kShift),
+      {"NOTA PIE", {kGui | kAlt, letter('F')}, {kCtrl | kAlt, letter('F')}},
+      both("CONTAR PALABRAS", 'G', kShift),
       {"SALTO PÁGINA", {kGui, kEnter}, {kCtrl, kEnter}}}},
     {"POWERPOINT",
-     {same("NUEVA DIAPOSITIVA", kCtrl, letter('M')),
+     {// Building a slide.
+      same("NUEVA DIAPOSITIVA", kCtrl, letter('M')),
       both("DUPLICAR", 'D'),
-      both("GUARDAR", 'S'),
-      both("DESHACER", 'Z'),
-      both("REHACER", 'Y'),
       {"AGRUPAR", {kGui | kAlt, letter('G')}, {kCtrl, letter('G')}},
-      {"QUITAR GRUPO", {kGui | kAlt | kShift, letter('G')}, {kCtrl | kShift, letter('G')}},
+      {"DESAGRUPAR", {kGui | kAlt | kShift, letter('G')}, {kCtrl | kShift, letter('G')}},
+      both("CENTRAR", 'E'),
+      // Making it tidy.
       both("COPIAR FORMATO", 'C', kShift),
       both("PEGAR FORMATO", 'V', kShift),
-      both("CENTRAR", 'E'),
+      {"GUÍAS", {kGui | kAlt | kCtrl, letter('G')}, {kAlt, fkey(9)}},
+      same("CUADRÍCULA", kShift, fkey(9)),
       both("NEGRITA", 'B'),
+      // Showing it.
       {"DESDE INICIO", {kGui | kShift, kEnter}, {0, fkey(5)}},
       {"DESDE AQUÍ", {kGui, kEnter}, {kShift, fkey(5)}},
+      {"MODERADOR", {kAlt, kEnter}, {kAlt, fkey(5)}},
       same("PANTALLA NEGRA", 0, letter('B')),
       same("TERMINAR", 0, kEscape)}},
     // ON1 Photo RAW answers to single letters, the same on both systems; only
@@ -171,6 +194,25 @@ inline constexpr Template kTemplates[] = {
       // on + and -, which move between a Spanish and an English keyboard.
       {"AJUSTAR", {kGui, digit(0)}, {kCtrl, digit(0)}},
       {"ZOOM 100%", {kGui | kAlt, digit(0)}, {kCtrl | kAlt, digit(0)}}}},
+    // A call, in whichever of the three it is: the microphone, the camera, the
+    // hand, what is shared or said beside it, and the way out. Each program
+    // answers only while its own window is in front.
+    {"REUNIONES",
+     {both("TEAMS MICRO", 'M', kShift),
+      both("TEAMS CÁMARA", 'O', kShift),
+      both("TEAMS MANO", 'K', kShift),
+      both("TEAMS COMPARTIR", 'E', kShift),
+      both("TEAMS SALIR", 'H', kShift),
+      {"ZOOM MICRO", {kGui | kShift, letter('A')}, {kAlt, letter('A')}},
+      {"ZOOM CÁMARA", {kGui | kShift, letter('V')}, {kAlt, letter('V')}},
+      same("ZOOM MANO", kAlt, letter('Y')),
+      {"ZOOM COMPARTIR", {kGui | kShift, letter('S')}, {kAlt, letter('S')}},
+      {"ZOOM SALIR", {kGui, letter('W')}, {kAlt, letter('Q')}},
+      both("MEET MICRO", 'D'),
+      both("MEET CÁMARA", 'E'),
+      {"MEET MANO", {kGui | kCtrl, letter('H')}, {kCtrl | kAlt, letter('H')}},
+      {"MEET CHAT", {kGui | kCtrl, letter('C')}, {kCtrl | kAlt, letter('C')}},
+      {"MEET PERSONAS", {kGui | kCtrl, letter('P')}, {kCtrl | kAlt, letter('P')}}}},
 };
 constexpr int kTemplateCount = sizeof(kTemplates) / sizeof(kTemplates[0]);
 static_assert(sizeof(kTitles) / sizeof(kTitles[0]) == kTemplateCount, "every template has a title");
@@ -264,24 +306,56 @@ constexpr bool layoutProof(const uint8_t u) {
          (u >= 0x3A && u <= 0x45) || (u >= 0x4B && u <= 0x52);
 }
 
-// What the app remembers between visits.
-constexpr int kStateBytes = 4;
-inline void packState(const Os os, const int chosen, const bool asked, uint8_t* out) {
-  out[0] = 1;  // version
+// How a template is set on the panel. The buttons and their chords are the
+// same in all three; a swipe up or down goes from one to the next.
+//   Editorial  a printed table in a serif, with the template named in a column
+//   Teclado    a black page of key caps, in the device's own capitals
+//   Indice     three columns of five under a black band, a row to each button
+enum class Style : uint8_t { Editorial, Teclado, Indice, Count };
+constexpr int kStyleCount = static_cast<int>(Style::Count);
+constexpr Style stepStyle(const Style style, const int by) {
+  return static_cast<Style>(((static_cast<int>(style) + by) % kStyleCount + kStyleCount) % kStyleCount);
+}
+
+// Where a button sits. Editorial and Teclado set a template as three rows of
+// five; Indice turns each row into a column, so what belongs together still
+// sits together.
+struct Place {
+  int col;
+  int row;
+};
+constexpr int kColumns(const Style style) { return style == Style::Indice ? 3 : 5; }
+constexpr int kRows(const Style style) { return style == Style::Indice ? 5 : 3; }
+constexpr Place placeOf(const Style style, const int button) {
+  return style == Style::Indice ? Place{button / 5, button % 5} : Place{button % 5, button / 5};
+}
+constexpr int buttonIn(const Style style, const int col, const int row) {
+  return style == Style::Indice ? col * 5 + row : row * 5 + col;
+}
+
+// What the app remembers between visits. Version 1 had no style and reads as
+// Editorial.
+constexpr int kStateBytes = 5;
+inline void packState(const Os os, const int chosen, const bool asked, const Style style, uint8_t* out) {
+  out[0] = 2;  // version
   out[1] = static_cast<uint8_t>(os);
   out[2] = static_cast<uint8_t>(chosen);
   out[3] = asked ? 1 : 0;
+  out[4] = static_cast<uint8_t>(style);
 }
-inline bool unpackState(const uint8_t* in, const int size, Os& os, int& chosen, bool& asked) {
+inline bool unpackState(const uint8_t* in, const int size, Os& os, int& chosen, bool& asked, Style& style) {
   os = Os::Mac;
   chosen = 0;
   asked = false;
-  if (size < kStateBytes || in[0] != 1 || in[1] >= static_cast<uint8_t>(Os::Count) || in[2] >= kTemplateCount) {
+  style = Style::Editorial;
+  if (size < 4 || (in[0] != 1 && in[0] != 2) || in[1] >= static_cast<uint8_t>(Os::Count) || in[2] >= kTemplateCount) {
     return false;
   }
+  if (in[0] == 2 && (size < kStateBytes || in[4] >= kStyleCount)) return false;
   os = static_cast<Os>(in[1]);
   chosen = in[2];
   asked = in[3] != 0;
+  if (in[0] == 2) style = static_cast<Style>(in[4]);
   return true;
 }
 

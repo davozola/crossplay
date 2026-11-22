@@ -4,6 +4,9 @@
 // keyboard, so the Sticky sits beside the computer as a small macro pad. The
 // first visit asks whether the computer is a Mac or a Windows machine; the
 // templates are written for both and the answer picks the chords.
+//
+// A swipe sideways turns to the next program; a swipe up or down changes how
+// the page is set (deck::Style), which is remembered.
 
 #include <memory>
 
@@ -30,13 +33,22 @@ class DeckActivity final : public Activity {
   bool loadState();  // true when the computer has been named before
   void saveState();
   void turn(int by);
+  void restyle(int by);
   void press(int button);
   void drawAsk();
-  void drawKeys();
+  void drawEditorial();
+  void drawTeclado();
+  void drawIndice();
+  // The link, or what went wrong with the last press.
+  const char* statusLine() const;
+  // The button under a tap in the style on the panel, or -1.
   int buttonAt(int x, int y) const;
+  // Whether a tap is on the place that names the computer, which changes it.
+  bool onOsName(int x, int y) const;
 
   View view_ = View::Ask;
   deck::Os os_ = deck::Os::Mac;
+  deck::Style style_ = deck::Style::Editorial;
   int template_ = 0;
   int lit_ = -1;             // the button drawn pressed, -1 for none
   uint32_t litUntilMs_ = 0;  // when it goes back to rest
