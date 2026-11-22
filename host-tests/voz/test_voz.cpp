@@ -163,6 +163,45 @@ int main() {
         "unknown service");
   check(phoneStateJson(true, false) == "{\"gemini\":true,\"openai\":false}", "phone state",
         phoneStateJson(true, false).c_str());
+  // What the phone page reads the notes as.
+  check(isoWhen("20261121-154203") == "2026-11-21 15:42", "iso when", isoWhen("20261121-154203").c_str());
+  check(isoWhen("notas.txt").empty(), "iso when of a non-stamp");
+  Note exported;
+  exported.kind = Kind::Task;
+  exported.title = "Llamar a \"Marta\"";
+  exported.summary = "Quedar el jueves.";
+  exported.transcript = "Tengo que llamar a Marta\npara quedar el jueves.";
+  const std::string row = listRowJson("20261121-154203", true, exported, 42);
+  check(row ==
+            "{\"id\":\"20261121-154203\",\"when\":\"2026-11-21 15:42\",\"seconds\":42,\"done\":true,"
+            "\"kind\":\"TAREA\",\"title\":\"Llamar a \\\"Marta\\\"\"}",
+        "list row", row.c_str());
+  const std::string bare = listRowJson("20261121-154203", false, Note{}, 7);
+  check(bare == "{\"id\":\"20261121-154203\",\"when\":\"2026-11-21 15:42\",\"seconds\":7,\"done\":false}", "bare row",
+        bare.c_str());
+  const std::string whole = noteJson("20261121-154203", exported);
+  check(whole.find("\"transcript\":\"Tengo que llamar a Marta\\npara quedar el jueves.\"") != std::string::npos &&
+            whole.find("\"summary\":\"Quedar el jueves.\"") != std::string::npos,
+        "note json", whole.c_str());
+  const std::string md = noteMarkdown("20261121-154203", exported);
+  check(md ==
+            "## Llamar a \"Marta\"\n\n2026-11-21 15:42 \xC2\xB7 TAREA\n\n**Resumen:** Quedar el jueves.\n\n"
+            "Tengo que llamar a Marta\npara quedar el jueves.\n\n---\n\n",
+        "markdown", md.c_str());
+  Note untitled;
+  untitled.transcript = "Solo palabras.";
+  const std::string plain = noteMarkdown("20261121-154203", untitled);
+  check(plain.find("## Sin t\xC3\xADtulo\n") == 0 && plain.find("Resumen") == std::string::npos, "untitled markdown",
+        plain.c_str());
+  char requested[16];
+  check(stampFromRequest("20261121-154203", requested, sizeof(requested)) && !std::strcmp(requested, "20261121-154203"),
+        "stamp from request");
+  check(!stampFromRequest("../../etc/passwd", requested, sizeof(requested)) &&
+            !stampFromRequest("20261121-154203.wav", requested, sizeof(requested)) &&
+            !stampFromRequest("20261121-15420/", requested, sizeof(requested)) &&
+            !stampFromRequest("", requested, sizeof(requested)) &&
+            !stampFromRequest(nullptr, requested, sizeof(requested)),
+        "a request cannot name anything but a stamp");
   char hint[32];
   keyHint("sk-proj-abcd1234", hint, sizeof(hint));
   check(!std::strcmp(hint, "TERMINA EN 1234"), "hint", hint);

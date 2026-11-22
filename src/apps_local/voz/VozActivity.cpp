@@ -32,7 +32,7 @@ namespace df = deckfonts;
 
 namespace {
 
-constexpr char kNotesDir[] = "/voz";
+using voz::kNotesDir;
 constexpr char kConfigDir[] = "/.crosspoint/voz";
 constexpr char kConfigPath[] = "/.crosspoint/voz/voz.cfg";
 constexpr char kModelsPath[] = "/.crosspoint/voz/modelos.txt";
@@ -46,6 +46,7 @@ constexpr int kRowHeight = 84;
 constexpr int kRowsPerPage = 6;
 constexpr int kButtonY = 700;  // the centre of the record and stop buttons
 constexpr int kFooter = 64;
+constexpr int kHeadWord = 130;  // the width each word at the head of the list answers to
 constexpr int kMaxEntries = 200;
 // Before this the device's clock has plainly never been set.
 constexpr time_t kClockSetAfter = 1704067200;  // 2024-01-01
@@ -411,7 +412,8 @@ void VozActivity::askKey(const voz::Service service) {
 
 // ---------------------------------------------------------------- phone
 
-void VozActivity::openPhone() {
+void VozActivity::openPhone(const View from) {
+  phoneFrom_ = from;
   wifiActivated_ = true;
   if (WiFi.status() == WL_CONNECTED) {
     startPhone();
@@ -432,7 +434,7 @@ void VozActivity::openPhone() {
                          [this](const ActivityResult& result) {
                            renderer.setOrientation(GfxRenderer::Orientation::Portrait);
                            if (result.isCancelled) {
-                             show(View::Settings);
+                             show(phoneFrom_);
                            } else {
                              startPhone();
                            }
@@ -488,7 +490,7 @@ void VozActivity::loopPhone() {
   int y = 0;
   if (mappedInput.wasScreenTapped(x, y) || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     stopPhone();
-    show(View::Settings);
+    show(phoneFrom_);
     return;
   }
   if (!server_) return;
@@ -603,8 +605,13 @@ void VozActivity::loopList() {
   int y = 0;
   if (!mappedInput.wasScreenTapped(x, y)) return;
   const int w = renderer.getScreenWidth();
-  if (y < kListTop - 8 && x > w / 2) {
+  // The head of the page: MÓVIL, then AJUSTES at the edge.
+  if (y < kListTop - 8 && x > w - kHeadWord) {
     show(View::Settings);
+    return;
+  }
+  if (y < kListTop - 8 && x > w - 2 * kHeadWord) {
+    openPhone(View::List);
     return;
   }
   if (y >= kButtonY - 80 && x > w / 2 - 130 && x < w / 2 + 130) {
@@ -695,7 +702,7 @@ void VozActivity::loopSettings() {
     askKey(voz::Service::OpenAI);
     return;
   } else if (y >= 594 && y < 690) {
-    openPhone();
+    openPhone(View::Settings);
     return;
   } else {
     return;
@@ -741,6 +748,7 @@ void VozActivity::drawList() {
   const int w = r.getScreenWidth();
   put(r, df::kItalicFontId, df::kItalicCut, kMargin, 28 + df::kItalicCut.cap, "Voz");
   putRight(r, toybox::kTileFontId, kSmall, w - kMargin, 60, "AJUSTES");
+  putRight(r, toybox::kTileFontId, kSmall, w - kMargin - kHeadWord, 60, "MÓVIL");
   char line[64];
   const int count = static_cast<int>(entries_.size());
   std::snprintf(line, sizeof(line), "%d %s · %s", count, count == 1 ? "NOTA" : "NOTAS",
@@ -848,8 +856,8 @@ void VozActivity::drawPhone() {
   const int w = r.getScreenWidth();
   put(r, df::kItalicFontId, df::kItalicCut, kMargin, 28 + df::kItalicCut.cap, "Desde el móvil");
   r.fillRect(kMargin, 104, w - 2 * kMargin, 2, true);
-  put(r, toybox::kTileFontId, kSmall, kMargin, 140, "ESCANEA EL CÓDIGO CON EL MÓVIL, EN LA MISMA WI-FI,");
-  put(r, toybox::kTileFontId, kSmall, kMargin, 164, "Y PEGA LA CLAVE EN LA PÁGINA QUE SE ABRE.");
+  put(r, toybox::kTileFontId, kSmall, kMargin, 140, "ESCANEA EL CÓDIGO EN LA MISMA WI-FI PARA LEER");
+  put(r, toybox::kTileFontId, kSmall, kMargin, 164, "Y GUARDAR LAS NOTAS O PEGAR UNA CLAVE.");
 
   constexpr int kCode = 300;
   constexpr int kCodeTop = 200;

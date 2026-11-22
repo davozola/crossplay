@@ -1,16 +1,16 @@
 #pragma once
 
-// The page a phone pastes an API key into, so a key of forty-odd characters is
-// not typed on the panel. One page and two requests, on a server of its own,
-// the way RSS takes its feeds.
+// The page a phone or a computer opens to read the notes, keep them and paste
+// an API key, on a server of its own, the way RSS takes its feeds.
 //
 // The address is printed in a QR code and anyone on the same network can open
-// it while the screen is up, so nothing is read back through it: the page
-// learns which services have a key and never a character of one. It can
-// replace a key, which is the exposure RSS's and Notes' pages already have.
+// it while the screen is up. What is behind it is the notes in /voz, to read
+// and to download, and the two keys, to replace: the page learns which
+// services have a key and never a character of one. Nothing else on the card
+// is reachable, because a request can name a note only by its stamp.
 //
-// A handler does no work on the card. It leaves the key in the inbox and the
-// app takes it from its own loop.
+// A key is not written by a handler. It is left in the inbox and the app takes
+// it from its own loop.
 
 #include <memory>
 #include <mutex>
@@ -39,6 +39,10 @@ class VozServer {
   void page();
   void state();
   void key();
+  void notes();
+  void note();
+  void audio();
+  void exportAll();
 
   std::unique_ptr<WebServer> server_;
   std::mutex mutex_;

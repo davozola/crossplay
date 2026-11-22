@@ -510,4 +510,87 @@ inline void when(const char* s, char* out, const size_t cap) {
                 s[11], s[12]);
 }
 
+// ---------------------------------------------------------------- export
+// What the phone page reads the notes as. All of it is built here, off the
+// card and off the server, so it can be tested on a host.
+
+constexpr char kNotesDir[] = "/voz";
+
+// "2026-11-21 15:42" from a note's stamp: the form a file kept for years sorts
+// and reads by. Empty when the name is not a stamp.
+inline std::string isoWhen(const char* s) {
+  if (!isStamp(s)) return "";
+  char out[20];
+  std::snprintf(out, sizeof(out), "%.4s-%.2s-%.2s %.2s:%.2s", s, s + 4, s + 6, s + 9, s + 11);
+  return out;
+}
+
+// One row of the page's list. A take with no note yet is listed too, so its
+// audio can still be fetched.
+inline std::string listRowJson(const char* stamp, const bool done, const Note& note, const int seconds) {
+  std::string out = "{\"id\":\"";
+  out += stamp;
+  out += "\",\"when\":\"";
+  out += isoWhen(stamp);
+  out += "\",\"seconds\":";
+  out += std::to_string(seconds);
+  out += ",\"done\":";
+  out += done ? "true" : "false";
+  if (done) {
+    out += ",\"kind\":\"";
+    out += kindTag(note.kind);
+    out += "\",\"title\":\"";
+    jsonEscape(note.title.c_str(), out);
+    out += "\"";
+  }
+  out += "}";
+  return out;
+}
+
+// A whole note, for the page to show and copy.
+inline std::string noteJson(const char* stamp, const Note& note) {
+  std::string out = "{\"id\":\"";
+  out += stamp;
+  out += "\",\"when\":\"";
+  out += isoWhen(stamp);
+  out += "\",\"kind\":\"";
+  out += kindTag(note.kind);
+  out += "\",\"title\":\"";
+  jsonEscape(note.title.c_str(), out);
+  out += "\",\"summary\":\"";
+  jsonEscape(note.summary.c_str(), out);
+  out += "\",\"transcript\":\"";
+  jsonEscape(note.transcript.c_str(), out);
+  out += "\"}";
+  return out;
+}
+
+// A note as Markdown: a heading, when and what kind, the summary, the words.
+// Plain enough to read as text and to paste into any notes app.
+inline std::string noteMarkdown(const char* stamp, const Note& note) {
+  std::string out = "## ";
+  out += note.title.empty() ? "Sin t\xC3\xADtulo" : note.title;
+  out += "\n\n";
+  out += isoWhen(stamp);
+  out += " \xC2\xB7 ";
+  out += kindTag(note.kind);
+  out += "\n\n";
+  if (!note.summary.empty()) {
+    out += "**Resumen:** ";
+    out += note.summary;
+    out += "\n\n";
+  }
+  out += note.transcript;
+  out += "\n\n---\n\n";
+  return out;
+}
+
+// The stamp a request names, checked before it is put in a path: a stamp is
+// digits and one dash, so nothing else can reach the card through it.
+inline bool stampFromRequest(const char* id, char* out, const size_t cap) {
+  if (id == nullptr || std::strlen(id) != 15 || !isStamp(id) || cap < 16) return false;
+  std::snprintf(out, cap, "%s", id);
+  return true;
+}
+
 }  // namespace voz

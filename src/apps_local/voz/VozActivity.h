@@ -52,8 +52,9 @@ class VozActivity final : public Activity {
   void send(int index);
   void runSend();
   void askKey(voz::Service service);
-  // The page a phone pastes a key into: joins Wi-Fi, then serves it.
-  void openPhone();
+  // The page a phone or a computer reads the notes on and pastes a key into:
+  // joins Wi-Fi, then serves it. Closing it goes back to `from`.
+  void openPhone(View from);
   void startPhone();
   void stopPhone();
   void loopPhone();
@@ -85,6 +86,7 @@ class VozActivity final : public Activity {
   std::string phoneReadable_;
   const char* phoneStatus_ = "";
   bool devPaused_ = false;
+  View phoneFrom_ = View::List;
   std::vector<Entry> entries_;
   int page_ = 0;
   int opened_ = -1;   // the entry the detail shows
