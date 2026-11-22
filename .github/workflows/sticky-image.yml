@@ -1,0 +1,71 @@
+name: Sticky image
+
+# Builds one flashable image for the reTerminal Sticky from whatever is pushed
+# to a build/* branch, and keeps it as a run artifact. Lives only on build/*
+# branches; nothing on xteink runs it.
+
+on:
+  push:
+    branches:
+      - 'build/**'
+
+permissions:
+  contents: write
+
+jobs:
+  sticky:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Install PlatformIO Core
+        run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Build the Sticky
+        run: SCONSFLAGS=-k pio run -e gh_release_sticky
+
+      - name: Merge into one image at 0x0
+        run: |
+          B=.pio/build/gh_release_sticky
+          mkdir -p out
+          python -m esptool --chip esp32s3 merge_bin -o out/crossplay-davozola-sticky-full.bin \
+            --flash_mode keep --flash_size keep --flash_freq keep \
+            0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0x10000 $B/firmware.bin \
+          || ~/.platformio/penv/bin/python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 merge_bin \
+            -o out/crossplay-davozola-sticky-full.bin --flash_mode keep --flash_size keep --flash_freq keep \
+            0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0x10000 $B/firmware.bin
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sticky-image
+          path: out/crossplay-davozola-sticky-full.bin
+          retention-days: 7
+
+      # Also as a DRAFT release: drafts have no tag and never show in
+      # releases/latest, so no device is offered it as an update, and its asset
+      # downloads through the API where the artifact store cannot be reached.
+      - name: Keep it as a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "sticky-image-${{ github.run_id }}" out/crossplay-davozola-sticky-full.bin \
+            --draft --target "${{ github.sha }}" --title "Sticky image ${{ github.run_id }}" \
+            --notes "Built from ${{ github.ref_name }} at ${{ github.sha }}. Draft: not an update."
