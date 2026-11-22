@@ -15,6 +15,7 @@
 #include <driver/gpio.h>
 #include <driver/i2s_pdm.h>
 #include <esp_heap_caps.h>
+#include <esp_rom_sys.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <soc/soc_caps.h>
@@ -313,6 +314,84 @@ bool probe(Level levels[kMicSetups], bool opened[kMicSetups]) {
   return true;
 #else
   return false;
+#endif
+}
+
+#if !defined(SIMULATOR)
+namespace {
+
+// Clocks the microphone by hand at about 400 kHz, inside its low-power mode's
+// range, and counts how often the data pin reads 1 on each half of the clock.
+void clockByHand(const int clk, const int data, const bool pullUp, int& onHigh, int& onLow) {
+  const gpio_num_t c = static_cast<gpio_num_t>(clk);
+  const gpio_num_t d = static_cast<gpio_num_t>(data);
+  gpio_reset_pin(c);
+  gpio_reset_pin(d);
+  gpio_set_direction(c, GPIO_MODE_OUTPUT);
+  gpio_set_direction(d, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(d, pullUp ? GPIO_PULLUP_ONLY : GPIO_PULLDOWN_ONLY);
+  constexpr int kWake = 20000;  // about 50 ms of clock before anything is counted
+  constexpr int kCount = 20000;
+  int high = 0;
+  int low = 0;
+  for (int i = 0; i < kWake + kCount; ++i) {
+    gpio_set_level(c, 1);
+    esp_rom_delay_us(1);
+    const int a = gpio_get_level(d);
+    gpio_set_level(c, 0);
+    esp_rom_delay_us(1);
+    const int b = gpio_get_level(d);
+    if (i >= kWake) {
+      high += a;
+      low += b;
+    }
+    if ((i & 0x3FF) == 0) vTaskDelay(0);
+  }
+  onHigh = high * 100 / kCount;
+  onLow = low * 100 / kCount;
+  gpio_reset_pin(c);
+  gpio_reset_pin(d);
+}
+
+}  // namespace
+#endif
+
+void diagnose(MicFacts& facts) {
+  facts = MicFacts{};
+#if !defined(SIMULATOR)
+  const BoardConfig::MicConfig& mic = BoardConfig::ACTIVE.mic;
+  if (!done || mic.input != BoardConfig::MicInput::Pdm) return;
+  facts.clk = mic.clk;
+  facts.data = mic.data;
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+  facts.usbConf = USB_SERIAL_JTAG.conf0.val;
+  USB_SERIAL_JTAG.conf0.usb_pad_enable = 0;
+  USB_SERIAL_JTAG.conf0.dp_pullup = 0;
+#endif
+  if (mic.enable != BoardConfig::PIN_UNASSIGNED) {
+    const gpio_num_t enable = static_cast<gpio_num_t>(mic.enable);
+    gpio_reset_pin(enable);
+    gpio_set_direction(enable, GPIO_MODE_INPUT_OUTPUT);
+    gpio_set_level(enable, 1);
+    delay(5);
+    facts.enableHigh = gpio_get_level(enable);
+    gpio_set_level(enable, 0);
+    delay(5);
+    facts.enableLow = gpio_get_level(enable);
+  }
+  for (int run = 0; run < 4; ++run) {
+    const bool enableHigh = (run & 1) == 0;
+    const bool swapped = (run & 2) != 0;
+    micPower(true, enableHigh);
+    delay(60);
+    const int clk = swapped ? mic.data : mic.clk;
+    const int data = swapped ? mic.clk : mic.data;
+    clockByHand(clk, data, false, facts.runs[run].downHigh, facts.runs[run].downLow);
+    clockByHand(clk, data, true, facts.runs[run].upHigh, facts.runs[run].upLow);
+    micPower(false, enableHigh);
+    delay(60);
+  }
+  facts.ran = true;
 #endif
 }
 

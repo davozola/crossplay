@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../../activities/Activity.h"
+#include "VozAudio.h"
 #include "VozCore.h"
 #include "VozServer.h"
 
@@ -96,6 +97,7 @@ class VozActivity final : public Activity {
   voz::Level micLevels_[voz::kMicSetups];
   bool micOpened_[voz::kMicSetups] = {};
   int micBest_ = -1;
+  voz::audio::MicFacts micFacts_;
   std::vector<Entry> entries_;
   int page_ = 0;
   int opened_ = -1;   // the entry the detail shows

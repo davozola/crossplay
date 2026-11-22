@@ -45,4 +45,30 @@ int boardSetup();
 // device has no microphone.
 bool probe(Level levels[kMicSetups], bool opened[kMicSetups]);
 
+// What the microphone's pins do when they are driven by hand, with no I2S in
+// the way: the evidence for a test in which no setup hears anything.
+struct MicFacts {
+  bool ran = false;
+  // The enable pin read back while driven high, then low: a pad that does not
+  // follow is held by something else.
+  int enableHigh = -1;
+  int enableLow = -1;
+  uint32_t usbConf = 0;  // USB_SERIAL_JTAG.conf0, which owns the pads at reset
+  // Four runs: enable high or low, by clock on the first pin or on the second.
+  // In each, how often in a hundred the data pin read 1 on the clock's high
+  // half and on its low half, with the pin pulled down and then pulled up. A
+  // microphone that is talking reads near fifty on one half whatever the pull;
+  // a line nobody drives reads 0 pulled down and 100 pulled up.
+  struct Run {
+    int downHigh = 0;
+    int downLow = 0;
+    int upHigh = 0;
+    int upLow = 0;
+  };
+  Run runs[4];
+  int clk = -1;
+  int data = -1;
+};
+void diagnose(MicFacts& facts);
+
 }  // namespace voz::audio

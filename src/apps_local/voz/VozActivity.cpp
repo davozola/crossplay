@@ -528,6 +528,9 @@ void VozActivity::testMic() {
   requestUpdateAndWait();
   micTested_ = voz::audio::probe(micLevels_, micOpened_);
   micBest_ = micTested_ ? voz::bestSetup(micLevels_, micOpened_, voz::kMicSetups) : -1;
+  // Nothing heard: the pins are driven by hand, to say why.
+  micFacts_ = voz::audio::MicFacts{};
+  if (micTested_ && micBest_ < 0) voz::audio::diagnose(micFacts_);
   if (micBest_ >= 0) {
     voz::audio::useSetup(micBest_);
     writeText(kMicPath, std::string(1, static_cast<char>('0' + micBest_)));
@@ -938,7 +941,7 @@ void VozActivity::drawMicTest() {
   if (micTesting_) {
     put(r, toybox::kTileFontId, kSmall, kMargin, 150, "HABLA SIN PARAR, CERCA DE LA PANTALLA,");
     put(r, toybox::kTileFontId, kSmall, kMargin, 176, "HASTA QUE CAMBIE ESTA PÁGINA.");
-    put(r, toybox::kTileFontId, kSmall, kMargin, 228, "TARDA UNOS OCHO SEGUNDOS");
+    put(r, toybox::kTileFontId, kSmall, kMargin, 228, "TARDA UNOS DIEZ SEGUNDOS");
     return;
   }
   if (!micTested_) {
@@ -971,7 +974,20 @@ void VozActivity::drawMicTest() {
       putRight(r, toybox::kTileFontId, kSmall, w - kMargin, base, "NO ABRE");
     }
   }
-  put(r, toybox::kTileFontId, kSmall, kMargin, r.getScreenHeight() - 40, "TOCA PARA VOLVER");
+  if (micFacts_.ran) {
+    // The pins driven by hand. Read off a photo of this page, not by eye.
+    char line[64];
+    std::snprintf(line, sizeof(line), "PINES %d>%d  EN %d/%d  USB %08lX", micFacts_.clk, micFacts_.data,
+                  micFacts_.enableHigh, micFacts_.enableLow, static_cast<unsigned long>(micFacts_.usbConf));
+    put(r, toybox::kTileFontId, kSmall, kMargin, 640, line);
+    static const char* const kRuns[] = {"ALTA DIRECTO", "BAJA DIRECTO", "ALTA CRUZADO", "BAJA CRUZADO"};
+    for (int i = 0; i < 4; ++i) {
+      const voz::audio::MicFacts::Run& run = micFacts_.runs[i];
+      std::snprintf(line, sizeof(line), "%s  %d %d  %d %d", kRuns[i], run.downHigh, run.downLow, run.upHigh, run.upLow);
+      put(r, toybox::kTileFontId, kSmall, kMargin, 666 + i * 24, line);
+    }
+  }
+  put(r, toybox::kTileFontId, kSmall, kMargin, r.getScreenHeight() - 14, "TOCA PARA VOLVER");
 }
 
 void VozActivity::drawMessage() {
