@@ -574,17 +574,21 @@ void FmGuideActivity::buildHome(toybox::Screen& screen) {
   const int inner = screen.device().width - x * 2;
   const int bottom = screen.device().height - kBottomReserve - 6;
   int y = toybox::kChromeHeight + 10;
-  const int gap = 6;
+  const int gap = fg::kGuides > 6 ? 4 : 6;
   const int tileH = (bottom - y - gap * (fg::kGuides - 1)) / fg::kGuides;
   // A tagline takes two lines. Under a name in the display cut that needs a
   // tile about 120 tall, which five guides had on an 800-row panel and six do
   // not (105). A shorter tile sets the name in the UI cut and moves the
   // version up beside it, so the second line of the tagline keeps clear of
-  // both the version and the tile's edge.
+  // both the version and the tile's edge. Seven guides leave 91: the name
+  // moves up and the tagline sits straight under it, its second line's
+  // descenders ending at 88.
   const bool roomy = tileH >= 120;
+  const bool tight = tileH < 100;
   const toybox::CutMetrics& nameCut = roomy ? toybox::kDisplayCut : toybox::kUiCut;
   const fui::FontId nameFont = roomy ? toybox::kDisplayFont : toybox::kUiFont;
-  const int top = roomy ? 14 : 10;
+  const int top = roomy ? 14 : (tight ? 5 : 10);
+  const int under = roomy ? 8 : (tight ? 0 : 3);
   for (int i = 0; i < fg::kGuides; ++i) {
     const fg::Guide& guide = fg::guideAt(i);
     const fui::Rect r = lab::rect(x, y, inner, tileH);
@@ -594,8 +598,7 @@ void FmGuideActivity::buildHome(toybox::Screen& screen) {
     const int versionY = roomy ? r.y + tileH - 12 - toybox::kTileCut.inkHeight
                                : r.y + top + nameCut.inkHeight - toybox::kTileCut.inkHeight;
     lab::caption(screen, r.x + 16, versionY, inner - 32, guide.version, fui::TextAlign::Right, fui::Color::DarkGray);
-    flow(renderer, kBody, kBodyLine, r.x + 16, r.y + top + nameCut.inkHeight + (roomy ? 8 : 3), inner - 32,
-         guide.tagline, true);
+    flow(renderer, kBody, kBodyLine, r.x + 16, r.y + top + nameCut.inkHeight + under, inner - 32, guide.tagline, true);
     // A mark on the one being read.
     if (i == last_) renderer.fillRect(r.x + 4, r.y + top, 5, tileH - top * 2, true);
     y += tileH + gap;

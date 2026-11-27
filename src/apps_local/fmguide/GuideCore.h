@@ -101,7 +101,7 @@ struct Guide {
   int count;
 };
 
-constexpr int kGuides = 6;
+constexpr int kGuides = 7;
 // How many guides the first save file held. unpack() still reads one that short.
 constexpr int kGuidesFirstSave = 5;
 const Guide& guideAt(int index);

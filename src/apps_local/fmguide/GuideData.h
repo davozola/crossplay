@@ -15,5 +15,6 @@ extern const Guide kGuideFelucca;
 extern const Guide kGuideBaud;
 extern const Guide kGuideX0x;
 extern const Guide kGuideJiant;
+extern const Guide kGuideShrub;
 
 }  // namespace fmguide

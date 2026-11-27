@@ -304,7 +304,8 @@ constexpr shelf::Item kApps[] = {
      "Tres valores a elegir en un panel para la mesa, búsqueda por ticker o nombre, detalle de cada uno y una "
      "cartera."},
     {"FM-1 GUIAS", &icon_fmlab_32, &FmGuideActivity::create, 2, false, "Guías de firmwares de la FM-1",
-     "Guías por capítulos, con el panel dibujado, de cuatro firmwares de la comunidad para la M-VAVE FM-1."},
+     "Guías por capítulos, con el panel dibujado, de seis firmwares de la comunidad para la M-VAVE FM-1: "
+     "SLOOP, Felucca, FM-1+VA, X0X, JIANT FM y SHRUB."},
     {"MUSIC THEORY", &icon_theory_32, &TheoryActivity::create, 2, false, "Escalas, acordes y ritmos",
      "Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda."},
     {"RPN 12C", &icon_rpn_32, &RpnActivity::create, 3, false, "Calculadora financiera RPN",

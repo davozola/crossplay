@@ -46,7 +46,7 @@ Sticky**. Conserva todo lo del original y añade cuarenta y una cosas:
 | **Naval Weather** | Parte marítimo de los sitios guardados en Weather: viento en nudos, oleaje, mar de fondo y agua, una semana, consultable sin red. |
 | **Wallpapers** (rehecha) | Sesenta y seis estampas y grabados de dominio público del Art Institute of Chicago, recortados y tramados para esta pantalla: Hiroshige y Hokusai, Durero, Piranesi, Rembrandt, Goya, Meryon, Canaletto, Audubon. Una imagen por página, un botón para dejarla de fondo de reposo y un botón para que cambie sola: cada vez que la Sticky se duerme, o cada hora mientras duerme. Van dentro del firmware: no hace falta Wi-Fi. Procedencia en [src/apps_local/fondos/PROVENANCE.md](src/apps_local/fondos/PROVENANCE.md). |
 | **Markets**     | Tres valores a elegir entre veintiuno (Bitcoin, S&P 500 y Nasdaq de serie) en un panel para tenerlo de pie en la mesa, con detalle de cada uno, y una cartera: apuntas cuánto tienes de cada cosa y ves el total y el cambio del día. |
-| **FM-1 Guías** | Guías de usuario, por capítulos y con el panel dibujado, de cinco firmwares de la comunidad para la M-VAVE FM-1 (SLOOP, Felucca, FM-1+VA, X0X y JIANT FM), más una de instalación y rescate. Sustituye a FM Synth Lab. |
+| **FM-1 Guías** | Guías de usuario, por capítulos y con el panel dibujado, de seis firmwares de la comunidad para la M-VAVE FM-1 (SLOOP, Felucca, FM-1+VA, X0X, JIANT FM y SHRUB), más una de instalación y rescate. Sustituye a FM Synth Lab. |
 | **Music Theory** | Escalas, acordes y progresiones en cualquier tonalidad sobre un teclado, y ritmos euclidianos en una rueda. |
 | **RPN 12C** | Calculadora financiera RPN al estilo de la HP-12C: pila de cuatro niveles, n, i, PV, PMT, FV, NPV e IRR. |
 | **Hive**        | Estrategia con insectos y sin tablero, contra el dispositivo (tres niveles) o a dos. |
@@ -216,7 +216,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Weather**     | Open-Meteo's forecast for up to six cities, kept on the card for offline. |
 | **Naval Weather** | Wind, waves, swell and water for a week, kept for when there is no network. |
 | **Markets**     | Three instruments you pick on one screen for a desk stand, and a portfolio. |
-| **FM-1 Guias** | User guides, in Spanish, to four community firmwares of the M-VAVE FM-1. |
+| **FM-1 Guias** | User guides, in Spanish, to six community firmwares of the M-VAVE FM-1. |
 | **Music Theory** | Scales, chords and changes in any key, and Euclidean rhythms on a wheel.  |
 | **RPN 12C**     | An RPN financial calculator: time value of money, NPV and IRR.            |
 | **Jukebox**     | A remote for a Plexamp player on your network: cover, pause, skip, volume. |

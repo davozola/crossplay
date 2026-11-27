@@ -44,7 +44,7 @@ constexpr Block kPanel[] = {
 };
 
 constexpr Block kChoose[] = {
-    P("Estas guías cubren cinco de los firmwares mejor valorados por la comunidad a noviembre de 2026. No compiten: "
+    P("Estas guías cubren seis de los firmwares mejor valorados por la comunidad a noviembre de 2026. No compiten: "
       "cada uno convierte la FM-1 en un instrumento distinto, y cambiar de uno a otro lleva unos minutos."),
     H("En una frase"),
     R("SLOOP",
@@ -57,6 +57,9 @@ constexpr Block kChoose[] = {
       "La FM-1 de siempre, mejorada: sigue siendo FM y añade un motor analógico virtual, uno de 8 bits, "
       "efectos y un secuenciador serio. El menos arriesgado."),
     R("X0X", "Una 909, una 808, dos 303 y un reproductor de breaks sonando a la vez. Para ácido, techno y big beat."),
+    R("SHRUB",
+      "Serum, el sinte de tablas de ondas, en versión reducida y hecho por su autor. Un solo sinte, sin "
+      "batería: para diseñar sonido."),
     R("JIANT FM",
       "Seis pistas, doce motores, una voz que canta y un generador que escribe temas enteros por género. El más "
       "grande, y el que más propone."),
@@ -64,12 +67,14 @@ constexpr Block kChoose[] = {
     FLOW("FELUCCA>SLOOP|FELUCCA>X0X|FELUCCA>JIANT FM|ORIGINAL V15>FM-1+VA",
          "SLOOP, X0X y JIANT FM nacen de Felucca: se instalan de forma parecida y comparten combinaciones de rescate y "
          "costumbres. FM-1+VA modifica el firmware original de M-VAVE en lugar de sustituirlo."),
+    P("SHRUB no viene de ninguno de los dos: es un programa nuevo, escrito por Steve Duda, el autor de Serum."),
     H("Cuál probar primero"),
     B("Si quieres seguir teniendo tus presets FM y tu forma de tocar: FM-1+VA. Conserva presets y patrones."),
     B("Si quieres hacer un tema entero sin ordenador y sin leer mucho: SLOOP."),
     B("Si quieres diseñar sonido y programar pasos con detalle: Felucca."),
     B("Si quieres bombo, bajo ácido y breaks desde el primer minuto: X0X."),
     B("Si quieres que la FM-1 te proponga un tema entero y luego retocarlo, con seis pistas: JIANT FM."),
+    B("Si quieres sonidos modernos, pads que se mueven y bajos gordos, o ya usas Serum: SHRUB."),
     H("Datos de cada uno"),
     R("SLOOP 2.8.5", "Gratis, código abierto (GPL-3.0). Autor: 3dSam. 4 pistas, 12 motores, 153 sonidos."),
     R("Felucca 1.8.2",
@@ -82,6 +87,9 @@ constexpr Block kChoose[] = {
     R("JIANT FM 10.7",
       "Gratis, código abierto (GPL-3.0). Autor: Juan Jiant. 6 pistas, 12 motores, 6 proyectos de 4 "
       "secciones."),
+    R("SHRUB 1.39",
+      "Gratis, código cerrado. Autor: Steve Duda, Xfer Records. 8 notas, 2 osciladores de tablas, 76 "
+      "filtros, 100 presets. En beta."),
     N("VERSIONES",
       "Estos proyectos publican versiones nuevas cada pocos días. Antes de instalar, mira en la página de "
       "cada uno cuál es la actual: algún botón puede haber cambiado de sitio respecto a esta guía."),
@@ -135,6 +143,9 @@ constexpr Block kSwitch[] = {
     R("JIANT FM",
       "Editor web, Projects, Save backup: un archivo con todo salvo el banco de voces FM6. Su instalador hace "
       "además una copia al volver al original."),
+    R("SHRUB",
+      "Editor web, LIBRARY, Get from FM-1, y guardar un .shrubbank: los 128 huecos, sus tablas propias y el "
+      "mapa MIDI."),
     H("El orden seguro"),
     FLOW("FIRMWARE A>COPIA>ORIGINAL V15>FIRMWARE B",
          "Mucha gente pasa por el firmware original entre dos firmwares de la comunidad. No es obligatorio, pero es "
@@ -171,6 +182,9 @@ constexpr Block kRescue[] = {
       "Calibración: la pantalla te pide pulsar cada botón y girar cada mando. Úsala si un "
       "botón hace lo que no debe."),
     R("OCT- solo al encender", "En SLOOP, rescate por USB: arranca lo justo para reinstalar desde el navegador."),
+    N("EN SHRUB, OTRAS",
+      "SHRUB usa los mismos botones para otra cosa. OCT- y OCT+ al encender: rescate por USB. Juntos con "
+      "la FM-1 en marcha: retener notas. Su capítulo de rescate lo explica."),
     H("Si X0X se cuelga"),
     P("X0X muestra una pantalla roja y se reinicia solo. Si se cuelga dos veces seguidas al arrancar, entra en modo "
       "seguro: no suena, pero el USB funciona y el instalador puede reinstalar o devolver el firmware original."),
