@@ -13,6 +13,7 @@
 #include "../ui/ToyboxFormat.h"
 #include "../ui/ToyboxLab.h"
 #include "../ui/ToyboxTheme.h"
+#include "SynthFigures.h"
 
 namespace fui = freeink::ui;
 namespace lab = toyboxlab;
@@ -24,6 +25,7 @@ enum : fui::ActionId {
   ActionGuide = 1,  // value: the guide
   ActionChapter,    // value: the chapter
   ActionResume,
+  ActionPart,  // value: the part
 };
 
 constexpr char kSavePath[] = "/.crosspoint/fm1guias.sav";
@@ -66,7 +68,7 @@ void centred(GfxRenderer& r, const Face& face, const int cx, const int cy, const
 // the height it takes. The same walk measures and draws, so a page is never
 // laid out one way and painted another.
 int flow(GfxRenderer& r, const Face& face, const int lineHeight, const int x, const int y, const int w,
-         const char* text, const bool draw) {
+         const char* text, const bool draw, const bool black = true) {
   char out[160];
   int used = 0;  // bytes of the line being built
   int lines = 0;
@@ -74,7 +76,7 @@ int flow(GfxRenderer& r, const Face& face, const int lineHeight, const int x, co
   auto flush = [&]() {
     if (used == 0) return;
     out[used] = 0;
-    if (draw) line(r, face, x, y + lines * lineHeight, out);
+    if (draw) line(r, face, x, y + lines * lineHeight, out, black);
     ++lines;
     used = 0;
   };
@@ -300,6 +302,40 @@ void stepGrid(GfxRenderer& r, const int x, const int y, const int w, const char*
   }
 }
 
+// The teaching figures' canvas: the renderer, with the pixel face for labels.
+class GfxCanvas final : public synthfig::Canvas {
+ public:
+  explicit GfxCanvas(GfxRenderer& r) : r_(r) {}
+  void line(const int x0, const int y0, const int x1, const int y1, const int width) override {
+    r_.drawLine(x0, y0, x1, y1, width, true);
+  }
+  void fill(const int x, const int y, const int w, const int h, const bool ink) override {
+    r_.fillRect(x, y, w, h, ink);
+  }
+  void gray(const int x, const int y, const int w, const int h) override {
+    r_.fillRectDither(x, y, w, h, Color::DarkGray);
+  }
+  void frame(const int x, const int y, const int w, const int h, const int width) override {
+    r_.drawRect(x, y, w, h, width, true);
+  }
+  void text(const int x, const int cy, const char* text, const synthfig::Align align, const bool ink) override {
+    const int w = r_.getTextWidth(kTiny.font, text);
+    int left = x;
+    if (align == synthfig::Align::Centre) left = x - w / 2;
+    if (align == synthfig::Align::Right) left = x - w;
+    r_.drawText(kTiny.font, left, cy - kTiny.inkHeight / 2 - (kTiny.ascender - kTiny.inkHeight), text, ink);
+  }
+  int textWidth(const char* text) override { return r_.getTextWidth(kTiny.font, text); }
+
+ private:
+  GfxRenderer& r_;
+};
+
+// A right-pointing arrowhead, solid, its tip at (x, cy).
+void arrowHead(GfxRenderer& r, const int x, const int cy, const int size, const bool ink) {
+  for (int k = 0; k < size; ++k) r.drawLine(x - size + k, cy - (size - k), x - size + k, cy + (size - k), 1, ink);
+}
+
 // One block at (x, y) in a column `w` wide; measures when not `draw`. Returns
 // its height, the space after it included.
 int block(GfxRenderer& r, const fg::Block& b, const int x, const int y, const int w, const bool draw) {
@@ -367,6 +403,44 @@ int block(GfxRenderer& r, const fg::Block& b, const int x, const int y, const in
       const int h = 20 + rows * kGridRowH + 4;
       if (draw) stepGrid(r, x, y + 4, w, b.a);
       return 4 + h + flow(r, kBody, kBodyLine, x, y + 4 + h, w, b.b, draw) + 12;
+    }
+    case fg::Kind::Figure: {
+      const int h = synthfig::height(static_cast<int>(b.mask), w);
+      if (draw) {
+        GfxCanvas canvas(r);
+        synthfig::draw(canvas, static_cast<int>(b.mask), x, y + 6, w);
+      }
+      return 6 + h + 6 + flow(r, kBody, kBodyLine, x, y + 6 + h + 6, w, b.a, draw) + 12;
+    }
+    case fg::Kind::Danger: {
+      // Heavier than a note, and headed by a band of ink: what it describes
+      // destroys something.
+      const int bandH = 26;
+      const int textH = flow(r, kBody, kBodyLine, x + 16, y + bandH + 10, w - 32, b.b, false);
+      const int h = bandH + 10 + textH + 10;
+      if (draw) {
+        r.fillRect(x, y, w, h, true);
+        r.fillRect(x + 5, y + bandH, w - 10, h - bandH - 5, false);
+        char label[40];
+        std::snprintf(label, sizeof(label), "! %s", b.a);
+        r.drawText(kTiny.font, x + 12, y + bandH / 2 - kTiny.inkHeight / 2 - (kTiny.ascender - kTiny.inkHeight), label,
+                   false);
+        flow(r, kBody, kBodyLine, x + 16, y + bandH + 10, w - 32, b.b, true);
+      }
+      return h + 14;
+    }
+    case fg::Kind::Link: {
+      // A row to tap, the way a chapter is in the list: the place it opens and
+      // an arrow.
+      const int textH = flow(r, kBold, kBodyLine, x + 14, y + 10, w - 60, b.a, false);
+      const int h = 10 + textH + 8;
+      if (draw) {
+        r.drawRoundedRect(x, y, w, h, 2, 8, true);
+        flow(r, kBold, kBodyLine, x + 14, y + 10, w - 60, b.a, true);
+        r.drawLine(x + w - 40, y + h / 2, x + w - 22, y + h / 2, 3, true);
+        arrowHead(r, x + w - 14, y + h / 2, 8, true);
+      }
+      return h + 10;
     }
   }
   return 0;
@@ -440,6 +514,7 @@ void FmGuideActivity::paginate() {
 
 void FmGuideActivity::openChapter(const int chapter, const int page) {
   chapter_ = chapter;
+  part_ = fg::partOf(fg::guideAt(guide_), chapter);
   page_ = page;
   paged_ = false;
   view_ = View::Read;
@@ -450,16 +525,27 @@ void FmGuideActivity::openChapter(const int chapter, const int page) {
   save();
 }
 
+FmGuideActivity::View FmGuideActivity::guideTop() const {
+  return fg::guideAt(guide_).parts ? View::Parts : View::Chapters;
+}
+
 void FmGuideActivity::turn(const int direction) {
   const fg::Guide& guide = fg::guideAt(guide_);
+  // A guide with parts is read a part at a time: its last page leads back to
+  // the part's chapters, not on into the next part.
+  int first = 0;
+  int end = guide.count;
+  if (part_ >= 0) {
+    first = guide.parts[part_].first;
+    end = first + guide.parts[part_].count;
+  }
   if (direction > 0) {
     if (page_ + 1 < pageCount_) {
       ++page_;
-    } else if (chapter_ + 1 < guide.count) {
+    } else if (chapter_ + 1 < end) {
       openChapter(chapter_ + 1, 0);
       return;
     } else {
-      // The end of the guide: back to its chapters.
       view_ = View::Chapters;
       cleanNext_ = true;
       return;
@@ -467,7 +553,7 @@ void FmGuideActivity::turn(const int direction) {
   } else {
     if (page_ > 0) {
       --page_;
-    } else if (chapter_ > 0) {
+    } else if (chapter_ > first) {
       // The last page of the chapter before; paginate() pulls it into range.
       openChapter(chapter_ - 1, kMaxPages);
       return;
@@ -493,11 +579,20 @@ void FmGuideActivity::loop() {
       requestUpdate();
       return;
     }
-    if (view_ == View::Home) {
-      shelf::leave(renderer, mappedInput);
-      return;
+    switch (view_) {
+      case View::Home:
+        shelf::leave(renderer, mappedInput);
+        return;
+      case View::Read:
+        view_ = View::Chapters;
+        break;
+      case View::Chapters:
+        view_ = fg::guideAt(guide_).parts ? View::Parts : View::Home;
+        break;
+      case View::Parts:
+        view_ = View::Home;
+        break;
     }
-    view_ = view_ == View::Read ? View::Chapters : View::Home;
     cleanNext_ = true;
     requestUpdate();
     return;
@@ -530,12 +625,20 @@ void FmGuideActivity::loop() {
   if (!mappedInput.wasScreenTapped(tapX, tapY)) return;
   if (view_ == View::Read) {
     // The band with the firmware's name, and the chapter line under it, lead
-    // back to that firmware's chapters.
+    // back to the chapters this one is listed with.
     if (tapY < bodyTop()) {
       view_ = View::Chapters;
       cleanNext_ = true;
       requestUpdate();
       return;
+    }
+    // A link on the page opens the chapter it names.
+    for (int i = 0; i < linkCount_; ++i) {
+      if (tapY >= links_[i].top && tapY < links_[i].bottom) {
+        openChapter(links_[i].chapter, 0);
+        requestUpdate();
+        return;
+      }
     }
     // The left third goes back a page, the rest goes on.
     turn(tapX < renderer.getScreenWidth() / 3 ? -1 : 1);
@@ -552,9 +655,18 @@ void FmGuideActivity::loop() {
     case ActionGuide:
       if (event.value < 0 || event.value >= fg::kGuides) return;
       guide_ = event.value;
+      part_ = -1;
+      view_ = guideTop();
+      cleanNext_ = true;
+      break;
+    case ActionPart: {
+      const fg::Guide& guide = fg::guideAt(guide_);
+      if (event.value < 0 || event.value >= guide.partCount) return;
+      part_ = event.value;
       view_ = View::Chapters;
       cleanNext_ = true;
       break;
+    }
     case ActionChapter:
       if (event.value < 0 || event.value >= fg::guideAt(guide_).count) return;
       openChapter(event.value, 0);
@@ -605,16 +717,68 @@ void FmGuideActivity::buildHome(toybox::Screen& screen) {
   }
 }
 
-void FmGuideActivity::buildChapters(toybox::Screen& screen) {
+// A guide with parts opens on them: what to read first, the manual, the
+// lab, the questions, the reference. Each row its name and one line on it.
+void FmGuideActivity::buildParts(toybox::Screen& screen) {
   const fg::Guide& guide = fg::guideAt(guide_);
   lab::chrome(screen, guide.name);
   const int x = toybox::kMargin;
   const int inner = screen.device().width - x * 2;
   const int bottom = screen.device().height - kBottomReserve - 6;
-  int y = toybox::kChromeHeight + 10;
+  int y = toybox::kChromeHeight + 8;
+
+  // Which version this is and when it was checked, before anything else.
+  char text[96];
+  std::snprintf(text, sizeof(text), "%s  \xC2\xB7  revisada %s", guide.version, guide.revised);
+  renderer.drawText(kBody.font, x, y, text, true);
+  y += kBodyLine + 6;
+
   const fg::Place& place = places_[guide_];
   const bool resume = place.chapter > 0 || place.page > 0;
-  const int rows = guide.count + (resume ? 1 : 0);
+  const int rows = guide.partCount + (resume ? 1 : 0);
+  const int gap = 5;
+  int rowH = (bottom - y - gap * (rows - 1)) / rows;
+  if (rowH > 84) rowH = 84;
+
+  if (resume) {
+    const fui::Rect r = lab::rect(x, y, inner, rowH);
+    lab::button(screen, r, "", ActionResume, 0, true);
+    const int part = fg::partOf(guide, place.chapter);
+    const int number = part >= 0 ? place.chapter - guide.parts[part].first + 1 : place.chapter + 1;
+    std::snprintf(text, sizeof(text), "Seguir: %s, %d. %s", part >= 0 ? guide.parts[part].title : "", number % 100,
+                  guide.chapters[place.chapter].title);
+    // Bold, in white on the selected row; two lines at most.
+    const int textH = flow(renderer, kBold, kBodyLine, r.x + 18, 0, inner - 36, text, false);
+    flow(renderer, kBold, kBodyLine, r.x + 18, r.y + (rowH - textH) / 2, inner - 36, text, true, false);
+    y += rowH + gap;
+  }
+  for (int i = 0; i < guide.partCount; ++i) {
+    const fg::Part& part = guide.parts[i];
+    const fui::Rect r = lab::rect(x, y, inner, rowH);
+    lab::button(screen, r, "", ActionPart, i);
+    const int top = r.y + (rowH - kBodyLine - 26) / 2;
+    renderer.drawText(kBold.font, r.x + 16, top, part.title, true);
+    renderer.drawText(kBody.font, r.x + 16, top + 26, part.blurb, true);
+    arrowHead(renderer, r.x + inner - 14, r.y + rowH / 2, 7, true);
+    y += rowH + gap;
+  }
+}
+
+void FmGuideActivity::buildChapters(toybox::Screen& screen) {
+  const fg::Guide& guide = fg::guideAt(guide_);
+  const bool inPart = guide.parts && part_ >= 0 && part_ < guide.partCount;
+  lab::chrome(screen, inPart ? guide.parts[part_].tab : guide.name);
+  const int x = toybox::kMargin;
+  const int inner = screen.device().width - x * 2;
+  const int bottom = screen.device().height - kBottomReserve - 6;
+  int y = toybox::kChromeHeight + 10;
+  const int first = inPart ? guide.parts[part_].first : 0;
+  const int count = inPart ? guide.parts[part_].count : guide.count;
+  // The way back in to where the reader was; in a guide with parts it is on
+  // the parts' screen instead.
+  const fg::Place& place = places_[guide_];
+  const bool resume = !guide.parts && (place.chapter > 0 || place.page > 0);
+  const int rows = count + (resume ? 1 : 0);
   const int gap = 6;
   int rowH = (bottom - y - gap * (rows - 1)) / rows;
   if (rowH > 58) rowH = 58;
@@ -630,14 +794,14 @@ void FmGuideActivity::buildChapters(toybox::Screen& screen) {
     y += rowH + gap;
   }
   char number[toybox::kIntChars + 1];
-  for (int i = 0; i < guide.count; ++i) {
+  for (int i = 0; i < count; ++i) {
     const fui::Rect r = lab::rect(x, y, inner, rowH);
-    lab::button(screen, r, "", ActionChapter, i);
+    lab::button(screen, r, "", ActionChapter, first + i);
     disc(renderer, r.x + 30, r.y + rowH / 2, 15, true);
     std::snprintf(number, sizeof(number), "%d", (i + 1) % 100);
     centred(renderer, kTiny, r.x + 30, r.y + rowH / 2, number, false);
     renderer.drawText(kBold.font, r.x + 58, r.y + rowH / 2 - kBold.inkHeight / 2 - (kBold.ascender - kBold.inkHeight),
-                      guide.chapters[i].title, true);
+                      guide.chapters[first + i].title, true);
     y += rowH + gap;
   }
 }
@@ -646,14 +810,17 @@ void FmGuideActivity::drawPage(toybox::Screen& screen) {
   const fg::Guide& guide = fg::guideAt(guide_);
   const fg::Chapter& chapter = guide.chapters[chapter_];
   if (!paged_) paginate();
-  lab::chrome(screen, guide.name);
+  const bool inPart = part_ >= 0 && part_ < guide.partCount;
+  lab::chrome(screen, inPart ? guide.parts[part_].tab : guide.name);
   const int width = screen.device().width;
   const int x = toybox::kMargin;
   const int inner = width - x * 2;
 
-  // Under the band: which chapter, and which page of it.
+  // Under the band: which chapter, and which page of it. Numbered within its
+  // part, as the list shows it.
   char text[64];
-  std::snprintf(text, sizeof(text), "%d. %s", (chapter_ + 1) % 100, chapter.title);
+  const int number = inPart ? chapter_ - guide.parts[part_].first + 1 : chapter_ + 1;
+  std::snprintf(text, sizeof(text), "%d. %s", number % 100, chapter.title);
   const int subY = toybox::kChromeHeight + 8;
   renderer.drawText(kBold.font, x, subY, text, true);
   std::snprintf(text, sizeof(text), "%d / %d", (page_ + 1) % 100, pageCount_ % 100);
@@ -662,8 +829,14 @@ void FmGuideActivity::drawPage(toybox::Screen& screen) {
   renderer.fillRect(x, bodyTop() - 8, inner, 1, true);
 
   int y = bodyTop();
+  linkCount_ = 0;
   for (int i = pageStart_[page_]; i < pageStart_[page_ + 1]; ++i) {
-    y += block(renderer, chapter.blocks[i], x, y, inner, true);
+    const fg::Block& b = chapter.blocks[i];
+    const int h = block(renderer, b, x, y, inner, true);
+    if (b.kind == fg::Kind::Link && linkCount_ < kMaxLinks) {
+      links_[linkCount_++] = LinkSpot{y, y + h - 10, static_cast<int>(b.mask)};
+    }
+    y += h;
   }
 
   // How far through the chapter this is.
@@ -683,6 +856,9 @@ void FmGuideActivity::render(RenderLock&&) {
   switch (view_) {
     case View::Home:
       buildHome(screen);
+      break;
+    case View::Parts:
+      buildParts(screen);
       break;
     case View::Chapters:
       buildChapters(screen);

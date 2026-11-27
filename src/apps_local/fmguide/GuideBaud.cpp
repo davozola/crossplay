@@ -403,8 +403,14 @@ constexpr Chapter kChapters[] = {
 }  // namespace
 
 const Guide kGuideBaud = {
-    "FM-1+VA", "La FM-1 de siempre, con dos motores más, efectos y secuenciador.", "V 102",
-    kChapters, static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "FM-1+VA",
+    "La FM-1 de siempre, con dos motores más, efectos y secuenciador.",
+    "V 102",
+    kChapters,
+    static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "16-11-2026",
+    nullptr,
+    0,
 };
 
 }  // namespace fmguide

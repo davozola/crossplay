@@ -22,7 +22,8 @@ class FmGuideActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Home, Chapters, Read };
+  enum class View : uint8_t { Home, Parts, Chapters, Read };
+  static constexpr int kMaxLinks = 6;
   static constexpr int kMaxPages = 48;
 
   void load();
@@ -33,11 +34,15 @@ class FmGuideActivity final : public Activity {
   int bodyTop() const;
   int bodyBottom() const;
   void buildHome(toybox::Screen& screen);
+  void buildParts(toybox::Screen& screen);
   void buildChapters(toybox::Screen& screen);
+  // Where Back and the band lead from a guide's chapters: its parts, or home.
+  View guideTop() const;
   void drawPage(toybox::Screen& screen);
 
   View view_ = View::Home;
   int guide_ = 0;
+  int part_ = -1;  // the part whose chapters are listed; -1 in a guide without parts
   int chapter_ = 0;
   int page_ = 0;
   // The first block of each page of the open chapter; one past the last page
@@ -45,6 +50,14 @@ class FmGuideActivity final : public Activity {
   uint8_t pageStart_[kMaxPages + 1] = {};
   int pageCount_ = 0;
   bool paged_ = false;
+  // The links on the page as drawn: where each is, and the chapter it opens.
+  struct LinkSpot {
+    int top;
+    int bottom;
+    int chapter;
+  };
+  LinkSpot links_[kMaxLinks] = {};
+  int linkCount_ = 0;
 
   fmguide::Place places_[fmguide::kGuides];
   int last_ = -1;  // the guide read most recently

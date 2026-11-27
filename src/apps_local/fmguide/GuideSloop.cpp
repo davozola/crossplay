@@ -391,8 +391,14 @@ constexpr Chapter kChapters[] = {
 }  // namespace
 
 const Guide kGuideSloop = {
-    "SLOOP",   "Caja de ritmos para tocar en directo: tres sintes y una batería.", "V 2.8.5",
-    kChapters, static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "SLOOP",
+    "Caja de ritmos para tocar en directo: tres sintes y una batería.",
+    "V 2.8.5",
+    kChapters,
+    static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "03-11-2026",
+    nullptr,
+    0,
 };
 
 }  // namespace fmguide

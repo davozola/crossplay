@@ -931,6 +931,9 @@ const Guide kGuideJiant = {
     "V 10.7",
     kChapters,
     static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "18-11-2026",
+    nullptr,
+    0,
 };
 
 }  // namespace fmguide

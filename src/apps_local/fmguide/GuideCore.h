@@ -67,6 +67,9 @@ enum class Kind : uint8_t {
   Keys,    // mask: the keys lit, a: a caption
   Flow,    // a: boxes joined by '>' with '|' between rows, b: a caption
   Grid,    // a: rows of "NAME:" and 16 of x X or -, '|' between rows, b: a caption
+  Figure,  // mask: a synthfig::Fig, a: a caption
+  Danger,  // a: a label in capitals, b: what it destroys and how to avoid it
+  Link,    // a: what the reader goes to read, mask: the chapter, counted in the guide
 };
 
 struct Block {
@@ -86,10 +89,23 @@ constexpr Block PANEL(const uint32_t mask, const char* caption) { return {Kind::
 constexpr Block KEYS(const uint32_t mask, const char* caption) { return {Kind::Keys, caption, nullptr, mask}; }
 constexpr Block FLOW(const char* boxes, const char* caption) { return {Kind::Flow, boxes, caption, 0}; }
 constexpr Block GRID(const char* rows, const char* caption) { return {Kind::Grid, rows, caption, 0}; }
+constexpr Block FIG(const uint32_t figure, const char* caption) { return {Kind::Figure, caption, nullptr, figure}; }
+constexpr Block DANGER(const char* label, const char* text) { return {Kind::Danger, label, text, 0}; }
+constexpr Block LINK(const uint32_t chapter, const char* text) { return {Kind::Link, text, nullptr, chapter}; }
 
 struct Chapter {
   const char* title;  // Latin-1
   const Block* blocks;
+  int count;
+};
+
+// A run of a guide's chapters under one name: START, MANUAL, LAB... A guide
+// with parts opens on them; one without opens on its chapters.
+struct Part {
+  const char* title;  // Latin-1, short: it heads a row
+  const char* tab;    // ASCII capitals: the same name in the band over its chapters
+  const char* blurb;  // Latin-1, one line under it
+  int first;          // its first chapter
   int count;
 };
 
@@ -99,7 +115,13 @@ struct Guide {
   const char* version;  // what the guide was written against
   const Chapter* chapters;
   int count;
+  const char* revised;  // when it was last checked against its sources, "27-11-2026"
+  const Part* parts;    // nullptr: the chapters are the guide's only list
+  int partCount;
 };
+
+// The part a chapter belongs to, or -1 in a guide without parts.
+int partOf(const Guide& guide, int chapter);
 
 constexpr int kGuides = 7;
 // How many guides the first save file held. unpack() still reads one that short.
@@ -129,6 +151,9 @@ const char* checkFlow(const char* boxes);
 const char* checkGrid(const char* rows);
 // Every rule a block has to keep.
 const char* checkBlock(const Block& block);
+// The rules a guide keeps as a whole: its parts cover its chapters in order,
+// and every link lands on one of them.
+const char* checkGuide(const Guide& guide);
 
 // How many rows a grid or a flow has, and one row of either copied out.
 int rowsOf(const char* spec);

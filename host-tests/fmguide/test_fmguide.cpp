@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "GuideCore.h"
+#include "SynthFigures.h"
 
 static int failures = 0;
 static int checks = 0;
@@ -25,8 +26,13 @@ int main() {
     CHECK(checkLabel(guide.name, 14) == nullptr);
     CHECK(checkProse(guide.tagline, 70) == nullptr);
     CHECK(checkLabel(guide.version, 10) == nullptr);
-    // The chapter list has a row a chapter, and one more to resume.
-    CHECK(guide.count >= 3 && guide.count <= 11);
+    // The chapter list has a row a chapter, and one more to resume; a guide
+    // with parts lists a part's chapters at a time.
+    CHECK(guide.count >= 3);
+    if (const char* why = checkGuide(guide)) {
+      ++failures;
+      std::printf("FAIL %s: %s\n", guide.name, why);
+    }
     for (int c = 0; c < guide.count; ++c) {
       const Chapter& chapter = guide.chapters[c];
       CHECK(checkProse(chapter.title, 28) == nullptr);
@@ -51,6 +57,16 @@ int main() {
   }
   CHECK(blocks > 400);
 
+  {  // the teaching figures: each named, and short enough to share a page
+    for (int f = 0; f < synthfig::kFigures; ++f) {
+      CHECK(synthfig::name(f)[0] != 0);
+      CHECK(synthfig::height(f, 448) >= 60 && synthfig::height(f, 448) <= 240);
+    }
+    CHECK(checkBlock(FIG(synthfig::Adsr, "Una envolvente.")) == nullptr);
+    CHECK(checkBlock(FIG(synthfig::kFigures, "Ninguna.")) != nullptr);
+    CHECK(checkBlock(DANGER("BORRA", "Borra la pista.")) == nullptr && checkBlock(DANGER("borra", "x")) != nullptr);
+    CHECK(checkBlock(LINK(3, "Ver el filtro")) == nullptr);
+  }
   {  // the checks themselves
     CHECK(checkProse("Instalaci\xC3\xB3n", 20) == nullptr);
     CHECK(checkProse("\xE2\x86\x92", 20) != nullptr);  // an arrow is outside Latin-1

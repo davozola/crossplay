@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "SynthFigures.h"
+
 namespace fmguide {
 
 namespace {
@@ -166,8 +168,52 @@ const char* checkBlock(const Block& block) {
     case Kind::Grid:
       if (const char* why = checkGrid(block.a)) return why;
       return checkProse(block.b, 240);
+    case Kind::Figure:
+      if (block.mask >= static_cast<uint32_t>(synthfig::kFigures)) return "a figure that is not drawn";
+      return checkProse(block.a, 240);
+    case Kind::Danger:
+      if (checkLabel(block.a, 22)) return "a danger label";
+      return checkProse(block.b, 420);
+    case Kind::Link:
+      if (block.mask > 250) return "a link past any chapter";
+      return checkProse(block.a, 60);
   }
   return "an unknown kind";
+}
+
+int partOf(const Guide& guide, const int chapter) {
+  for (int i = 0; i < guide.partCount; ++i) {
+    if (chapter >= guide.parts[i].first && chapter < guide.parts[i].first + guide.parts[i].count) return i;
+  }
+  return -1;
+}
+
+const char* checkGuide(const Guide& guide) {
+  if (!guide.revised || checkLabel(guide.revised, 10)) return "a revision date";
+  if (guide.parts) {
+    if (guide.partCount < 2 || guide.partCount > 9) return "two to nine parts";
+    int next = 0;
+    for (int i = 0; i < guide.partCount; ++i) {
+      const Part& part = guide.parts[i];
+      if (checkProse(part.title, 30) || checkLabel(part.tab, 16) || checkProse(part.blurb, 62))
+        return "a part's title, tab or blurb";
+      if (part.first != next || part.count < 1 || part.count > 10)
+        return "parts that run through the chapters in order";
+      next += part.count;
+    }
+    if (next != guide.count) return "parts that cover every chapter";
+  } else if (guide.partCount != 0 || guide.count > 11) {
+    return "a guide without parts has at most eleven chapters";
+  }
+  for (int c = 0; c < guide.count; ++c) {
+    for (int b = 0; b < guide.chapters[c].count; ++b) {
+      const Block& block = guide.chapters[c].blocks[b];
+      if (block.kind == Kind::Link &&
+          (block.mask >= static_cast<uint32_t>(guide.count) || block.mask == static_cast<uint32_t>(c)))
+        return "a link to a chapter the guide does not have, or to its own";
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace fmguide

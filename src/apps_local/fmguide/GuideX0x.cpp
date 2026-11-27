@@ -396,8 +396,14 @@ constexpr Chapter kChapters[] = {
 }  // namespace
 
 const Guide kGuideX0x = {
-    "X0X",     "Una 909, una 808, dos 303 y breaks, todo a la vez.",       "V 1.2.0",
-    kChapters, static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "X0X",
+    "Una 909, una 808, dos 303 y breaks, todo a la vez.",
+    "V 1.2.0",
+    kChapters,
+    static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "11-11-2026",
+    nullptr,
+    0,
 };
 
 }  // namespace fmguide

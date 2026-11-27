@@ -372,8 +372,14 @@ constexpr Chapter kChapters[] = {
 }  // namespace
 
 const Guide kGuideFelucca = {
-    "FELUCCA", "Cuatro pistas, trece motores y un secuenciador a fondo.",  "V 1.8.2",
-    kChapters, static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "FELUCCA",
+    "Cuatro pistas, trece motores y un secuenciador a fondo.",
+    "V 1.8.2",
+    kChapters,
+    static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "15-11-2026",
+    nullptr,
+    0,
 };
 
 }  // namespace fmguide

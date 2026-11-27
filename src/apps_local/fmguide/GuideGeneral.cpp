@@ -212,8 +212,14 @@ constexpr Chapter kChapters[] = {
 }  // namespace
 
 const Guide kGuideGeneral = {
-    "ANTES DE NADA", "El panel, cuál elegir, cómo instalar sin sustos y cómo volver.", "NOV 2026",
-    kChapters,       static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "ANTES DE NADA",
+    "El panel, cuál elegir, cómo instalar sin sustos y cómo volver.",
+    "NOV 2026",
+    kChapters,
+    static_cast<int>(sizeof(kChapters) / sizeof(kChapters[0])),
+    "27-11-2026",
+    nullptr,
+    0,
 };
 
 }  // namespace fmguide
